@@ -1,0 +1,17 @@
+# Thư mục thư viện (Rất nặng, không được push)
+node_modules/
+frontend/node_modules/
+backend/node_modules/
+admin-frontend/node_modules/
+
+# File cấu hình bảo mật
+.env
+backend/.env
+
+# Thư mục build
+build/
+dist/
+
+# File hệ thống
+.DS_Store
+Thumbs.db
