@@ -47,7 +47,15 @@ exports.generatePTWorkoutPlan = async (req, res) => {
     if (user.workoutLocation === "home") {
       exerciseQuery.equipmentRequired = { $in: [...(user.availableEquipment || []), "none"] };
     }
-    const availableExercises = await Exercise.find(exerciseQuery).select("_id name muscleGroup");
+    
+    let availableExercises = await Exercise.find(exerciseQuery).select("_id name muscleGroup");
+    
+    // [ĐÃ SỬA LỖI SỐ 1] Fallback: Nếu lọc quá gắt không ra bài nào, tự động lấy 50 bài tập bất kỳ
+    if (availableExercises.length === 0) {
+      console.log("⚠️ Cảnh báo: Không tìm thấy bài tập khớp điều kiện, đang lấy dữ liệu mặc định...");
+      availableExercises = await Exercise.find({}).limit(50).select("_id name muscleGroup");
+    }
+
     const exerciseString = availableExercises.map(ex => `ID: ${ex._id} | ${ex.name} (${ex.muscleGroup})`).join("\n");
 
     // 3. Xử lý lịch rảnh
@@ -111,9 +119,17 @@ exports.generatePTWorkoutPlan = async (req, res) => {
     if (parsedData.weeklyWorkouts && parsedData.weeklyWorkouts.length > 0) {
       for (const dailyWorkout of parsedData.weeklyWorkouts) {
         let validExercises = [];
+        
         if (!dailyWorkout.isRestDay && dailyWorkout.exercises) {
-          validExercises = dailyWorkout.exercises.filter(ex => ex.exerciseId && ex.exerciseId.length === 24); 
+          // [ĐÃ SỬA LỖI SỐ 2] Cắt bỏ khoảng trắng 2 đầu của ID do AI tự thêm vào
+          validExercises = dailyWorkout.exercises.filter(ex => {
+            if (!ex.exerciseId) return false;
+            const cleanId = String(ex.exerciseId).trim(); // Dọn dẹp khoảng trắng
+            ex.exerciseId = cleanId; // Ghi đè lại ID sạch
+            return cleanId.length === 24; // Kiểm tra chuẩn 24 ký tự
+          }); 
         }
+
         processedWorkouts.push({
           dayOfWeek: dailyWorkout.dayOfWeek,
           title: dailyWorkout.isRestDay ? "Rest Day (Ngày Nghỉ)" : dailyWorkout.title,
