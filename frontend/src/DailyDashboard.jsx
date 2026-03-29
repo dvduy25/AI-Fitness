@@ -8,12 +8,12 @@ import {
 import { 
   CheckCircle, Clock, Zap, BrainCircuit, Loader2, 
   Trash2, X, AlertTriangle, Sparkles, Edit2, RefreshCw,
-  TrendingUp, Dumbbell, Calendar, Info, Target, PlayCircle, Activity, BellRing
+  TrendingUp, Dumbbell, Calendar, Info, Target, PlayCircle, Activity, BellRing, Video, Utensils
 } from 'lucide-react'; 
 
 import DietEvaluation from './DietEvaluation'; 
 import WorkoutTracker from './WorkoutTracker';
-import PremiumRequireModal from './PremiumRequireModal'; // Đã thêm PremiumRequireModal
+import PremiumRequireModal from './PremiumRequireModal'; 
 
 export default function DailyDashboard() {
   const navigate = useNavigate();
@@ -42,15 +42,13 @@ export default function DailyDashboard() {
     mealId: null, mealType: '', logType: 'EXACT', extraFoodText: ''
   });
 
-  // ==========================================
-  // BỔ SUNG: STATE CHO PREMIUM / QUẢNG CÁO
-  // ==========================================
+  // State Premium / Quảng cáo
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isLoadingAd, setIsLoadingAd] = useState(false);
 
   // State Dashboard
   const [dashboardData, setDashboardData] = useState({
-    user: null, // Bổ sung state user để hiển thị VIP/Vé
+    user: null, 
     macros: { 
       calories: { target: 0, planned: 0, actual: 0 },
       protein: { target: 0, planned: 0, actual: 0 },
@@ -104,7 +102,7 @@ export default function DailyDashboard() {
       }
 
       setDashboardData({
-        user: user, // Lưu user
+        user: user, 
         macros: {
           calories: {
             target: user.targetMacros?.calories || 0,        
@@ -160,27 +158,21 @@ export default function DailyDashboard() {
     setNeedsWeightUpdate(diffDays >= 7);
   };
 
-  // ==========================================
-  // HÀM KIỂM TRA QUYỀN TRUY CẬP AI
-  // ==========================================
   const checkAiAccess = () => {
     const user = dashboardData.user;
     if (!user) return false;
-    if (user.isPremium) return true; // VIP
-    if (user.aiTickets > 0) return true; // Có vé
-    return false; // Hết vé
+    if (user.isPremium) return true; 
+    if (user.aiTickets > 0) return true; 
+    return false; 
   };
 
-  // ==========================================
-  // HÀM XỬ LÝ XEM QUẢNG CÁO
-  // ==========================================
   const handleWatchAd = async () => {
     setIsLoadingAd(true);
     try {
       const token = localStorage.getItem('token');
       const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, {}, { headers: { Authorization: `Bearer ${token}` } });
       alert(res.data.message); 
-      fetchDashboardData(); // Cập nhật lại vé
+      fetchDashboardData(); 
       setShowPremiumModal(false); 
     } catch (error) {
       alert(error.response?.data?.message || "Lỗi xem quảng cáo!");
@@ -202,12 +194,10 @@ export default function DailyDashboard() {
   };
 
   const handleSyncPlan = async () => {
-    // CHẶN TRƯỚC KHI ĐỒNG BỘ AI
     if (!checkAiAccess()) {
       setShowPremiumModal(true);
       return;
     }
-
     setIsSyncing(true);
     try {
       const token = localStorage.getItem('token');
@@ -218,12 +208,10 @@ export default function DailyDashboard() {
   };
 
   const handleDeleteMeal = async (mealId, mealType) => {
-    // CHẶN TRƯỚC KHI XÓA BỮA ĂN DO AI SẼ PHẢI TÍNH LẠI
     if (!checkAiAccess()) {
       setShowPremiumModal(true);
       return;
     }
-
     if (!window.confirm(`Bạn có chắc muốn xóa "${mealType}" không? AI sẽ khôi phục lại lịch trình gốc.`)) return;
     setIsLoading(true);
     try {
@@ -239,12 +227,10 @@ export default function DailyDashboard() {
   };
   
   const openEditModal = (meal) => { 
-    // CHẶN TRƯỚC KHI SỬA BỮA ĂN DO AI SẼ PHẢI TÍNH LẠI
     if (!checkAiAccess()) {
       setShowPremiumModal(true);
       return;
     }
-
     const text = meal.items.map(i => `${i.foodName} (${i.quantityInGrams}g)`).join(', '); 
     setLogForm({ mealId: meal._id, mealType: meal.mealType, logType: 'CUSTOM', extraFoodText: text }); 
     setShowLogModal(true); 
@@ -253,7 +239,6 @@ export default function DailyDashboard() {
   const submitLogMeal = async () => {
     if ((logForm.logType === 'CUSTOM' || logForm.logType === 'ADD_EXTRA') && !logForm.extraFoodText.trim()) { alert("Vui lòng nhập món ăn bạn đã ăn!"); return; }
     
-    // NẾU KHÔNG ĐÚNG 100% THÌ PHẢI KIỂM TRA QUYỀN AI VÀ TRỪ VÉ
     if (logForm.logType !== 'EXACT' && !checkAiAccess()) {
       setShowPremiumModal(true);
       return;
@@ -270,7 +255,24 @@ export default function DailyDashboard() {
     } catch (err) { alert(err.response?.data?.message || "Có lỗi xảy ra khi ghi nhận."); } finally { setIsLogging(false); }
   };
 
-  // Tiến độ Macro (So sánh Thực tế - Kế hoạch - Đề xuất)
+  // Hàm chuyển đổi link Youtube cho iframe
+  const getYouTubeEmbedUrl = (url) => {
+    if (!url) return null;
+    let videoId = '';
+    if (url.includes('youtube.com/watch')) {
+      videoId = new URL(url).searchParams.get('v');
+    } else if (url.includes('youtu.be/')) {
+      videoId = url.split('youtu.be/')[1].split('?')[0];
+    }
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+  };
+
+  const getExerciseDetails = (ex) => {
+    if (!ex) return {};
+    const detailObj = ex.exerciseId || ex.exercise || ex || {};
+    return { name: detailObj.name || detailObj.exerciseName || "Đang tải tên...", muscleGroup: detailObj.muscleGroup || 'Chưa rõ', level: detailObj.level || 'Cơ bản', equipmentRequired: detailObj.equipmentRequired || 'bodyweight', description: detailObj.description || '', videoUrl: detailObj.videoUrl || '', sets: ex.sets || 0, reps: ex.reps || 0 };
+  };
+
   const MacroProgressBar = ({ label, actual, planned, target, colorClass }) => {
     const percent = Math.min(100, Math.max(0, target > 0 ? (actual / target) * 100 : 0));
     return (
@@ -294,12 +296,6 @@ export default function DailyDashboard() {
     );
   };
 
-  const getExerciseDetails = (ex) => {
-    if (!ex) return {};
-    const detailObj = ex.exerciseId || ex.exercise || ex || {};
-    return { name: detailObj.name || detailObj.exerciseName || "Đang tải tên...", muscleGroup: detailObj.muscleGroup || 'Chưa rõ', level: detailObj.level || 'Cơ bản', equipmentRequired: detailObj.equipmentRequired || 'bodyweight', description: detailObj.description || '', videoUrl: detailObj.videoUrl || '', sets: ex.sets || 0, reps: ex.reps || 0 };
-  };
-
   if (isLoading && !showLogModal) {
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-gray-950">
@@ -309,7 +305,6 @@ export default function DailyDashboard() {
     );
   }
 
-  // ✅ DỮ LIỆU BIỂU ĐỒ 3 VÒNG (Thực tế, Kế hoạch, Đề xuất)
   const calorieChartData = [
     { name: 'Thực tế', calo: dashboardData.macros.calories.actual, fill: '#10b981' }, 
     { name: 'Kế hoạch', calo: dashboardData.macros.calories.planned, fill: '#a855f7' }, 
@@ -493,13 +488,13 @@ export default function DailyDashboard() {
                 {dashboardData.diet.consumed.map((meal, idx) => {
                   const isExact = meal.isExactlyAsPlanned; 
                   return (
-                    <div key={idx} onClick={() => setSelectedMealDetail(meal)} className={`flex justify-between items-start p-4 rounded-xl border cursor-pointer hover:shadow-md transition-all ${isExact ? 'bg-emerald-900/10 border-emerald-800/50' : 'bg-orange-900/10 border-orange-800/50'}`}>
+                    <div key={idx} onClick={() => setSelectedMealDetail(meal)} className={`flex justify-between items-start p-4 rounded-xl border cursor-pointer hover:shadow-md transition-all ${isExact ? 'bg-emerald-900/10 border-emerald-800/50 hover:bg-emerald-900/20' : 'bg-orange-900/10 border-orange-800/50 hover:bg-orange-900/20'}`}>
                       <div className="flex items-start flex-1 pr-2">
                         {isExact ? <CheckCircle className="w-5 h-5 text-emerald-500 mr-3 shrink-0 mt-0.5" /> : <AlertTriangle className="w-5 h-5 text-orange-500 mr-3 shrink-0 mt-0.5" />}
                         <div>
                           <h3 className={`font-bold ${isExact ? 'text-emerald-400' : 'text-orange-400'}`}>{meal.mealType} <span className="text-xs font-medium ml-2 opacity-70">({meal.mealTotal?.calories || 0} kcal)</span></h3>
                           {!isExact && <span className="inline-block mt-1 px-2 py-0.5 bg-orange-900/50 text-orange-300 text-[10px] font-bold rounded border border-orange-800/50">LỆCH LỊCH TRÌNH</span>}
-                          <p className="text-xs mt-1.5 text-gray-400 leading-relaxed">{meal.items && meal.items.length > 0 ? meal.items.map(i => `${i.foodName} (${i.quantityInGrams}g)`).join(', ') : "Không có món"}</p>
+                          <p className="text-xs mt-1.5 text-gray-400 leading-relaxed line-clamp-2">{meal.items && meal.items.length > 0 ? meal.items.map(i => `${i.foodName} (${i.quantityInGrams}g)`).join(', ') : "Không có món"}</p>
                         </div>
                       </div>
                       <div className="flex flex-col gap-1 shrink-0">
@@ -513,7 +508,7 @@ export default function DailyDashboard() {
 
               <div className="space-y-3">
                 {dashboardData.diet.upcoming.map((meal, idx) => (
-                  <div key={idx} onClick={() => setSelectedMealDetail(meal)} className={`flex flex-col p-4 rounded-xl border relative overflow-hidden cursor-pointer hover:shadow-md transition-all ${hasOffPlanMeals ? 'border-purple-800/50 bg-purple-900/10' : 'border-gray-800 bg-gray-800/30'}`}>
+                  <div key={idx} onClick={() => setSelectedMealDetail(meal)} className={`flex flex-col p-4 rounded-xl border relative overflow-hidden cursor-pointer hover:shadow-md transition-all ${hasOffPlanMeals ? 'border-purple-800/50 bg-purple-900/10 hover:bg-purple-900/20' : 'border-gray-800 bg-gray-800/30 hover:bg-gray-800/50'}`}>
                     <div className={`w-1 absolute left-0 top-0 bottom-0 ${hasOffPlanMeals ? 'bg-purple-500' : 'bg-gray-600'}`}></div>
                     <div className="flex items-start justify-between w-full ml-1">
                       <div className="flex items-start flex-1 pr-2">
@@ -642,20 +637,117 @@ export default function DailyDashboard() {
         </div>
       )}
 
-      {/* CHI TIẾT BÀI TẬP */}
+      {/* CHI TIẾT BÀI TẬP (ĐÃ CẢI TIẾN CÓ VIDEO) */}
       {selectedExercise && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4" onClick={() => setSelectedExercise(null)}>
-          <div className="bg-gray-900 w-full max-w-md rounded-2xl border border-gray-800 overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-5 border-b border-gray-800 flex justify-between items-center">
-              <h3 className="font-bold text-lg text-white">{selectedExercise.name}</h3>
-              <button onClick={() => setSelectedExercise(null)} className="text-gray-400 hover:text-white bg-gray-800 p-1.5 rounded-full"><X className="w-4 h-4" /></button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in duration-200" onClick={() => setSelectedExercise(null)}>
+          <div className="bg-gray-900 w-full max-w-2xl rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-800 bg-gray-900/50 shrink-0">
+              <h3 className="font-black text-white text-base md:text-xl flex items-center gap-2 truncate">
+                <Dumbbell className="w-5 h-5 text-emerald-500 shrink-0" />
+                <span className="truncate">{selectedExercise.name}</span>
+              </h3>
+              <button onClick={() => setSelectedExercise(null)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 md:p-2 rounded-full transition-colors shrink-0 ml-2">
+                <X className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
             </div>
-            <div className="p-5">
-              <div className="flex gap-2 mb-4">
-                <span className="text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded">{selectedExercise.muscleGroup}</span>
-                <span className="text-xs bg-gray-800 text-gray-300 px-2 py-1 rounded">{selectedExercise.equipmentRequired}</span>
+
+            <div className="p-4 md:p-6 overflow-y-auto custom-scrollbar">
+              <div className="w-full aspect-video bg-black rounded-xl overflow-hidden mb-5 border border-gray-800 flex items-center justify-center relative shadow-inner">
+                {selectedExercise.videoUrl ? (
+                  selectedExercise.videoUrl.includes('youtube') || selectedExercise.videoUrl.includes('youtu.be') ? (
+                    <iframe className="w-full h-full" src={getYouTubeEmbedUrl(selectedExercise.videoUrl)} frameBorder="0" allowFullScreen></iframe>
+                  ) : (
+                    <video className="w-full h-full object-contain" controls autoPlay src={selectedExercise.videoUrl.startsWith('http') ? selectedExercise.videoUrl : `${API_BASE_URL}${selectedExercise.videoUrl}`}></video>
+                  )
+                ) : (
+                  <div className="text-gray-600 flex flex-col items-center">
+                    <Video size={36} className="mb-2 opacity-30"/>
+                    <span className="text-sm font-medium">Chưa có video minh họa</span>
+                  </div>
+                )}
               </div>
-              <p className="text-sm text-gray-400">{selectedExercise.description}</p>
+
+              <div className="grid grid-cols-2 gap-3 mb-5">
+                <div className="bg-gray-800/80 p-3 md:p-4 rounded-xl border border-gray-700">
+                  <p className="text-gray-400 text-[10px] md:text-xs font-bold uppercase mb-1 tracking-wider">Nhóm cơ</p>
+                  <p className="text-sm md:text-base text-blue-400 font-bold">{selectedExercise.muscleGroup}</p>
+                </div>
+                <div className="bg-gray-800/80 p-3 md:p-4 rounded-xl border border-gray-700">
+                  <p className="text-gray-400 text-[10px] md:text-xs font-bold uppercase mb-1 tracking-wider">Dụng cụ</p>
+                  <p className="text-sm md:text-base text-purple-400 font-bold">{selectedExercise.equipmentRequired || 'Bodyweight'}</p>
+                </div>
+              </div>
+
+              <div className="bg-gray-950 p-4 md:p-5 rounded-2xl border border-gray-800">
+                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Info className="w-4 h-4" /> Hướng dẫn chi tiết</h4>
+                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">{selectedExercise.description || 'Chưa có hướng dẫn chi tiết.'}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CHI TIẾT BỮA ĂN (MEAL DETAIL MODAL) */}
+      {selectedMealDetail && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in duration-200" onClick={() => setSelectedMealDetail(null)}>
+          <div className="bg-gray-900 w-full max-w-md rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-800 bg-gray-900/50 shrink-0">
+              <h3 className="font-black text-white text-base md:text-xl flex items-center gap-2 truncate">
+                <Utensils className="w-5 h-5 text-emerald-500 shrink-0" />
+                <span className="truncate">Chi tiết {selectedMealDetail.mealType}</span>
+              </h3>
+              <button onClick={() => setSelectedMealDetail(null)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 md:p-2 rounded-full transition-colors shrink-0 ml-2">
+                <X className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 md:p-5 overflow-y-auto custom-scrollbar">
+              <div className="flex flex-col items-center justify-center py-4 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl mb-5">
+                 <span className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Tổng Năng Lượng</span>
+                 <span className="text-emerald-400 font-black text-4xl">{selectedMealDetail.mealTotal?.calories || 0} <span className="text-lg text-emerald-500/50 font-semibold">kcal</span></span>
+              </div>
+
+              {/* Thông số Protein - Carbs - Fat của bữa ăn */}
+              <div className="flex gap-3 mb-6">
+                 <div className="flex-1 bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 text-center">
+                   <span className="block text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Protein</span>
+                   <span className="font-black text-blue-400 text-lg">{selectedMealDetail.mealTotal?.protein || 0}g</span>
+                 </div>
+                 <div className="flex-1 bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 text-center">
+                   <span className="block text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Carbs</span>
+                   <span className="font-black text-yellow-400 text-lg">{selectedMealDetail.mealTotal?.carbs || 0}g</span>
+                 </div>
+                 <div className="flex-1 bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 text-center">
+                   <span className="block text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Fat</span>
+                   <span className="font-black text-red-400 text-lg">{selectedMealDetail.mealTotal?.fat || 0}g</span>
+                 </div>
+              </div>
+
+              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-purple-400" />
+                Danh sách món ăn
+              </h4>
+
+              <div className="space-y-2.5">
+                {selectedMealDetail.items && selectedMealDetail.items.length > 0 ? (
+                  selectedMealDetail.items.map((item, i) => (
+                    <div key={i} className="flex justify-between items-center bg-gray-950 p-3.5 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors">
+                      <div className="flex-1 min-w-0 pr-3">
+                        <span className="text-sm font-bold text-gray-200 block truncate">{item.foodName}</span>
+                      </div>
+                      <span className="text-xs text-emerald-400 font-black bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20 whitespace-nowrap">
+                        {item.quantityInGrams} gram
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-950 rounded-xl border border-gray-800 border-dashed">Không có dữ liệu món ăn chi tiết.</p>
+                )}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-gray-800 bg-gray-900/50">
+               <button onClick={() => setSelectedMealDetail(null)} className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition-colors">Đóng</button>
             </div>
           </div>
         </div>
@@ -670,7 +762,7 @@ export default function DailyDashboard() {
         onWatchAd={handleWatchAd}
         onUpgrade={() => {
           setShowPremiumModal(false);
-          navigate('/premium'); // Thay thế bằng Route thanh toán của bạn
+          navigate('/premium'); 
         }}
         isLoadingAd={isLoadingAd}
       />
