@@ -1,0 +1,435 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { 
+  X, Dumbbell, Clock, CheckCircle, History, 
+  Play, Trophy, ArrowLeft, Video, Info, 
+  BrainCircuit
+} from 'lucide-react';
+
+// IMPORT CÁC COMPONENT TÙY CHỈNH
+import ExerciseEvaluation from './ExerciseEvaluation';
+// Đảm bảo đường dẫn này đúng với thư mục của bạn nhé!
+import PremiumRequireModal from './PremiumRequireModal'; 
+
+// ==========================================
+// COMPONENT ĐỒNG HỒ
+// ==========================================
+const WorkoutTimer = ({ startTime }) => {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [startTime]);
+
+  const formatTime = (seconds) => {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
+
+  return <span className="text-emerald-400 font-mono tracking-wider">{formatTime(elapsed)}</span>;
+};
+
+export default function WorkoutTracker() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const todayPlan = location.state?.todayPlan; 
+
+  const [workoutData, setWorkoutData] = useState({});
+  const [prevRecords, setPrevRecords] = useState({});
+  const [startTime] = useState(Date.now());
+  const [currentLogId, setCurrentLogId] = useState(null);
+  const [infoModal, setInfoModal] = useState({ isOpen: false, exercise: null });
+  
+  // State gọi AI Modal
+  const [aiModal, setAiModal] = useState({ 
+    isOpen: false, 
+    exerciseId: null, 
+    exerciseName: '' 
+  });
+
+  // ==========================================
+  // STATE & LOGIC CHO PREMIUM / QUẢNG CÁO
+  // ==========================================
+  const [showPremiumModal, setShowPremiumModal] = useState(false);
+  const [isLoadingAd, setIsLoadingAd] = useState(false);
+  
+  // GIẢ LẬP SỐ VÉ VÀ TRẠNG THÁI VIP (Bạn có thể lấy từ API lấy thông tin User)
+  const [userTickets, setUserTickets] = useState(0); 
+  const [isPremium, setIsPremium] = useState(false); 
+ const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+  useEffect(() => {
+    if (!todayPlan) {
+      alert("Không tìm thấy dữ liệu buổi tập hôm nay!");
+      navigate('/', { replace: true });
+    }
+  }, [todayPlan, navigate]);
+
+  // (Giữ nguyên đoạn useEffect khởi tạo dữ liệu và API)
+  useEffect(() => {
+    if (!todayPlan || !todayPlan.exercises) return;
+
+    const initializeWorkoutData = async () => {
+      const initialData = {};
+      
+      todayPlan.exercises.forEach(ex => {
+        const setsCount = ex.sets || 3;
+        initialData[ex.exerciseId._id] = Array.from({ length: setsCount }).map((_, i) => ({
+          setNumber: i + 1,
+          weight: '', 
+          reps: ex.reps || '', 
+          isDone: false
+        }));
+        
+        fetchPrevRecord(ex.exerciseId._id); 
+      });
+
+      try {
+        const token = localStorage.getItem('token');
+        const res = await axios.get(`${API_BASE_URL}/api/workout-logs/today`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.data.log) {
+          setCurrentLogId(res.data.log._id);
+          
+          if (res.data.log.exercises) {
+            res.data.log.exercises.forEach(loggedEx => {
+              const exId = loggedEx.exerciseId;
+              if (initialData[exId]) {
+                loggedEx.setsPerformed.forEach(loggedSet => {
+                  const setIndex = loggedSet.setNumber - 1;
+                  if (initialData[exId][setIndex]) {
+                    initialData[exId][setIndex].weight = loggedSet.weight;
+                    initialData[exId][setIndex].reps = loggedSet.reps;
+                    initialData[exId][setIndex].isDone = true; 
+                  }
+                });
+              }
+            });
+          }
+        }
+      } catch (error) {
+        console.error("Lỗi lấy dữ liệu tập dở hôm nay:", error);
+      }
+      setWorkoutData(initialData);
+    };
+
+    initializeWorkoutData();
+  }, [todayPlan]);
+
+  const fetchPrevRecord = async (exerciseId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await axios.get(`${API_BASE_URL}/api/workout-logs/previous/${exerciseId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.hasHistory) {
+        setPrevRecords(prev => ({ ...prev, [exerciseId]: res.data.previousSets }));
+      }
+    } catch (error) {
+      console.error("Lỗi lấy lịch sử cũ:", error);
+    }
+  };
+
+  const openExerciseInfo = async (exerciseId) => {
+    try {
+      const token = localStorage.getItem('token');
+      const id = typeof exerciseId === 'object' ? exerciseId._id : exerciseId;
+
+      const res = await axios.get(`${API_BASE_URL}/api/exercises/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      const fullExerciseData = res.data.exercise || res.data;
+      setInfoModal({ isOpen: true, exercise: fullExerciseData });
+    } catch (error) {
+      console.error("Lỗi lấy thông tin:", error);
+      alert("Không thể tải thông tin bài tập lúc này!");
+    }
+  };
+
+  const handleSetChange = (exerciseId, setIndex, field, value) => {
+    setWorkoutData(prev => {
+      const updatedExercise = [...prev[exerciseId]];
+      updatedExercise[setIndex] = { ...updatedExercise[setIndex], [field]: value };
+      return { ...prev, [exerciseId]: updatedExercise };
+    });
+  };
+
+  const toggleSetDone = async (exerciseId, setIndex) => {
+    const previousWorkoutData = { ...workoutData };
+    const currentExercises = [...workoutData[exerciseId]];
+    
+    currentExercises[setIndex] = {
+      ...currentExercises[setIndex],
+      isDone: !currentExercises[setIndex].isDone
+    };
+
+    const nextWorkoutData = { ...workoutData, [exerciseId]: currentExercises };
+    setWorkoutData(nextWorkoutData);
+
+    try {
+      const exercisesPayload = Object.keys(nextWorkoutData).map(exId => {
+        const completedSets = nextWorkoutData[exId]
+          .filter(set => set.isDone === true)
+          .map(set => ({
+            setNumber: set.setNumber,
+            reps: parseInt(String(set.reps).replace(/[^0-9]/g, '')) || 0,
+            weight: parseFloat(String(set.weight).replace(/[^0-9.]/g, '')) || 0
+          }));
+
+        return { exerciseId: exId, setsPerformed: completedSets };
+      }).filter(ex => ex.setsPerformed.length > 0);
+
+      if (exercisesPayload.length > 0) {
+        const payload = { planDay: todayPlan.dayOfWeek, exercises: exercisesPayload };
+        const token = localStorage.getItem('token');
+        const res = await axios.post(`${API_BASE_URL}/api/workout-logs`, payload, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (res.data?.log?._id) setCurrentLogId(res.data.log._id);
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu dữ liệu:", error);
+      setWorkoutData(previousWorkoutData);
+      alert("Lỗi kết nối mạng! Vui lòng thử lại.");
+    }
+  };
+
+  const getEmbedUrl = (url) => {
+    if (!url) return '';
+    const match = url.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|shorts\/|watch\?v=|watch\?.+&v=))([\w-]{11})/);
+    return match ? `https://www.youtube.com/embed/${match[1]}?autoplay=1` : url;
+  };
+
+  // ==========================================
+  // HÀM XỬ LÝ KHI BẤM NÚT AI ĐÁNH GIÁ
+  // ==========================================
+  const handleAiEvaluationClick = (ex) => {
+    // 1. Kiểm tra xem đã có data lưu trữ (currentLogId) chưa
+    if (!currentLogId) {
+      alert("Bạn cần tập xong ít nhất 1 hiệp và bấm 'Xong' để hệ thống lưu dữ liệu trước khi AI có thể đánh giá!");
+      return;
+    }
+
+    // 2. Kiểm tra đặc quyền (Premium / Vé)
+    if (!isPremium && userTickets <= 0) {
+      setShowPremiumModal(true); // Bật bảng chặn lên
+      return;
+    }
+
+    // 3. Nếu là VIP hoặc còn vé -> Trừ đi 1 vé (nếu là user thường) và Mở bảng AI
+    if (!isPremium) {
+      setUserTickets(prev => prev - 1);
+      // Bạn có thể gọi API trừ vé ở đây
+    }
+
+    setAiModal({ 
+      isOpen: true, 
+      exerciseId: ex.exerciseId._id, 
+      exerciseName: ex.exerciseId.name 
+    });
+  };
+
+  // HÀM XỬ LÝ XEM QUẢNG CÁO (TỪ BẢNG PREMIUM MODAL)
+  const handleWatchAd = async () => {
+    setIsLoadingAd(true);
+    try {
+      const token = localStorage.getItem('token');
+      // Gọi API xem quảng cáo
+      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, 
+        {}, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      alert(res.data.message); 
+      setUserTickets(prev => prev + 1); // Tăng 1 vé
+      setShowPremiumModal(false); // Đóng Modal
+      
+    } catch (error) {
+      alert(error.response?.data?.message || "Lỗi tải quảng cáo!");
+    } finally {
+      setIsLoadingAd(false);
+    }
+  };
+
+  if (!todayPlan) return null;
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white flex flex-col pb-24 relative"> 
+      
+      {/* HEADER */}
+      <div className="flex items-center justify-between p-4 md:p-6 border-b border-gray-800 bg-gray-900/80 backdrop-blur-md sticky top-0 z-40">
+        <div className="flex items-center gap-4">
+          <button onClick={() => navigate(-1)} className="p-2 bg-gray-800 text-gray-400 rounded-full hover:bg-gray-700 hover:text-white transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div>
+            <h2 className="text-xl md:text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400">
+              {todayPlan?.title || `Buổi tập ${todayPlan?.dayOfWeek}`}
+            </h2>
+            <div className="flex items-center gap-2 mt-1 text-gray-400 text-sm font-medium">
+              <Clock className="w-4 h-4 text-emerald-500" />
+              <WorkoutTimer startTime={startTime} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* DANH SÁCH BÀI TẬP */}
+      <div className="flex-1 w-full p-4 md:p-8">
+        <div className="max-w-3xl mx-auto space-y-6">
+          {todayPlan?.exercises?.map((ex, index) => {
+            const exerciseId = ex.exerciseId._id;
+            const prevLog = prevRecords[exerciseId];
+            
+            return (
+              <div key={index} className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
+                
+                {/* Header bài tập */}
+                <div className="p-4 md:p-5 border-b border-gray-800 bg-gray-800/20 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
+                  <div className="flex items-center gap-3 md:gap-4">
+                    <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center shrink-0 border border-emerald-500/20">
+                      <Dumbbell className="w-6 h-6" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-lg text-gray-100">{ex.exerciseId.name}</h3>
+                      <p className="text-sm font-medium text-gray-400 mt-1">Mục tiêu: {ex.sets} hiệp x {ex.reps} reps</p>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    {/* NÚT AI ĐÁNH GIÁ ĐÃ ĐƯỢC CHỈNH SỬA Ở ĐÂY */}
+                    <button 
+                      onClick={() => handleAiEvaluationClick(ex)}
+                      className="relative p-2 md:px-4 md:py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl flex items-center gap-2 transition-colors border border-indigo-500/20 shrink-0 shadow-md group"
+                    >
+                      <BrainCircuit className="w-4 h-4 md:w-5 md:h-5 group-hover:scale-110 transition-transform" />
+                      <span className="text-xs md:text-sm font-bold">AI Đánh giá</span>
+                    </button>
+
+                    {/* Nút thông tin */}
+                    <button 
+                      onClick={() => openExerciseInfo(ex.exerciseId)}
+                      className="p-2 md:px-4 md:py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-xl flex items-center gap-2 transition-colors border border-blue-500/20 shrink-0"
+                    >
+                      <Info className="w-4 h-4 md:w-5 md:h-5" />
+                      <span className="hidden md:inline text-sm font-bold">Thông tin</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Các phần khác giữ nguyên ... */}
+                <div className="px-4 md:px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex gap-2 items-center text-sm text-gray-400">
+                  <History className="w-4 h-4 text-orange-400" />
+                  {prevLog ? (
+                    <span>Buổi trước: <strong className="text-gray-200">{Math.max(...prevLog.map(s => s.weight || 0))}kg</strong> (Max)</span>
+                  ) : (
+                    <span className="text-emerald-400/80 italic">Chưa có dữ liệu cũ. Cố lên nhé!</span>
+                  )}
+                </div>
+
+                {/* Bảng nhập Sets ... */}
+                <div className="p-4 md:p-5">
+                  <div className="grid grid-cols-12 gap-2 md:gap-4 mb-3 text-xs font-black text-gray-500 uppercase tracking-widest text-center">
+                    <div className="col-span-2">Set</div>
+                    <div className="col-span-3">KG</div>
+                    <div className="col-span-3">Reps</div>
+                    <div className="col-span-4">Trạng thái</div>
+                  </div>
+
+                  {workoutData[exerciseId]?.map((set, setIdx) => {
+                    const prevSet = prevLog?.find(s => s.setNumber === set.setNumber);
+                    return (
+                      <div key={setIdx} className={`grid grid-cols-12 gap-2 md:gap-4 items-center mb-2 p-2 rounded-xl transition-all ${set.isDone ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-gray-800/30 border border-transparent'}`}>
+                        <div className="col-span-2 text-center font-black text-gray-400 text-lg">
+                          {set.setNumber}
+                        </div>
+                        <div className="col-span-3 relative">
+                          <input 
+                            type="number" 
+                            placeholder={prevSet?.weight || "-"}
+                            value={set.weight}
+                            onChange={(e) => handleSetChange(exerciseId, setIdx, 'weight', e.target.value)}
+                            disabled={set.isDone}
+                            className="w-full bg-gray-950 border border-gray-700 rounded-xl p-2.5 md:p-3 text-center text-white font-bold focus:border-emerald-500 outline-none disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="col-span-3">
+                          <input 
+                            type="number" 
+                            placeholder={prevSet?.reps || ex.reps}
+                            value={set.reps}
+                            onChange={(e) => handleSetChange(exerciseId, setIdx, 'reps', e.target.value)}
+                            disabled={set.isDone}
+                            className="w-full bg-gray-950 border border-gray-700 rounded-xl p-2.5 md:p-3 text-center text-white font-bold focus:border-emerald-500 outline-none disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="col-span-4 flex justify-center">
+                          <button 
+                            onClick={() => toggleSetDone(exerciseId, setIdx)}
+                            className={`w-full py-2.5 md:py-3 rounded-xl font-bold text-sm flex items-center justify-center gap-1.5 transition-all ${
+                              set.isDone 
+                              ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/20' 
+                              : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                            }`}
+                          >
+                            {set.isDone ? <CheckCircle className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+                            {set.isDone ? 'Xong' : 'Tập'}
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* FOOTER */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-gray-900/90 backdrop-blur-md border-t border-gray-800 z-40">
+        <div className="max-w-3xl mx-auto">
+          <button 
+            onClick={() => { alert("Tuyệt vời! Bạn đã hoàn thành buổi tập."); navigate('/'); }}
+            className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-500 rounded-2xl text-white font-bold text-lg flex justify-center items-center gap-2 shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all"
+          >
+            <Trophy className="w-6 h-6" />
+            Hoàn Thành Buổi Tập
+          </button>
+        </div>
+      </div>
+
+      {/* BẢNG ĐÁNH GIÁ AI */}
+      <ExerciseEvaluation 
+        isOpen={aiModal.isOpen}
+        onClose={() => setAiModal({ isOpen: false, exerciseId: null, exerciseName: '' })}
+        exerciseId={aiModal.exerciseId}
+        exerciseName={aiModal.exerciseName}
+        currentLogId={currentLogId}
+      />
+
+      {/* ========================================================= */}
+      {/* BẢNG YÊU CẦU PREMIUM VỪA ĐƯỢC THÊM VÀO */}
+      {/* ========================================================= */}
+      <PremiumRequireModal 
+        isOpen={showPremiumModal}
+        onClose={() => setShowPremiumModal(false)}
+        onWatchAd={handleWatchAd}
+        onUpgrade={() => {
+          setShowPremiumModal(false);
+          navigate('/premium'); // Thay /premium bằng URL trang thanh toán của bạn
+        }}
+        isLoadingAd={isLoadingAd}
+      />
+
+    </div>
+  );
+}

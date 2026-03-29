@@ -1,0 +1,14 @@
+/* Chép đè đoạn này vào file index.css của bạn để xóa viền trắng */
+#root {
+  max-width: 100% !important;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #030712; /* Khớp với bg-gray-950 */
+  overflow-x: hidden;
+}
