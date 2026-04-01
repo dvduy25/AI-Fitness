@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { 
   Mail, Lock, LogIn, Loader2, AlertTriangle, 
   CheckCircle, ArrowRight, Activity, UserPlus, 
-  User, Ruler, Weight, Target, ArrowLeft 
+  User, Ruler, Weight, Target, ArrowLeft, HeartPulse 
 } from "lucide-react";
 
 const AuthPage = ({ onLoginSuccess }) => {
@@ -10,13 +10,16 @@ const AuthPage = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
 
-  // Gom toàn bộ state của cả Login và Register
+  // Gom toàn bộ state của cả Login và Register, THÊM medicalConditions
   const [formData, setFormData] = useState({
     email: "", password: "", name: "", 
     age: "", gender: "male", height: "", weight: "",
-    goal: "lose_weight", fitnessLevel: "beginner"
+    goal: "lose_weight", fitnessLevel: "beginner",
+    medicalConditions: "" // Khởi tạo rỗng
   });
- const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+  
+  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -31,15 +34,36 @@ const AuthPage = ({ onLoginSuccess }) => {
     setLoading(true);
     setMessage({ text: "", type: "" });
 
-    // Xác định Endpoint và Payload dựa trên chế độ hiện tại
+    // Validate (Bắt lỗi các trường bắt buộc)
+    if (!isLogin) {
+      if (!formData.name || !formData.age || !formData.height || !formData.weight) {
+        setLoading(false);
+        setMessage({ text: "Vui lòng điền đầy đủ Tên, Tuổi, Chiều cao và Cân nặng!", type: "error" });
+        return; 
+      }
+      if (Number(formData.age) <= 0 || Number(formData.height) <= 0 || Number(formData.weight) <= 0) {
+        setLoading(false);
+        setMessage({ text: "Tuổi, chiều cao và cân nặng phải là số dương hợp lệ!", type: "error" });
+        return; 
+      }
+    }
+
+    // Xác định Endpoint và Payload
     const endpoint = isLogin ? "/api/users/login" : "/api/users/register";
+    
+    // Tách chuỗi bệnh lý thành mảng (cách nhau bởi dấu phẩy) cho Backend xử lý
+    const processedMedicalConditions = formData.medicalConditions
+      ? formData.medicalConditions.split(",").map(item => item.trim()).filter(item => item !== "")
+      : [];
+
     const payload = isLogin 
       ? { email: formData.email, password: formData.password }
       : { 
           ...formData, 
           age: Number(formData.age), 
           height: Number(formData.height), 
-          weight: Number(formData.weight) 
+          weight: Number(formData.weight),
+          medicalConditions: processedMedicalConditions
         };
 
     try {
@@ -75,7 +99,7 @@ const AuthPage = ({ onLoginSuccess }) => {
       <div className="absolute top-[-10%] left-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none"></div>
       <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] bg-emerald-600/10 rounded-full blur-[120px] pointer-events-none"></div>
 
-      {/* Box Form Đăng Nhập / Đăng Ký (To hơn trên Desktop) */}
+      {/* Box Form Đăng Nhập / Đăng Ký */}
       <div className={`w-full bg-gray-900/80 backdrop-blur-xl rounded-3xl border border-gray-800 shadow-2xl p-6 sm:p-10 relative z-10 transition-all duration-500 ${isLogin ? 'max-w-md' : 'max-w-2xl'}`}>
         
         {/* Header Logo & Tiêu đề */}
@@ -106,9 +130,10 @@ const AuthPage = ({ onLoginSuccess }) => {
         {/* Form Nhập liệu */}
         <form onSubmit={handleSubmit} className="space-y-5">
           
-          {/* CÁC TRƯỜNG DÀNH RIÊNG CHO ĐĂNG KÝ (Hiển thị dạng Grid 2 cột trên Desktop) */}
+          {/* CÁC TRƯỜNG DÀNH RIÊNG CHO ĐĂNG KÝ */}
           {!isLogin && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 animate-in fade-in slide-in-from-right-8 duration-500">
+              
               <div className="relative group md:col-span-2">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-gray-500 group-focus-within:text-blue-400 transition-colors" />
@@ -121,10 +146,12 @@ const AuthPage = ({ onLoginSuccess }) => {
                 <input type="number" name="age" placeholder="Tuổi (VD: 25)" required={!isLogin} onChange={handleChange} 
                   className="w-full px-4 py-3.5 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-blue-500 outline-none transition-all placeholder-gray-600" />
               </div>
+              
               <div className="relative group">
                 <select name="gender" onChange={handleChange} value={formData.gender} className="w-full px-4 py-3.5 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
                   <option value="male">Nam giới</option>
                   <option value="female">Nữ giới</option>
+                  <option value="other">Khác</option>
                 </select>
               </div>
 
@@ -133,6 +160,7 @@ const AuthPage = ({ onLoginSuccess }) => {
                 <input type="number" name="height" placeholder="Chiều cao (cm)" required={!isLogin} onChange={handleChange} 
                   className="w-full pl-10 pr-4 py-3.5 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-blue-500 outline-none transition-all placeholder-gray-600" />
               </div>
+              
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Weight className="h-4 w-4 text-gray-500" /></div>
                 <input type="number" name="weight" placeholder="Cân nặng (kg)" required={!isLogin} onChange={handleChange} 
@@ -147,6 +175,7 @@ const AuthPage = ({ onLoginSuccess }) => {
                   <option value="maintain">Mục tiêu: Giữ dáng</option>
                 </select>
               </div>
+              
               <div className="relative group">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none"><Activity className="h-4 w-4 text-gray-500" /></div>
                 <select name="fitnessLevel" onChange={handleChange} value={formData.fitnessLevel} className="w-full pl-10 pr-4 py-3.5 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-blue-500 outline-none transition-all appearance-none cursor-pointer">
@@ -155,6 +184,16 @@ const AuthPage = ({ onLoginSuccess }) => {
                   <option value="advanced">Chuyên nghiệp</option>
                 </select>
               </div>
+
+              {/* TRƯỜNG BỆNH LÝ MỚI THÊM VÀO */}
+              <div className="relative group md:col-span-2 mt-2">
+                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <HeartPulse className="h-5 w-5 text-gray-500 group-focus-within:text-red-400 transition-colors" />
+                </div>
+                <input type="text" name="medicalConditions" placeholder="Bệnh lý / Chấn thương (VD: Đau lưng, hen suyễn... Bỏ trống nếu không có)" onChange={handleChange} value={formData.medicalConditions}
+                  className="w-full pl-12 pr-4 py-3.5 bg-gray-950/50 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-red-500 outline-none transition-all placeholder-gray-600" />
+              </div>
+
             </div>
           )}
 
@@ -164,7 +203,7 @@ const AuthPage = ({ onLoginSuccess }) => {
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Mail className="h-5 w-5 text-gray-500 group-focus-within:text-blue-400 transition-colors" />
               </div>
-              <input type="email" name="email" placeholder="Email của bạn" required onChange={handleChange} 
+              <input type="email" name="email" placeholder="Email của bạn" required onChange={handleChange} value={formData.email}
                 className="w-full pl-12 pr-4 py-3.5 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-blue-500 outline-none transition-all placeholder-gray-600" />
             </div>
 
@@ -172,19 +211,10 @@ const AuthPage = ({ onLoginSuccess }) => {
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <Lock className="h-5 w-5 text-gray-500 group-focus-within:text-blue-400 transition-colors" />
               </div>
-              <input type="password" name="password" placeholder="Mật khẩu" required onChange={handleChange} 
+              <input type="password" name="password" placeholder="Mật khẩu" required onChange={handleChange} value={formData.password}
                 className="w-full pl-12 pr-4 py-3.5 bg-gray-950 border border-gray-800 rounded-xl text-gray-200 text-sm focus:border-blue-500 outline-none transition-all placeholder-gray-600" />
             </div>
           </div>
-
-          {/* Quên mật khẩu (Chỉ hiện ở Login) */}
-          {isLogin && (
-            <div className="flex justify-end">
-              <button type="button" className="text-xs font-semibold text-blue-400 hover:text-blue-300 transition-colors">
-                Quên mật khẩu?
-              </button>
-            </div>
-          )}
 
           {/* Nút Submit */}
           <button 

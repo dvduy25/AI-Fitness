@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const WeightLog = require("../models/WeightLog");
 const crypto = require('crypto');
 const Transaction = require('../models/Transaction');  // Thư viện có sẵn của Node.js, không cần cài đặt
 require("dotenv").config();
@@ -44,7 +45,7 @@ exports.register = async (req, res) => {
       name, email, password, 
       age, gender, height, weight, 
       goal, fitnessLevel, workoutLocation, availableEquipment,
-      medicalConditions // <--- 1. HỨNG THÊM TRƯỜNG NÀY TỪ FRONTEND
+      medicalConditions
     } = req.body;
 
     // 1. Kiểm tra email
@@ -65,18 +66,30 @@ exports.register = async (req, res) => {
       name, email, password: hashedPassword,
       age, gender, height, weight,
       goal, fitnessLevel, workoutLocation, availableEquipment,
-      medicalConditions: medicalConditions || [], // <--- 2. LƯU VÀO DATABASE (mặc định mảng rỗng nếu không gửi)
+      medicalConditions: medicalConditions || [], 
       targetMacros: generatedMacros 
     });
 
     await newUser.save();
 
-    // 5. Tạo Token
+    // =======================================================
+    // 5. LƯU NGAY CÂN NẶNG BAN ĐẦU VÀO BẢNG THEO DÕI (WEIGHT LOG)
+    // =======================================================
+    if (weight) {
+      const newWeightLog = new WeightLog({
+        userId: newUser._id,
+        weight: weight,
+        date: new Date() // Lưu với thời gian lúc đăng ký
+      });
+      await newWeightLog.save();
+    }
+
+    // 6. Tạo Token
     const token = jwt.sign(
       { id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "7d" }
     );
 
-    // 6. Trả về kết quả
+    // 7. Trả về kết quả
     const { password: _, ...userWithoutPassword } = newUser._doc;
     res.status(201).json({
       message: "Đăng ký thành công! Hệ thống đã tự lên Macros cho bạn.",
