@@ -115,3 +115,36 @@ exports.getTodayLog = async (req, res) => {
     res.status(500).json({ message: "Lỗi lấy dữ liệu hôm nay", error: error.message });
   }
 };
+// ==========================================
+// 4. LẤY CHI TIẾT TẬP LUYỆN THEO 1 NGÀY CỤ THỂ
+// ==========================================
+exports.getWorkoutLogByDate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { date } = req.query; // Nhận YYYY-MM-DD từ Frontend
+
+    if (!date) {
+      return res.status(400).json({ message: "Vui lòng cung cấp ngày (date)!" });
+    }
+
+    // Tạo mốc bắt đầu và kết thúc của cái ngày mà user click vào
+    const queryDate = new Date(date);
+    const startOfDay = new Date(queryDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(queryDate.setHours(23, 59, 59, 999));
+
+    // Tìm lịch sử tập luyện trong ngày đó
+    const log = await WorkoutLog.findOne({
+      userId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    }).populate('exercises.exerciseId', 'name muscleGroup'); // Lấy Tên và Nhóm cơ của bài tập
+
+    if (!log) {
+      return res.status(200).json({ log: null }); // Trả về null nếu ngày đó không tập
+    }
+
+    res.status(200).json({ log });
+  } catch (error) {
+    console.error("Lỗi getWorkoutLogByDate:", error);
+    res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu tập luyện" });
+  }
+};

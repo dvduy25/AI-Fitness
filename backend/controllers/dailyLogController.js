@@ -85,3 +85,57 @@ exports.getDietHistory = async (req, res) => {
     res.status(500).json({ message: "Lỗi hệ thống khi lấy lịch sử dinh dưỡng!" });
   }
 };
+// ==========================================
+// LẤY CHI TIẾT DINH DƯỠNG THEO 1 NGÀY CỤ THỂ
+// ==========================================
+exports.getDietByDate = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { date } = req.query; // Nhận YYYY-MM-DD từ Frontend
+
+    if (!date) {
+      return res.status(400).json({ message: "Vui lòng cung cấp ngày (date)!" });
+    }
+
+    // Đưa ngày mục tiêu về định dạng chuẩn YYYY-MM-DD để dễ so sánh
+    const targetDateStr = new Date(date).toISOString().split('T')[0];
+
+    // Lấy toàn bộ Log của User (giống logic getDietHistory của bạn)
+    const userLogs = await DailyDietLog.find({ userId });
+    
+    let foundRecord = null;
+
+    // Quét tìm trong ngày chính và cả mảng pastRecords
+    for (const log of userLogs) {
+      const logDateStr = new Date(log.date).toISOString().split('T')[0];
+      
+      if (logDateStr === targetDateStr) {
+        foundRecord = {
+          calories: log.actualDailyTotal?.calories || 0,
+          protein: log.actualDailyTotal?.protein || 0,
+          carbs: log.actualDailyTotal?.carbs || 0,
+          fat: log.actualDailyTotal?.fat || 0,
+        };
+        break; // Tìm thấy thì dừng luôn
+      }
+
+      if (log.pastRecords && log.pastRecords.length > 0) {
+        const pastRecord = log.pastRecords.find(pr => new Date(pr.date).toISOString().split('T')[0] === targetDateStr);
+        if (pastRecord) {
+          foundRecord = {
+            calories: pastRecord.actualDailyTotal?.calories || 0,
+            protein: pastRecord.actualDailyTotal?.protein || 0,
+            carbs: pastRecord.actualDailyTotal?.carbs || 0,
+            fat: pastRecord.actualDailyTotal?.fat || 0,
+          };
+          break;
+        }
+      }
+    }
+
+    res.status(200).json({ data: foundRecord });
+  } catch (error) {
+    console.error("Lỗi getDietByDate:", error);
+    res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu ngày" });
+  }
+};

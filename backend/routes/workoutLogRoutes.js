@@ -6,7 +6,7 @@ const { verifyToken } = require("../middleware/authMiddleware");
 const { 
   saveDailyLog, 
   getPreviousExerciseRecord,
-  getTodayLog // 👈 THÊM HÀM NÀY VÀO ĐÂY
+  getTodayLog,getWorkoutLogByDate // 👈 THÊM HÀM NÀY VÀO ĐÂY
 } = require("../controllers/workoutLogController");
 
 // ==========================================
@@ -23,5 +23,5 @@ router.post("/", verifyToken, saveDailyLog);
 // [GET] Lấy lịch sử/kỷ lục của buổi tập gần nhất đối với 1 bài tập cụ thể
 // Dùng để hiển thị gợi ý: "Buổi trước bạn đẩy 60kg x 10 reps"
 router.get("/previous/:exerciseId", verifyToken, getPreviousExerciseRecord);
-
+router.get('/date', verifyToken, getWorkoutLogByDate);
 module.exports = router;
