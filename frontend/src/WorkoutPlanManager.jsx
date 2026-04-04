@@ -11,6 +11,7 @@ import PremiumRequireModal from './PremiumRequireModal';
 
 export default function WorkoutPlanManager() {
   const navigate = useNavigate(); 
+  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
   const [userData, setUserData] = useState(null);
   const [customRequest, setCustomRequest] = useState(""); 
@@ -41,8 +42,6 @@ export default function WorkoutPlanManager() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isLoadingAd, setIsLoadingAd] = useState(false);
 
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
-  
   const getHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
   const dayMap = {
@@ -63,6 +62,9 @@ export default function WorkoutPlanManager() {
     fetchExercises(); 
   }, []);
 
+  // ==========================================
+  // FETCH DATA
+  // ==========================================
   const fetchUserData = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/users/me`, getHeaders());
@@ -80,69 +82,6 @@ export default function WorkoutPlanManager() {
     } catch (err) { setWorkoutPlan(null); } finally { setIsLoadingPlan(false); }
   };
 
-  const checkAiAccess = () => {
-    if (!userData) return false;
-    if (userData.isPremium) return true; 
-    if (userData.aiTickets > 0) return true; 
-    return false; 
-  };
-
-  const handleGeneratePlan = async () => {
-    if (!checkAiAccess()) {
-      setShowPremiumModal(true);
-      return;
-    }
-    setIsGenerating(true); setError(null); setSuccessMsg("");
-    try {
-      const payload = { notes: customRequest, customAvailability: customAvailability };
-      await axios.post(`${API_BASE_URL}/api/ai/generate-workout-plan`, payload, getHeaders());
-      fetchCurrentPlan();
-      setSuccessMsg("AI đã tạo thành công lịch tập 7 ngày!");
-      fetchUserData(); 
-    } catch (err) {
-      setError(err.response?.data?.message || "Lỗi tạo lịch tập. Thử lại sau.");
-    } finally { setIsGenerating(false); }
-  };
-
-  const handleEvaluatePlanClick = () => {
-    if (!checkAiAccess()) {
-      setShowPremiumModal(true);
-      return;
-    }
-    setShowEvaluation(true);
-  };
-
-  const handleWatchAd = async () => {
-    setIsLoadingAd(true);
-    try {
-      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, {}, getHeaders());
-      alert(res.data.message); 
-      fetchUserData(); 
-      setShowPremiumModal(false); 
-    } catch (error) {
-      alert(error.response?.data?.message || "Lỗi xem quảng cáo!");
-    } finally {
-      setIsLoadingAd(false);
-    }
-  };
-
-  const handleAvailabilityChange = (dayKey, value) => {
-    setCustomAvailability(prev => ({ ...prev, [dayKey]: value }));
-  };
-
-  const handleViewExercise = async (exData) => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/api/exercises/${exData._id}`, getHeaders());
-      const exerciseDetail = res.data.data || res.data.exercise || res.data;
-      setSelectedEx(exerciseDetail);
-      setShowExDetailsModal(true);
-    } catch (error) {
-      console.error("Không tải được chi tiết bài tập", error);
-      setSelectedEx(exData);
-      setShowExDetailsModal(true);
-    }
-  };
-
   const fetchExercises = async () => {
     setIsLoadingExercises(true);
     try {
@@ -156,31 +95,121 @@ export default function WorkoutPlanManager() {
     }
   };
 
-  const getYouTubeEmbedUrl = (url) => {
-    if (!url) return null;
-    let videoId = '';
-    if (url.includes('youtube.com/watch')) {
-      videoId = new URL(url).searchParams.get('v');
-    } else if (url.includes('youtu.be/')) {
-      videoId = url.split('youtu.be/')[1].split('?')[0];
+  // ==========================================
+  // AI XẾP LỊCH & QUẢN LÝ TỔNG THỂ
+  // ==========================================
+  const checkAiAccess = () => {
+    if (!userData) return false;
+    if (userData.isPremium) return true; 
+    if (userData.aiTickets > 0) return true; 
+    return false; 
+  };
+
+  const handleGeneratePlan = async () => {
+    if (!checkAiAccess()) {
+      setShowPremiumModal(true); return;
     }
-    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
+    setIsGenerating(true); setError(null); setSuccessMsg("");
+    try {
+      const payload = { notes: customRequest, customAvailability: customAvailability };
+      await axios.post(`${API_BASE_URL}/api/ai/generate-workout-plan`, payload, getHeaders());
+      fetchCurrentPlan();
+      setSuccessMsg("AI đã tạo thành công lịch tập 7 ngày!");
+      fetchUserData(); 
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi tạo lịch tập. Thử lại sau.");
+    } finally { setIsGenerating(false); }
+  };
+
+  const handleCreateManualPlan = async () => {
+    setIsProcessing(true); setError(null); setSuccessMsg("");
+    try {
+      const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const initialSchedule = days.map(day => ({
+        dayOfWeek: day,
+        title: `Lịch tập ${day}`,
+        exercises: [],
+        isRestDay: true
+      }));
+      const res = await axios.put(`${API_BASE_URL}/api/workout-plan`, 
+        { weeklySchedule: initialSchedule },
+        getHeaders()
+      );
+      setWorkoutPlan(res.data.plan);
+      setSuccessMsg("Đã khởi tạo lịch tập trống thủ công!");
+    } catch (err) {
+      setError("Không thể tạo lịch thủ công.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleDeleteEntirePlan = async () => {
+    if (!window.confirm("Bạn có chắc muốn xóa TOÀN BỘ lịch tập không? Không thể hoàn tác!")) return;
+    setIsProcessing(true);
+    try {
+      await axios.delete(`${API_BASE_URL}/api/workout-plan`, getHeaders());
+      setWorkoutPlan(null);
+      setSuccessMsg("Đã xóa toàn bộ lịch tập.");
+    } catch (err) {
+      setError("Lỗi khi xóa lịch tập.");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // ==========================================
+  // CHỈNH SỬA TỪNG NGÀY / BÀI TẬP
+  // ==========================================
+  const handleUpdateDayTitle = async (dayOfWeek, currentTitle) => {
+    const newTitle = prompt("Nhập tên mới cho ngày này (VD: Ngày tập ngực):", currentTitle);
+    if (!newTitle || newTitle === currentTitle) return;
+
+    try {
+      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, 
+        { dayOfWeek, title: newTitle },
+        getHeaders()
+      );
+      fetchCurrentPlan();
+      setSuccessMsg(`Đã đổi tên thành: ${newTitle}`);
+    } catch (err) {
+      setError("Lỗi khi đổi tên ngày.");
+    }
+  };
+
+  // TÍNH NĂNG MỚI: Cập nhật giờ tập
+  const handleUpdateScheduledTime = async (dayOfWeek, currentScheduledTime) => {
+    const newTime = prompt("Nhập giờ tập dự kiến mới (VD: 17:00 - 18:30):", currentScheduledTime || "");
+    if (newTime === null || newTime === currentScheduledTime) return; // Hủy hoặc không đổi
+
+    try {
+      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, 
+        { dayOfWeek, scheduledTime: newTime },
+        getHeaders()
+      );
+      fetchCurrentPlan();
+      setSuccessMsg(`Đã cập nhật giờ tập cho ${dayMap[dayOfWeek] || dayOfWeek}!`);
+    } catch (err) {
+      setError("Lỗi khi cập nhật giờ tập.");
+    }
+  };
+
+  const toggleRestDay = async (dayOfWeek, currentStatus) => {
+    setIsProcessing(true);
+    try {
+      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, { dayOfWeek, isRestDay: !currentStatus }, getHeaders());
+      fetchCurrentPlan();
+    } catch (error) { alert("Lỗi cập nhật ngày tập!"); } finally { setIsProcessing(false); }
   };
 
   const handleAddExerciseToDay = async (exerciseId) => {
     try {
-      const payload = { 
-        dayOfWeek: targetDayForExercise, 
-        exerciseId: exerciseId, 
-        sets: 3, 
-        reps: "10", 
-        restTimeInSeconds: 60 
-      };
-      
+      const payload = { dayOfWeek: targetDayForExercise, exerciseId: exerciseId, sets: 3, reps: "10", restTimeInSeconds: 60 };
       await axios.post(`${API_BASE_URL}/api/workout-plan/exercise`, payload, getHeaders());
       fetchCurrentPlan();
       setShowAddExModal(false);
       setShowExDetailsModal(false); 
+      setSuccessMsg("Đã thêm bài tập!");
     } catch (error) {
       alert("Không thể thêm bài tập: " + (error.response?.data?.message || "Lỗi server"));
     }
@@ -190,22 +219,15 @@ export default function WorkoutPlanManager() {
     setIsProcessing(true);
     try {
       const payload = {
-        dayOfWeek: editData.dayOfWeek,
-        exerciseId: editData.exerciseId,
-        sets: Number(editData.sets),
-        reps: Number(editData.reps) || editData.reps, 
-        restTimeInSeconds: Number(editData.restTimeInSeconds)
+        dayOfWeek: editData.dayOfWeek, exerciseId: editData.exerciseId,
+        sets: Number(editData.sets), reps: editData.reps, restTimeInSeconds: Number(editData.restTimeInSeconds)
       };
       await axios.patch(`${API_BASE_URL}/api/workout-plan/exercise`, payload, getHeaders());
-      
       await fetchCurrentPlan(); 
       setShowEditExModal(false);
     } catch (error) { 
-      const errorMsg = error.response?.data?.message || error.message;
-      alert(`❌ LỖI CẬP NHẬT BÀI TẬP:\n\n${errorMsg}`); 
-    } finally { 
-      setIsProcessing(false); 
-    }
+      alert(`❌ LỖI CẬP NHẬT BÀI TẬP:\n\n${error.response?.data?.message || error.message}`); 
+    } finally { setIsProcessing(false); }
   };
 
   const handleRemoveExercise = async (dayOfWeek, exerciseId) => {
@@ -213,26 +235,39 @@ export default function WorkoutPlanManager() {
     setIsProcessing(true);
     try {
       await axios.delete(`${API_BASE_URL}/api/workout-plan/exercise`, {
-        ...getHeaders(), 
-        data: { dayOfWeek, exerciseId } 
+        ...getHeaders(), data: { dayOfWeek, exerciseId } 
       });
       await fetchCurrentPlan();
-    } catch (error) { 
-      const errorMsg = error.response?.data?.message || error.message;
-      alert(`❌ LỖI XÓA BÀI TẬP:\n\n${errorMsg}`); 
-    } finally { 
-      setIsProcessing(false); 
-    }
+    } catch (error) { alert(`❌ LỖI XÓA BÀI TẬP`); } finally { setIsProcessing(false); }
   };
 
-  const toggleRestDay = async (dayOfWeek, currentStatus) => {
-    setIsProcessing(true);
+  // ==========================================
+  // UTILS & RENDER
+  // ==========================================
+  const handleAvailabilityChange = (dayKey, value) => setCustomAvailability(prev => ({ ...prev, [dayKey]: value }));
+
+  const handleWatchAd = async () => {
+    setIsLoadingAd(true);
     try {
-      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, {
-        dayOfWeek, isRestDay: !currentStatus
-      }, getHeaders());
-      fetchCurrentPlan();
-    } catch (error) { alert("Lỗi cập nhật ngày tập!"); } finally { setIsProcessing(false); }
+      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, {}, getHeaders());
+      alert(res.data.message); fetchUserData(); setShowPremiumModal(false); 
+    } catch (error) { alert("Lỗi xem quảng cáo!"); } finally { setIsLoadingAd(false); }
+  };
+
+  const handleViewExercise = async (exData) => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/exercises/${exData._id}`, getHeaders());
+      setSelectedEx(res.data.data || res.data.exercise || res.data);
+      setShowExDetailsModal(true);
+    } catch (error) { setSelectedEx(exData); setShowExDetailsModal(true); }
+  };
+
+  const getYouTubeEmbedUrl = (url) => {
+    if (!url) return null;
+    let videoId = '';
+    if (url.includes('youtube.com/watch')) videoId = new URL(url).searchParams.get('v');
+    else if (url.includes('youtu.be/')) videoId = url.split('youtu.be/')[1].split('?')[0];
+    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
   };
 
   const filteredEx = exerciseDatabase.filter(ex => 
@@ -243,25 +278,36 @@ export default function WorkoutPlanManager() {
   return (
     <div className="bg-gray-950 min-h-screen !w-full !max-w-none text-gray-200 font-sans selection:bg-blue-500/30 overflow-x-hidden">
       
+      {/* HEADER TỔNG */}
       <header className="bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 p-3 sm:p-4 sticky top-0 z-40 w-full shadow-lg">
         <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8 flex flex-row items-center justify-between gap-2">
           <div className="flex-1 min-w-0">
             <h1 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-1.5 md:gap-2 truncate">
               <Dumbbell className="w-6 h-6 md:w-8 md:h-8 text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] shrink-0" /> 
-              AI Lịch Tập
+              Quản lý Lịch Tập
             </h1>
           </div>
-          {userData && (
-            <div className="flex items-center gap-1.5 md:gap-3 bg-gray-950/50 border border-gray-800 px-3 py-1.5 md:px-5 md:py-2.5 rounded-xl shadow-inner shrink-0">
-              <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
-              <span className="text-[10px] md:text-sm font-semibold">
-                {userData.isPremium ? <span className="text-yellow-400">Premium</span> : <span>Vé AI: <strong className="text-white bg-gray-800 px-1.5 py-0.5 rounded-lg ml-1">{userData.aiTickets}</strong></span>}
-              </span>
-            </div>
-          )}
+          
+          <div className="flex items-center gap-2 md:gap-4 shrink-0">
+            {userData && (
+              <div className="flex items-center gap-1.5 md:gap-3 bg-gray-950/50 border border-gray-800 px-3 py-1.5 md:px-4 md:py-2 rounded-xl shadow-inner shrink-0">
+                <Sparkles className="w-4 h-4 text-purple-400 shrink-0" />
+                <span className="text-[10px] md:text-sm font-semibold">
+                  {userData.isPremium ? <span className="text-yellow-400">Premium</span> : <span>Vé AI: <strong className="text-white bg-gray-800 px-1.5 py-0.5 rounded-lg ml-1">{userData.aiTickets}</strong></span>}
+                </span>
+              </div>
+            )}
+            
+            {workoutPlan && (
+              <button onClick={handleDeleteEntirePlan} className="p-1.5 md:p-2.5 bg-red-500/10 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-colors border border-red-500/20" title="Xóa toàn bộ lịch">
+                <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
+            )}
+          </div>
         </div>
       </header>
 
+      {/* THÔNG BÁO LỖI / THÀNH CÔNG */}
       <div className="w-full px-3 sm:px-4 md:px-6 xl:px-8 mt-4 md:mt-6">
         {error && <div className="p-3 bg-red-500/10 text-red-400 border border-red-500/20 rounded-xl mb-4 flex gap-2"><AlertTriangle className="w-5 h-5 shrink-0"/> <span className="text-sm">{error}</span></div>}
         {successMsg && <div className="p-3 bg-blue-500/10 text-blue-400 border border-blue-500/20 rounded-xl mb-4 flex gap-2"><CheckCircle className="w-5 h-5 shrink-0"/> <span className="text-sm">{successMsg}</span></div>}
@@ -270,6 +316,7 @@ export default function WorkoutPlanManager() {
       <div className="w-full px-3 sm:px-4 md:px-6 xl:px-8 pb-12">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 xl:gap-8 w-full">
           
+          {/* CỘT TRÁI: ĐIỀU KHIỂN AI */}
           <div className="lg:col-span-4 xl:col-span-3 space-y-4 md:space-y-6 lg:sticky lg:top-24 self-start w-full">
             <div className="bg-gradient-to-b from-gray-900 to-gray-950 p-4 rounded-3xl border border-gray-800 shadow-xl w-full">
               <h2 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Target className="w-4 h-4 text-blue-500" /> Nền tảng thể lực</h2>
@@ -281,10 +328,10 @@ export default function WorkoutPlanManager() {
             </div>
 
             <div className="bg-gradient-to-b from-gray-900 to-gray-950 p-4 md:p-5 rounded-3xl border border-gray-800 shadow-xl w-full">
-              <h2 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Bot className="w-4 h-4 text-blue-500" /> Ra lệnh cho AI</h2>
+              <h2 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-2"><Bot className="w-4 h-4 text-blue-500" /> Tự động hóa với AI</h2>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2"><MessageSquareText className="w-4 h-4 text-blue-500"/> Ghi chú cho PT (Tùy chọn)</label>
+                  <label className="block text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2"><MessageSquareText className="w-4 h-4 text-blue-500"/> Ghi chú cho PT AI (Tùy chọn)</label>
                   <textarea value={customRequest} onChange={(e) => setCustomRequest(e.target.value)} placeholder="VD: Tôi bị đau lưng dưới..." className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-3 text-sm text-gray-200 outline-none resize-none" rows="3"/>
                 </div>
                 <div className="bg-gray-950 border border-gray-800 rounded-2xl p-3 md:p-4">
@@ -308,12 +355,16 @@ export default function WorkoutPlanManager() {
             </div>
           </div>
 
+          {/* CỘT PHẢI: HIỂN THỊ LỊCH TẬP */}
           <div className="lg:col-span-8 xl:col-span-9 w-full">
             <div className="bg-gray-900/50 min-h-[500px] p-3 md:p-6 lg:p-8 rounded-3xl border border-gray-800 shadow-2xl w-full overflow-hidden">
+              
+              {/* TRẠNG THÁI LOADING */}
               {isLoadingPlan && !isGenerating && (
                 <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-gray-400 space-y-3"><Loader2 className="w-10 h-10 animate-spin text-blue-500/50" /><p className="animate-pulse">Đang tải lịch tập...</p></div>
               )}
 
+              {/* TRẠNG THÁI AI ĐANG GEN */}
               {isGenerating && (
                 <div className="flex flex-col items-center justify-center h-full min-h-[500px] text-center space-y-6">
                   <div className="relative">
@@ -327,26 +378,38 @@ export default function WorkoutPlanManager() {
                 </div>
               )}
 
+              {/* TRẠNG THÁI CHƯA CÓ LỊCH TRỐNG */}
               {!isLoadingPlan && !isGenerating && !workoutPlan && (
                 <div className="flex flex-col items-center justify-center min-h-[500px] text-center border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 px-4">
-                  <Calendar className="w-10 h-10 text-gray-500 mb-4" />
-                  <h3 className="text-gray-300 font-bold text-xl">Chưa có lịch tập</h3>
-                  <p className="text-sm text-gray-500 mt-2 max-w-sm">Hãy dùng công cụ AI bên trái để tự động tạo một lịch trình hoàn hảo cho 7 ngày.</p>
+                  <Calendar className="w-16 h-16 text-gray-600 mb-6" />
+                  <h3 className="text-white font-black text-2xl mb-2">Chưa có lịch tập</h3>
+                  <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto mb-8">Hãy sử dụng tính năng tạo lịch bằng AI bên trái để tự động tạo một lịch trình hoàn hảo, hoặc tự xây dựng lịch thủ công.</p>
+                  
+                  <button 
+                    onClick={handleCreateManualPlan}
+                    disabled={isProcessing}
+                    className="px-6 md:px-8 py-3.5 md:py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg border border-gray-700"
+                  >
+                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                    Tạo lịch trống thủ công
+                  </button>
                 </div>
               )}
 
+              {/* TRẠNG THÁI ĐÃ CÓ LỊCH */}
               {!isLoadingPlan && !isGenerating && workoutPlan && (
                 <div className={`w-full ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
                   <div className="bg-gradient-to-r from-gray-900 to-gray-950 p-4 md:p-5 rounded-3xl border border-blue-900/30 shadow-xl mb-6 md:mb-8 w-full flex flex-col sm:flex-row justify-between sm:items-center gap-3">
                     <div>
-                      <h3 className="text-blue-400 font-black flex items-center gap-2 text-lg md:text-xl"><Calendar className="w-5 h-5 md:w-6 md:h-6"/> Lịch Tập Hàng Tuần</h3>
-                      <p className="text-xs md:text-sm text-gray-400 mt-1 font-medium">Bao gồm ngày tập luyện và ngày nghỉ phục hồi.</p>
+                      <h3 className="text-blue-400 font-black flex items-center gap-2 text-lg md:text-xl"><Calendar className="w-5 h-5 md:w-6 md:h-6"/> Lịch Tập 7 Ngày</h3>
+                      <p className="text-xs md:text-sm text-gray-400 mt-1 font-medium">Bạn có thể tự do thêm, sửa, xóa bài tập hoặc đổi tên, đổi giờ tập.</p>
                     </div>
                   </div>
 
                   <div className="space-y-6 md:space-y-8 w-full">
                     {workoutPlan.weeklySchedule?.map((day, index) => (
                       <div key={index} className="flex gap-3 md:gap-5 group w-full">
+                        
                         {/* Thanh Timeline bên trái */}
                         <div className="flex flex-col items-center shrink-0 w-8 md:w-14">
                           <div className="w-8 h-8 md:w-14 md:h-14 rounded-full border-[3px] md:border-4 border-gray-950 bg-gray-900 text-gray-500 flex items-center justify-center group-hover:text-blue-400 transition-all z-10"><Calendar className="w-4 h-4 md:w-5 md:h-5" /></div>
@@ -356,36 +419,51 @@ export default function WorkoutPlanManager() {
                         <div className="flex-1 w-full pb-8 md:pb-10 min-w-0">
                           <div className={`w-full border rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-lg ${day.isRestDay ? 'bg-gray-900/30 border-gray-800/50' : 'bg-gray-900/80 border-gray-800 hover:border-gray-700'}`}>
                             
-                            {/* Header của từng ngày */}
+                            {/* Header Từng Ngày */}
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 border-b border-gray-800/80 pb-4 gap-3">
                               <div>
                                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                                   <span className="bg-gray-800 text-gray-300 text-[10px] md:text-xs font-black uppercase px-2 md:px-3 py-1 rounded-md">{dayMap[day.dayOfWeek] || day.dayOfWeek}</span>
                                   {day.isRestDay && <span className="bg-emerald-500/10 text-emerald-400 text-[10px] md:text-xs font-bold px-2 md:px-3 py-1 rounded-md border border-emerald-500/20">NGÀY NGHỈ</span>}
                                 </div>
-                                <h4 className={`font-black text-lg md:text-xl leading-tight ${day.isRestDay ? 'text-gray-500' : 'text-white'}`}>{day.title || (day.isRestDay ? "Nghỉ ngơi" : "Ngày tập luyện")}</h4>
-                                <span className="text-xs md:text-sm font-medium text-blue-500/80 flex items-center gap-1 mt-1.5"><Clock className="w-3.5 h-3.5 shrink-0" /> Dự kiến tập: {day.scheduledTime || "Chưa đặt giờ"}</span>
+                                <div className="flex items-center gap-2">
+                                  <h4 className={`font-black text-lg md:text-xl leading-tight ${day.isRestDay ? 'text-gray-500' : 'text-white'}`}>{day.title || (day.isRestDay ? "Nghỉ ngơi" : "Ngày tập luyện")}</h4>
+                                  <button onClick={() => handleUpdateDayTitle(day.dayOfWeek, day.title)} className="p-1.5 bg-gray-800 text-gray-400 hover:text-white rounded-lg transition-colors" title="Đổi tên ngày">
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+
+                                {/* Khu vực Giờ tập được nâng cấp */}
+                                <div className="flex items-center gap-2 mt-1.5">
+                                  <span className="text-xs md:text-sm font-medium text-blue-500/80 flex items-center gap-1">
+                                    <Clock className="w-3.5 h-3.5 shrink-0" /> Dự kiến tập: {day.scheduledTime || "Chưa đặt giờ"}
+                                  </span>
+                                  <button onClick={() => handleUpdateScheduledTime(day.dayOfWeek, day.scheduledTime)} className="p-1.5 bg-gray-800 text-gray-400 hover:text-blue-400 rounded-md transition-colors" title="Sửa giờ tập">
+                                    <Edit2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+
                               </div>
-                              <button onClick={() => toggleRestDay(day.dayOfWeek, day.isRestDay)} className={`w-full sm:w-auto flex justify-center items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold border ${day.isRestDay ? 'bg-gray-800 text-gray-300 border-gray-700' : 'bg-orange-500/10 text-orange-400 border-orange-500/30'}`}>
+                              <button onClick={() => toggleRestDay(day.dayOfWeek, day.isRestDay)} className={`w-full sm:w-auto flex justify-center items-center gap-2 px-3 md:px-4 py-2 rounded-xl text-xs md:text-sm font-bold border ${day.isRestDay ? 'bg-gray-800 text-gray-300 border-gray-700 hover:bg-gray-700' : 'bg-orange-500/10 text-orange-400 border-orange-500/30 hover:bg-orange-500/20'}`}>
                                 {day.isRestDay ? <><Play className="w-4 h-4"/> Chuyển thành Tập</> : <><Pause className="w-4 h-4"/> Đổi thành Nghỉ</>}
                               </button>
                             </div>
                             
+                            {/* Danh sách Bài tập */}
                             {!day.isRestDay && (
                               <div className="space-y-3 w-full">
                                 {day.exercises && day.exercises.filter(item => item && item.exerciseId).length > 0 ? (
                                   day.exercises.filter(item => item && item.exerciseId).map((exItem, i) => {
                                     const exData = exItem.exerciseId; 
                                     return (
-                                      <div key={i} onClick={() => handleViewExercise(exData)} className="flex flex-col lg:flex-row lg:items-center justify-between bg-gray-950/50 p-3 md:p-4 rounded-2xl border border-gray-800/50 hover:border-blue-500/50 hover:bg-blue-900/10 cursor-pointer transition-all gap-3 md:gap-4 w-full">
+                                      <div key={i} onClick={() => handleViewExercise(exData)} className="flex flex-col lg:flex-row lg:items-center justify-between bg-gray-950/50 p-3 md:p-4 rounded-2xl border border-gray-800/50 hover:border-blue-500/50 hover:bg-blue-900/10 cursor-pointer transition-all gap-3 md:gap-4 w-full group">
                                         <div className="flex-1 min-w-0">
-                                          <span className="font-bold text-gray-200 text-sm md:text-base block truncate hover:text-blue-400">{exData.name || "Bài tập không xác định"}</span>
+                                          <span className="font-bold text-gray-200 text-sm md:text-base block truncate group-hover:text-blue-400">{exData.name || "Bài tập không xác định"}</span>
                                           <div className="flex gap-2 mt-1 md:mt-2 text-[10px] md:text-xs font-semibold text-gray-500 flex-wrap">
                                             <span className="text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded border border-blue-500/20">{exData.muscleGroup || "N/A"}</span>
                                           </div>
                                         </div>
                                         
-                                        {/* Cột thông số Sets/Reps - Dàn lại trên Mobile */}
                                         <div className="flex items-center justify-between lg:justify-end gap-3 md:gap-5 border-t lg:border-t-0 lg:border-l border-gray-800 pt-3 lg:pt-0 lg:pl-5 w-full lg:w-auto">
                                           <div className="flex gap-4 md:gap-6 text-center">
                                             <div><span className="block text-[9px] md:text-[10px] text-gray-500 uppercase mb-0.5">Sets</span><span className="text-base md:text-lg font-black text-white">{exItem.sets}</span></div>
@@ -401,10 +479,10 @@ export default function WorkoutPlanManager() {
                                     );
                                   })
                                 ) : (
-                                  <p className="text-xs md:text-sm text-gray-500 italic text-center py-4 bg-gray-950/30 rounded-2xl border border-gray-800 border-dashed">Chưa có bài tập nào. Hãy thêm bài!</p>
+                                  <p className="text-xs md:text-sm text-gray-500 italic text-center py-4 bg-gray-950/30 rounded-2xl border border-gray-800 border-dashed">Chưa có bài tập nào. Hãy bấm thêm bài!</p>
                                 )}
 
-                                <button onClick={() => { setTargetDayForExercise(day.dayOfWeek); setShowAddExModal(true); if (exerciseDatabase.length === 0) fetchExercises(); }} className="w-full mt-3 md:mt-4 py-3 md:py-3.5 border-2 border-dashed border-blue-900/50 text-blue-500 hover:border-blue-500 hover:bg-blue-500/10 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 text-xs md:text-sm">
+                                <button onClick={() => { setTargetDayForExercise(day.dayOfWeek); setShowAddExModal(true); if (exerciseDatabase.length === 0) fetchExercises(); }} className="w-full mt-3 md:mt-4 py-3 md:py-3.5 border-2 border-dashed border-blue-900/50 text-blue-500 hover:border-blue-500 hover:bg-blue-500/10 rounded-xl md:rounded-2xl font-bold flex items-center justify-center gap-2 text-xs md:text-sm transition-all">
                                   <Plus className="w-4 h-4 md:w-5 md:h-5" /> THÊM BÀI TẬP ({dayMap[day.dayOfWeek]?.toUpperCase() || day.dayOfWeek.toUpperCase()})
                                 </button>
                               </div>
@@ -418,21 +496,25 @@ export default function WorkoutPlanManager() {
               )}
             </div>
 
+            {/* Nút Đánh giá Lịch */}
             {!isLoadingPlan && workoutPlan && (
               <div className="w-full pb-10 mt-6">
-                <button onClick={handleEvaluatePlanClick} className="w-full py-3.5 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-500 rounded-2xl text-white font-bold text-sm md:text-base flex justify-center items-center gap-2 shadow-lg hover:shadow-blue-500/30">
+                <button onClick={() => setShowEvaluation(true)} className="w-full py-3.5 md:py-4 bg-gradient-to-r from-blue-600 to-indigo-500 rounded-2xl text-white font-bold text-sm md:text-base flex justify-center items-center gap-2 shadow-lg hover:shadow-blue-500/30 transition-all">
                   <Sparkles className="w-4 h-4 md:w-5 md:h-5"/> Đánh giá Lịch Tập này với AI
                 </button>
               </div>
             )}
             
-            {showEvaluation && (
-              <MasterWorkoutEvaluation onClose={() => setShowEvaluation(false)} />
-            )}
+            {showEvaluation && <MasterWorkoutEvaluation onClose={() => setShowEvaluation(false)} />}
           </div>
         </div>
       </div>
 
+      {/* ========================================================= */}
+      {/* CÁC MODALS (POPUP) HIỂN THỊ */}
+      {/* ========================================================= */}
+
+      {/* Modal Xem chi tiết bài tập */}
       {showExDetailsModal && selectedEx && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in duration-200" onClick={() => setShowExDetailsModal(false)}>
           <div className="bg-gray-900 w-full max-w-2xl rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -441,9 +523,7 @@ export default function WorkoutPlanManager() {
                 <Dumbbell className="w-4 h-4 md:w-6 md:h-6 text-blue-500 shrink-0" />
                 <span className="truncate">{selectedEx.name}</span>
               </h3>
-              <button onClick={() => setShowExDetailsModal(false)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 md:p-2 rounded-full transition-colors shrink-0 ml-2">
-                <X className="w-4 h-4 md:w-5 md:h-5" />
-              </button>
+              <button onClick={() => setShowExDetailsModal(false)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 md:p-2 rounded-full transition-colors shrink-0 ml-2"><X className="w-4 h-4 md:w-5 md:h-5" /></button>
             </div>
 
             <div className="p-3 md:p-6 overflow-y-auto custom-scrollbar">
@@ -470,27 +550,20 @@ export default function WorkoutPlanManager() {
               </div>
 
               {showAddExModal ? (
-                <button 
-                  onClick={() => handleAddExerciseToDay(selectedEx._id)}
-                  className="w-full mt-4 md:mt-6 py-3 md:py-3.5 bg-blue-600 hover:bg-blue-500 text-white text-sm md:text-base font-bold rounded-xl flex justify-center items-center gap-2 shadow-lg shadow-blue-500/20"
-                >
+                <button onClick={() => handleAddExerciseToDay(selectedEx._id)} className="w-full mt-4 md:mt-6 py-3 md:py-3.5 bg-blue-600 hover:bg-blue-500 text-white text-sm md:text-base font-bold rounded-xl flex justify-center items-center gap-2 shadow-lg shadow-blue-500/20">
                   {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Plus className="w-4 h-4 md:w-5 md:h-5" /> Thêm vào {dayMap[targetDayForExercise]}</>}
                 </button>
               ) : (
-                <button 
-                  onClick={() => setShowExDetailsModal(false)}
-                  className="w-full mt-4 md:mt-6 py-3 md:py-3.5 bg-gray-800 hover:bg-gray-700 text-white text-sm md:text-base font-bold rounded-xl"
-                >
-                  Đóng chi tiết
-                </button>
+                <button onClick={() => setShowExDetailsModal(false)} className="w-full mt-4 md:mt-6 py-3 md:py-3.5 bg-gray-800 hover:bg-gray-700 text-white text-sm md:text-base font-bold rounded-xl">Đóng chi tiết</button>
               )}
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal Thêm bài tập (Kho thư viện) */}
       {showAddExModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in">
           <div className="bg-gray-900 w-full max-w-xl rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl flex flex-col max-h-[85vh]">
             <div className="p-3 md:p-6 border-b border-gray-800 flex justify-between items-center">
               <h3 className="font-black text-white text-base md:text-lg">Thêm Bài Tập</h3>
@@ -499,11 +572,7 @@ export default function WorkoutPlanManager() {
             <div className="p-3 md:p-4 border-b border-gray-800 bg-gray-950">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 w-4 h-4 md:w-5 md:h-5" />
-                <input 
-                  type="text" placeholder="Tìm tên, nhóm cơ..." 
-                  value={searchExQuery} onChange={e => setSearchExQuery(e.target.value)}
-                  className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-9 md:pl-10 pr-3 md:pr-4 py-2.5 md:py-3 text-sm md:text-base text-white focus:border-blue-500 outline-none"
-                />
+                <input type="text" placeholder="Tìm tên, nhóm cơ..." value={searchExQuery} onChange={e => setSearchExQuery(e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-xl pl-9 md:pl-10 pr-3 md:pr-4 py-2.5 md:py-3 text-sm md:text-base text-white focus:border-blue-500 outline-none" />
               </div>
             </div>
             
@@ -512,11 +581,7 @@ export default function WorkoutPlanManager() {
                 <div className="flex justify-center p-10"><Loader2 className="animate-spin text-blue-500 w-6 h-6 md:w-8 md:h-8"/></div>
               ) : filteredEx.length > 0 ? (
                 filteredEx.map(ex => (
-                  <div 
-                    key={ex._id} 
-                    onClick={() => handleViewExercise(ex)} 
-                    className="flex justify-between items-center bg-gray-950 p-2.5 md:p-3 rounded-xl border border-gray-800 hover:border-blue-500/50 transition-colors group cursor-pointer gap-2"
-                  >
+                  <div key={ex._id} onClick={() => handleViewExercise(ex)} className="flex justify-between items-center bg-gray-950 p-2.5 md:p-3 rounded-xl border border-gray-800 hover:border-blue-500/50 transition-colors group cursor-pointer gap-2">
                     <div className="flex items-center gap-2 md:gap-3 min-w-0">
                       <div className="w-10 h-10 md:w-12 md:h-12 rounded-lg bg-gray-800 flex items-center justify-center border border-gray-700 shrink-0">
                         <Dumbbell className="w-5 h-5 md:w-6 md:h-6 text-gray-500" />
@@ -525,32 +590,25 @@ export default function WorkoutPlanManager() {
                         <h4 className="font-medium text-gray-200 text-sm md:text-base truncate group-hover:text-blue-400 transition-colors">{ex.name}</h4>
                         <div className="flex flex-wrap items-center gap-1.5 md:gap-2 mt-0.5 md:mt-1">
                           <span className="text-[9px] md:text-[10px] text-gray-500 font-medium bg-gray-900 px-1.5 md:px-2 py-0.5 rounded border border-gray-800">{ex.muscleGroup}</span>
-                          <span className="text-[9px] md:text-[10px] text-gray-500 font-medium bg-gray-900 px-1.5 md:px-2 py-0.5 rounded border border-gray-800">{ex.equipmentRequired || 'Bodyweight'}</span>
                         </div>
                       </div>
                     </div>
-
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleAddExerciseToDay(ex._id); }} 
-                      className="text-[10px] md:text-xs font-bold text-blue-500 bg-blue-500/10 px-2.5 md:px-3 py-1.5 md:py-2 rounded-lg md:opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shrink-0"
-                    >
+                    <button onClick={(e) => { e.stopPropagation(); handleAddExerciseToDay(ex._id); }} className="text-[10px] md:text-xs font-bold text-blue-500 bg-blue-500/10 px-2.5 md:px-3 py-1.5 md:py-2 rounded-lg md:opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shrink-0">
                       + Thêm
                     </button>
                   </div>
                 ))
               ) : (
-                <div className="flex flex-col items-center text-gray-500 py-10">
-                  <Dumbbell className="w-8 h-8 md:w-10 md:h-10 mb-3 opacity-20"/>
-                  <p className="text-sm">Không tìm thấy bài tập nào.</p>
-                </div>
+                <div className="flex flex-col items-center text-gray-500 py-10"><Dumbbell className="w-8 h-8 md:w-10 md:h-10 mb-3 opacity-20"/><p className="text-sm">Không tìm thấy bài tập nào.</p></div>
               )}
             </div>
           </div>
         </div>
       )}
 
+      {/* Modal Sửa thông số bài tập */}
       {showEditExModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in">
           <div className="bg-gray-900 w-full max-w-sm rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl overflow-hidden">
             <div className="p-4 md:p-5 border-b border-gray-800 flex justify-between items-center">
               <h3 className="font-black text-white text-base md:text-lg">Tùy chỉnh thông số</h3>
@@ -585,10 +643,7 @@ export default function WorkoutPlanManager() {
         isOpen={showPremiumModal}
         onClose={() => setShowPremiumModal(false)}
         onWatchAd={handleWatchAd}
-        onUpgrade={() => {
-          setShowPremiumModal(false);
-          navigate('/premium');
-        }}
+        onUpgrade={() => { setShowPremiumModal(false); navigate('/premium'); }}
         isLoadingAd={isLoadingAd}
       />
 

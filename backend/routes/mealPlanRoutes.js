@@ -7,7 +7,10 @@ const {
   deleteMeal,
   addFoodToMeal,
   updateFoodQuantity,
-  removeFoodFromMeal
+  removeFoodFromMeal,
+  initManualMealPlan,
+  deleteEntireMealPlan
+
 } = require("../controllers/mealPlanController");
 
 router.get("/my-plan", verifyToken, getUserMealPlan);
@@ -19,5 +22,6 @@ router.delete("/meal/:mealId", verifyToken, deleteMeal);
 router.post("/item", verifyToken, addFoodToMeal);
 router.patch("/item", verifyToken, updateFoodQuantity);
 router.delete("/item/:mealId/:itemId", verifyToken, removeFoodFromMeal);
-
+router.post("/init-manual", verifyToken, initManualMealPlan);
+router.delete("/my-plan", verifyToken, deleteEntireMealPlan);
 module.exports = router;

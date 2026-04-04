@@ -197,3 +197,75 @@ exports.removeFoodFromMeal = async (req, res) => {
     res.status(500).json({ message: "Lỗi xóa món", error: error.message });
   }
 };
+// Khởi tạo một lịch ăn trống thủ công cho User theo số bữa chọn
+exports.initManualMealPlan = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Nhận số bữa ăn từ Frontend (Mặc định là 3 nếu không có)
+    const mealsPerDay = Number(req.body.mealsPerDay) || 3; 
+
+    let plan = await MealPlan.findOne({ userId });
+
+    // Nếu chưa có lịch thì tiến hành tạo
+    if (!plan) {
+      let initialMeals = [];
+
+      // Logic sinh số bữa ăn linh hoạt
+      if (mealsPerDay === 2) {
+        initialMeals = [
+          { mealType: "Bữa 1", scheduledTime: "12:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa 2", scheduledTime: "19:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } }
+        ];
+      } else if (mealsPerDay === 4) {
+        initialMeals = [
+          { mealType: "Bữa Sáng", scheduledTime: "07:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Trưa", scheduledTime: "12:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Phụ", scheduledTime: "15:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Tối", scheduledTime: "19:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } }
+        ];
+      } else if (mealsPerDay === 5) {
+        initialMeals = [
+          { mealType: "Bữa Sáng", scheduledTime: "07:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Phụ Sáng", scheduledTime: "09:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Trưa", scheduledTime: "12:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Phụ Chiều", scheduledTime: "16:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Tối", scheduledTime: "19:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } }
+        ];
+      } else {
+        // Mặc định 3 bữa chuẩn
+        initialMeals = [
+          { mealType: "Bữa Sáng", scheduledTime: "07:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Trưa", scheduledTime: "12:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
+          { mealType: "Bữa Tối", scheduledTime: "19:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } }
+        ];
+      }
+
+      // Lưu vào database
+      plan = new MealPlan({
+        userId,
+        meals: initialMeals,
+        dailyTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      });
+      await plan.save();
+    }
+
+    res.status(200).json({ message: "Khởi tạo lịch thủ công thành công!", masterMealPlan: plan });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi tạo lịch thủ công", error: error.message });
+  }
+};
+// Xóa toàn bộ lịch ăn của User
+exports.deleteEntireMealPlan = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const deletedPlan = await MealPlan.findOneAndDelete({ userId });
+    
+    if (!deletedPlan) {
+      return res.status(404).json({ message: "Không tìm thấy lịch ăn để xóa!" });
+    }
+    
+    res.status(200).json({ message: "Đã xóa toàn bộ lịch ăn thành công!" });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi xóa lịch ăn", error: error.message });
+  }
+};
