@@ -79,7 +79,7 @@ export default function ActivityHistory() {
 
     // Header thứ trong tuần
     weekdays.forEach(day => {
-      days.push(<div key={`wk-${day}`} className="text-center text-xs font-black text-gray-500 py-3 uppercase tracking-wider">{day}</div>);
+      days.push(<div key={`wk-${day}`} className="text-center text-[10px] md:text-xs font-black text-gray-500 py-2 uppercase tracking-widest">{day}</div>);
     });
 
     // Ô trống đầu tháng
@@ -93,25 +93,18 @@ export default function ActivityHistory() {
       
       const isSelected = selectedDate.getDate() === i && selectedDate.getMonth() === currentMonth.getMonth() && selectedDate.getFullYear() === currentMonth.getFullYear();
       const isToday = today.getTime() === dateOfCell.getTime();
-      const isPast = dateOfCell.getTime() < today.getTime(); // Kiểm tra ngày đã qua
+      const isPast = dateOfCell.getTime() < today.getTime();
 
-      // Xử lý logic màu sắc chuyên nghiệp
-      let cellStyle = "h-10 w-full rounded-xl flex items-center justify-center text-sm font-bold transition-all duration-300 ";
+      let cellStyle = "h-10 w-full rounded-xl flex items-center justify-center text-sm font-bold transition-all duration-200 border ";
 
       if (isSelected) {
-        // Ngày được chọn: Nếu là quá khứ thì Nền Đỏ, còn lại Nền Cam
-        cellStyle += isPast 
-          ? "bg-gradient-to-br from-red-500 to-rose-600 text-white shadow-lg shadow-red-500/40 transform scale-105" 
-          : "bg-gradient-to-br from-orange-500 to-amber-500 text-white shadow-lg shadow-orange-500/40 transform scale-105";
+        cellStyle += "bg-gradient-to-br from-purple-500 to-indigo-600 text-white border-transparent shadow-lg shadow-purple-500/30 transform scale-105";
       } else if (isToday) {
-        // Ngày hôm nay (Không chọn)
-        cellStyle += "border border-orange-500/50 text-orange-400 bg-orange-500/10 hover:bg-orange-500/20";
+        cellStyle += "border-purple-500/50 text-purple-400 bg-purple-500/10 hover:bg-purple-500/20";
       } else if (isPast) {
-        // Ngày đã qua (Màu đỏ nhạt)
-        cellStyle += "text-red-400 hover:bg-red-500/15";
+        cellStyle += "border-transparent text-gray-400 hover:bg-gray-800 hover:text-white";
       } else {
-        // Ngày tương lai
-        cellStyle += "text-gray-400 hover:bg-gray-800 hover:text-white";
+        cellStyle += "border-transparent text-gray-600 hover:bg-gray-900/50 hover:text-gray-300";
       }
 
       days.push(
@@ -124,159 +117,167 @@ export default function ActivityHistory() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-gray-200 p-4 md:p-6 lg:p-8 pb-24 font-sans selection:bg-orange-500/30">
+    <div className="bg-gray-950 min-h-screen text-gray-200 pb-12">
       
-      {/* 1. HEADER (Đã bỏ nút Back, làm gọn và sang hơn) */}
-      <div className="flex flex-col items-center justify-center mb-8 mt-2 space-y-2">
-        <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-orange-500/20 to-rose-500/20 border border-orange-500/30 mb-2">
-          <CalendarDays className="text-orange-500 w-6 h-6" />
-        </div>
-        <h1 className="text-2xl md:text-3xl font-black text-white tracking-tight">
-          Nhật ký Hành trình
-        </h1>
-        <p className="text-gray-400 text-sm font-medium">Theo dõi chi tiết dinh dưỡng và tập luyện mỗi ngày</p>
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8 max-w-7xl mx-auto">
-        
-        {/* ================= CỘT TRÁI: LỊCH (CALENDAR) ================= */}
-        <div className="lg:col-span-4">
-          <div className="bg-gray-900/80 backdrop-blur-xl border border-gray-800 rounded-3xl p-5 md:p-6 shadow-2xl relative overflow-hidden">
-            {/* Vệt sáng Decor */}
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-            <div className="flex justify-between items-center mb-6 relative z-10">
-              <button onClick={prevMonth} className="p-2 rounded-xl bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors border border-gray-700/50"><ChevronLeft className="w-5 h-5" /></button>
-              <h2 className="text-lg font-black text-white capitalize tracking-wide">
-                Tháng {currentMonth.getMonth() + 1}, {currentMonth.getFullYear()}
-              </h2>
-              <button onClick={nextMonth} className="p-2 rounded-xl bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-white transition-colors border border-gray-700/50"><ChevronRight className="w-5 h-5" /></button>
-            </div>
-            
-            <div className="grid grid-cols-7 gap-1 md:gap-1.5 relative z-10">
-              {renderCalendar()}
-            </div>
-            
-            {/* Chú thích lịch */}
-            <div className="mt-6 pt-4 border-t border-gray-800/50 flex flex-wrap gap-3 justify-center text-[10px] uppercase font-bold text-gray-500 tracking-wider">
-               <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-red-400"></div> Đã qua</span>
-               <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full border border-orange-500 bg-orange-500/20"></div> Hôm nay</span>
-               <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-gray-600"></div> Sắp tới</span>
-            </div>
+      {/* HEADER ĐỒNG BỘ VỚI TRANG MEAL/WORKOUT PLAN */}
+      <header className="bg-gray-900 border-b border-gray-800 p-5 sticky top-0 z-20 shadow-md">
+        <div className="w-full px-4 md:px-8 lg:px-12 flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+              <CalendarDays className="w-6 h-6 text-purple-400" /> Nhật Ký Hành Trình
+            </h1>
+            <p className="text-sm text-gray-400 mt-1 hidden sm:block">
+              Theo dõi chi tiết lịch sử dinh dưỡng và tập luyện mỗi ngày của bạn.
+            </p>
           </div>
         </div>
+      </header>
 
-        {/* ================= CỘT PHẢI: CHI TIẾT NGÀY ĐƯỢC CHỌN ================= */}
-        <div className="lg:col-span-8 space-y-6">
+      <div className="w-full px-4 md:px-8 lg:px-12 py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* Header hiển thị ngày đang chọn */}
-          <div className="bg-gradient-to-r from-gray-900 to-gray-950 border border-gray-800 rounded-3xl p-6 md:p-8 flex items-center justify-between shadow-xl">
-            <div>
-              <p className="text-orange-500/80 text-xs md:text-sm font-bold uppercase tracking-widest mb-1.5">Báo cáo chi tiết</p>
-              <h2 className="text-2xl md:text-3xl font-black text-white">
-                {selectedDate.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+          {/* ================= CỘT TRÁI: BỘ ĐIỀU KHIỂN LỊCH ================= */}
+          <div className="lg:col-span-4 space-y-6">
+            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 shadow-lg relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-purple-400" /> Tra cứu dữ liệu
               </h2>
+
+              <div className="flex justify-between items-center mb-4 relative z-10 bg-gray-950 border border-gray-800 p-2 rounded-xl">
+                <button onClick={prevMonth} className="p-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"><ChevronLeft className="w-5 h-5" /></button>
+                <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                  Tháng {currentMonth.getMonth() + 1} / {currentMonth.getFullYear()}
+                </h2>
+                <button onClick={nextMonth} className="p-2 rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-white transition-colors"><ChevronRight className="w-5 h-5" /></button>
+              </div>
+              
+              <div className="grid grid-cols-7 gap-1.5 relative z-10 bg-gray-950/50 p-3 rounded-xl border border-gray-800 shadow-inner">
+                {renderCalendar()}
+              </div>
+              
+              {/* Chú thích lịch */}
+              <div className="mt-5 flex flex-wrap gap-4 justify-center text-[10px] uppercase font-bold text-gray-500 tracking-wider">
+                 <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full border border-purple-500 bg-purple-500/20"></div> Hôm nay</span>
+                 <span className="flex items-center gap-1.5"><div className="w-2.5 h-2.5 rounded-full bg-purple-500"></div> Đang chọn</span>
+              </div>
             </div>
-            {isLoading && <Loader2 className="w-8 h-8 text-orange-500 animate-spin opacity-50" />}
           </div>
 
-          {!isLoading && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* ================= CỘT PHẢI: CHI TIẾT NGÀY ================= */}
+          <div className="lg:col-span-8">
+            <div className="bg-gray-900 min-h-[500px] p-4 md:p-6 rounded-2xl border border-gray-800 shadow-lg flex flex-col">
               
-              {/* === CARD 1: LỊCH SỬ DINH DƯỠNG === */}
-              <div className="bg-gray-900/60 backdrop-blur-lg border border-gray-800 rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col hover:border-orange-500/30 transition-colors duration-500">
-                <div className="absolute -right-10 -bottom-10 w-40 h-40 bg-orange-500/5 rounded-full blur-3xl pointer-events-none"></div>
-                
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-6">
-                  <Utensils className="text-orange-500 w-4 h-4" /> Dinh dưỡng đã nạp
-                </h3>
-
-                {dayData.diet ? (
-                  <div className="flex-1 flex flex-col justify-between">
-                    <div className="flex items-center gap-5 mb-8">
-                      <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500/20 to-amber-500/10 flex items-center justify-center border border-orange-500/20 shadow-inner">
-                        <Flame className="text-orange-500 w-8 h-8" />
-                      </div>
-                      <div>
-                        <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tổng Calories</span>
-                        <div className="text-4xl font-black text-white leading-none mt-1">
-                          {dayData.diet.calories || 0} <span className="text-lg font-bold text-orange-500/50">kcal</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="bg-gray-950/50 rounded-2xl p-4 text-center border border-gray-800 shadow-inner">
-                        <Beef className="w-5 h-5 text-blue-400 mx-auto mb-2 opacity-80" />
-                        <div className="text-[10px] text-gray-500 uppercase font-black tracking-wider">Protein</div>
-                        <div className="font-black text-white text-lg">{dayData.diet.protein || 0}g</div>
-                      </div>
-                      <div className="bg-gray-950/50 rounded-2xl p-4 text-center border border-gray-800 shadow-inner">
-                        <Wheat className="w-5 h-5 text-emerald-400 mx-auto mb-2 opacity-80" />
-                        <div className="text-[10px] text-gray-500 uppercase font-black tracking-wider">Carbs</div>
-                        <div className="font-black text-white text-lg">{dayData.diet.carbs || 0}g</div>
-                      </div>
-                      <div className="bg-gray-950/50 rounded-2xl p-4 text-center border border-gray-800 shadow-inner">
-                        <Droplet className="w-5 h-5 text-yellow-400 mx-auto mb-2 opacity-80" />
-                        <div className="text-[10px] text-gray-500 uppercase font-black tracking-wider">Fat</div>
-                        <div className="font-black text-white text-lg">{dayData.diet.fat || 0}g</div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center py-10 text-gray-600 border-2 border-dashed border-gray-800 rounded-2xl">
-                    <Utensils className="w-10 h-10 mb-3 opacity-30" />
-                    <p className="text-sm font-medium">Không có dữ liệu ăn uống</p>
-                  </div>
-                )}
+              {/* Header của cột bên phải */}
+              <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-800">
+                <div>
+                  <h3 className="text-purple-400 font-bold flex items-center gap-2 text-lg">
+                    <CalendarDays className="w-5 h-5"/> Báo cáo ngày
+                  </h3>
+                  <p className="text-sm text-gray-300 mt-1 font-bold">
+                    {selectedDate.toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                  </p>
+                </div>
+                {isLoading && <Loader2 className="w-6 h-6 text-purple-500 animate-spin" />}
               </div>
 
-              {/* === CARD 2: LỊCH SỬ TẬP LUYỆN === */}
-              <div className="bg-gray-900/60 backdrop-blur-lg border border-gray-800 rounded-3xl p-6 shadow-xl relative overflow-hidden flex flex-col hover:border-blue-500/30 transition-colors duration-500">
-                <div className="absolute -left-10 -top-10 w-40 h-40 bg-blue-500/5 rounded-full blur-3xl pointer-events-none"></div>
-                
-                <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest flex items-center gap-2 mb-6">
-                  <Dumbbell className="text-blue-500 w-4 h-4" /> Bài tập hoàn thành
-                </h3>
+              {/* NỘI DUNG HIỂN THỊ */}
+              {!isLoading && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+                  
+                  {/* CARD 1: DINH DƯỠNG */}
+                  <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5 flex flex-col hover:border-orange-500/30 transition-all shadow-inner">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2 mb-6">
+                      <Utensils className="text-orange-500 w-4 h-4" /> Dinh dưỡng đã nạp
+                    </h3>
 
-                {dayData.workout && dayData.workout.exercises && dayData.workout.exercises.length > 0 ? (
-                  <div className="space-y-4 max-h-[320px] overflow-y-auto pr-2 custom-scrollbar">
-                    {dayData.workout.exercises.map((ex, index) => (
-                      <div key={index} className="bg-gray-950/50 p-4 md:p-5 rounded-2xl border border-gray-800 shadow-inner group hover:border-blue-500/40 transition-colors">
-                        <div className="font-black text-gray-200 mb-3 flex justify-between items-center gap-3">
-                          <span className="truncate flex items-center gap-2">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                            {ex.exerciseId?.name || "Bài tập"}
-                          </span> 
-                          <span className="text-[10px] font-black uppercase tracking-wider bg-blue-500/10 text-blue-400 px-2.5 py-1 rounded-md border border-blue-500/20 shrink-0">
-                            {ex.setsPerformed?.length || 0} Hiệp
-                          </span>
-                        </div>
-                        
-                        <div className="space-y-1.5">
-                          {ex.setsPerformed?.map((set, sIdx) => (
-                            <div key={sIdx} className="flex justify-between items-center text-xs text-gray-400 bg-gray-900 px-3 py-2 rounded-lg border border-gray-800/80">
-                              <span className="font-bold">Hiệp {set.setNumber}</span>
-                              <div className="flex gap-4">
-                                <span><strong className="text-white">{set.weight}</strong> kg</span>
-                                <span><strong className="text-white">{set.reps}</strong> reps</span>
-                              </div>
+                    {dayData.diet ? (
+                      <div className="flex-1 flex flex-col">
+                        <div className="flex items-center gap-4 mb-6 p-4 bg-gray-900 rounded-xl border border-gray-800">
+                          <div className="w-12 h-12 rounded-xl bg-orange-500/10 flex items-center justify-center border border-orange-500/20 shrink-0">
+                            <Flame className="text-orange-500 w-6 h-6" />
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider block mb-1">Tổng Calories</span>
+                            <div className="text-2xl font-black text-white leading-none">
+                              {Math.round(dayData.diet.calories || 0)} <span className="text-xs font-bold text-orange-500/50">kcal</span>
                             </div>
-                          ))}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2 mt-auto">
+                          <div className="bg-gray-900 p-2 rounded-xl border border-gray-800 text-center">
+                            <Beef className="w-4 h-4 text-blue-400 mx-auto mb-1.5 opacity-80" />
+                            <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Protein</div>
+                            <div className="font-bold text-blue-400 text-base">{Math.round(dayData.diet.protein || 0)}g</div>
+                          </div>
+                          <div className="bg-gray-900 p-2 rounded-xl border border-gray-800 text-center">
+                            <Wheat className="w-4 h-4 text-yellow-400 mx-auto mb-1.5 opacity-80" />
+                            <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Carbs</div>
+                            <div className="font-bold text-yellow-400 text-base">{Math.round(dayData.diet.carbs || 0)}g</div>
+                          </div>
+                          <div className="bg-gray-900 p-2 rounded-xl border border-gray-800 text-center">
+                            <Droplet className="w-4 h-4 text-red-400 mx-auto mb-1.5 opacity-80" />
+                            <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Fat</div>
+                            <div className="font-bold text-red-400 text-base">{Math.round(dayData.diet.fat || 0)}g</div>
+                          </div>
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center py-10 text-gray-600 border-2 border-dashed border-gray-800 rounded-xl bg-gray-900/30">
+                        <Utensils className="w-8 h-8 mb-2 opacity-30" />
+                        <p className="text-sm font-medium">Chưa lưu dinh dưỡng</p>
+                      </div>
+                    )}
                   </div>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center py-10 text-gray-600 border-2 border-dashed border-gray-800 rounded-2xl">
-                    <Activity className="w-10 h-10 mb-3 opacity-30" />
-                    <p className="text-sm font-medium">Ngày nghỉ / Chưa có dữ liệu</p>
-                  </div>
-                )}
-              </div>
 
+                  {/* CARD 2: TẬP LUYỆN */}
+                  <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5 flex flex-col hover:border-emerald-500/30 transition-all shadow-inner">
+                    <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2 mb-6">
+                      <Dumbbell className="text-emerald-500 w-4 h-4" /> Bài tập hoàn thành
+                    </h3>
+
+                    {dayData.workout && dayData.workout.exercises && dayData.workout.exercises.length > 0 ? (
+                      <div className="space-y-3 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar flex-1">
+                        {dayData.workout.exercises.map((ex, index) => (
+                          <div key={index} className="bg-gray-900 p-3 rounded-xl border border-gray-800 group hover:border-emerald-500/40 transition-colors">
+                            <div className="font-bold text-gray-200 mb-2 flex justify-between items-center gap-2">
+                              <span className="truncate flex items-center gap-2 text-sm">
+                                <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                                {ex.exerciseId?.name || "Bài tập"}
+                              </span> 
+                              <span className="text-[9px] font-black uppercase bg-emerald-500/10 text-emerald-400 px-2 py-1 rounded border border-emerald-500/20 shrink-0">
+                                {ex.setsPerformed?.length || 0} Hiệp
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-1">
+                              {ex.setsPerformed?.map((set, sIdx) => (
+                                <div key={sIdx} className="flex justify-between items-center text-xs text-gray-400 bg-gray-950 px-2 py-1.5 rounded border border-gray-800/50">
+                                  <span className="font-medium">Hiệp {set.setNumber}</span>
+                                  <div className="flex gap-3">
+                                    <span><strong className="text-white">{set.weight}</strong> kg</span>
+                                    <span><strong className="text-emerald-400">{set.reps}</strong> reps</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center py-10 text-gray-600 border-2 border-dashed border-gray-800 rounded-xl bg-gray-900/30">
+                        <Activity className="w-8 h-8 mb-2 opacity-30" />
+                        <p className="text-sm font-medium">Chưa có bản ghi tập luyện</p>
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              )}
             </div>
-          )}
+          </div>
         </div>
       </div>
     </div>

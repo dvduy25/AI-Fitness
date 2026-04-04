@@ -61,7 +61,35 @@ export default function WorkoutTracker() {
   // GIẢ LẬP SỐ VÉ VÀ TRẠNG THÁI VIP (Bạn có thể lấy từ API lấy thông tin User)
   const [userTickets, setUserTickets] = useState(0); 
   const [isPremium, setIsPremium] = useState(false); 
- const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+
+  // ==========================================
+  // TÍCH HỢP GOOGLE ADSENSE SCRIPT VÀO REACT
+  // ==========================================
+  useEffect(() => {
+    const script = document.createElement("script");
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6560645036430945"; 
+    
+    document.head.appendChild(script);
+
+    window.adsbygoogle = window.adsbygoogle || [];
+    window.adConfig = function(o) { window.adsbygoogle.push(o); };
+    window.adConfig({
+      preloadAdBreaks: 'on',
+      onReady: () => {
+        console.log("Google AdSense Rewarded API đã sẵn sàng!");
+      }
+    });
+
+    return () => {
+      if (document.head.contains(script)) {
+        document.head.removeChild(script);
+      }
+    };
+  }, []);
+
   useEffect(() => {
     if (!todayPlan) {
       alert("Không tìm thấy dữ liệu buổi tập hôm nay!");
@@ -69,7 +97,6 @@ export default function WorkoutTracker() {
     }
   }, [todayPlan, navigate]);
 
-  // (Giữ nguyên đoạn useEffect khởi tạo dữ liệu và API)
   useEffect(() => {
     if (!todayPlan || !todayPlan.exercises) return;
 
@@ -212,22 +239,18 @@ export default function WorkoutTracker() {
   // HÀM XỬ LÝ KHI BẤM NÚT AI ĐÁNH GIÁ
   // ==========================================
   const handleAiEvaluationClick = (ex) => {
-    // 1. Kiểm tra xem đã có data lưu trữ (currentLogId) chưa
     if (!currentLogId) {
       alert("Bạn cần tập xong ít nhất 1 hiệp và bấm 'Xong' để hệ thống lưu dữ liệu trước khi AI có thể đánh giá!");
       return;
     }
 
-    // 2. Kiểm tra đặc quyền (Premium / Vé)
     if (!isPremium && userTickets <= 0) {
-      setShowPremiumModal(true); // Bật bảng chặn lên
+      setShowPremiumModal(true); 
       return;
     }
 
-    // 3. Nếu là VIP hoặc còn vé -> Trừ đi 1 vé (nếu là user thường) và Mở bảng AI
     if (!isPremium) {
       setUserTickets(prev => prev - 1);
-      // Bạn có thể gọi API trừ vé ở đây
     }
 
     setAiModal({ 
@@ -237,26 +260,52 @@ export default function WorkoutTracker() {
     });
   };
 
-  // HÀM XỬ LÝ XEM QUẢNG CÁO (TỪ BẢNG PREMIUM MODAL)
-  const handleWatchAd = async () => {
+  // ==========================================
+  // XỬ LÝ GOOGLE ADSENSE REWARDED AD
+  // ==========================================
+  const handleWatchAd = () => {
     setIsLoadingAd(true);
-    try {
-      const token = localStorage.getItem('token');
-      // Gọi API xem quảng cáo
-      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, 
-        {}, 
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      alert(res.data.message); 
-      setUserTickets(prev => prev + 1); // Tăng 1 vé
-      setShowPremiumModal(false); // Đóng Modal
-      
-    } catch (error) {
-      alert(error.response?.data?.message || "Lỗi tải quảng cáo!");
-    } finally {
+
+    if (typeof window.adBreak !== 'function') {
       setIsLoadingAd(false);
+      alert("Không thể tải quảng cáo! Vui lòng tắt trình chặn quảng cáo (AdBlock) để nhận vé AI miễn phí.");
+      return;
     }
+
+    window.adBreak({
+      type: 'reward', 
+      name: 'get_ai_ticket', 
+      beforeReward: (showAdFn) => {
+        showAdFn(); 
+      },
+      adRewarded: async () => {
+        try {
+          const token = localStorage.getItem('token');
+          const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, 
+            {}, 
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          
+          alert("🎉 Cảm ơn bạn! Bạn đã nhận được 1 vé AI."); 
+          setUserTickets(prev => prev + 1); 
+          setShowPremiumModal(false); 
+          
+        } catch (error) {
+          alert("Lỗi khi cộng vé vào tài khoản của bạn!");
+        } finally {
+          setIsLoadingAd(false);
+        }
+      },
+      adDismissed: () => {
+        setIsLoadingAd(false);
+        alert("Bạn đã đóng quảng cáo sớm nên chưa nhận được vé. Hãy xem hết video nhé!");
+      },
+      adError: (error) => {
+        console.error("Lỗi Google AdSense:", error);
+        setIsLoadingAd(false);
+        alert("Hiện tại không có quảng cáo khả dụng. Vui lòng thử lại sau!");
+      }
+    });
   };
 
   if (!todayPlan) return null;
@@ -305,7 +354,6 @@ export default function WorkoutTracker() {
                   </div>
                   
                   <div className="flex items-center gap-2 self-end sm:self-auto">
-                    {/* NÚT AI ĐÁNH GIÁ ĐÃ ĐƯỢC CHỈNH SỬA Ở ĐÂY */}
                     <button 
                       onClick={() => handleAiEvaluationClick(ex)}
                       className="relative p-2 md:px-4 md:py-2 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-xl flex items-center gap-2 transition-colors border border-indigo-500/20 shrink-0 shadow-md group"
@@ -314,7 +362,6 @@ export default function WorkoutTracker() {
                       <span className="text-xs md:text-sm font-bold">AI Đánh giá</span>
                     </button>
 
-                    {/* Nút thông tin */}
                     <button 
                       onClick={() => openExerciseInfo(ex.exerciseId)}
                       className="p-2 md:px-4 md:py-2 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 rounded-xl flex items-center gap-2 transition-colors border border-blue-500/20 shrink-0"
@@ -325,7 +372,6 @@ export default function WorkoutTracker() {
                   </div>
                 </div>
 
-                {/* Các phần khác giữ nguyên ... */}
                 <div className="px-4 md:px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex gap-2 items-center text-sm text-gray-400">
                   <History className="w-4 h-4 text-orange-400" />
                   {prevLog ? (
@@ -335,7 +381,7 @@ export default function WorkoutTracker() {
                   )}
                 </div>
 
-                {/* Bảng nhập Sets ... */}
+                {/* Bảng nhập Sets */}
                 <div className="p-4 md:p-5">
                   <div className="grid grid-cols-12 gap-2 md:gap-4 mb-3 text-xs font-black text-gray-500 uppercase tracking-widest text-center">
                     <div className="col-span-2">Set</div>
@@ -416,16 +462,72 @@ export default function WorkoutTracker() {
         currentLogId={currentLogId}
       />
 
-      {/* ========================================================= */}
-      {/* BẢNG YÊU CẦU PREMIUM VỪA ĐƯỢC THÊM VÀO */}
-      {/* ========================================================= */}
+      {/* MODAL XEM CHI TIẾT BÀI TẬP */}
+      {infoModal.isOpen && infoModal.exercise && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-gray-900 w-full max-w-lg rounded-3xl border border-gray-800 shadow-2xl overflow-hidden relative">
+            <button 
+              onClick={() => setInfoModal({ isOpen: false, exercise: null })}
+              className="absolute top-3 right-3 p-2 bg-black/50 text-white rounded-full hover:bg-black/80 z-10 transition-colors"
+            >
+              <X className="w-5 h-5"/>
+            </button>
+
+            {infoModal.exercise.videoUrl ? (
+              <div className="w-full aspect-video bg-black">
+                {infoModal.exercise.videoUrl.includes('youtube') || infoModal.exercise.videoUrl.includes('youtu.be') ? (
+                  <iframe 
+                    className="w-full h-full" 
+                    src={getEmbedUrl(infoModal.exercise.videoUrl)} 
+                    frameBorder="0" 
+                    allowFullScreen
+                  ></iframe>
+                ) : (
+                  <video 
+                    className="w-full h-full object-cover" 
+                    controls autoPlay 
+                    src={`${API_BASE_URL}${infoModal.exercise.videoUrl}`}
+                  ></video>
+                )}
+              </div>
+            ) : (
+              <div className="w-full aspect-video bg-gray-800 flex flex-col items-center justify-center border-b border-gray-800">
+                <Video className="w-12 h-12 text-gray-600 mb-2" />
+                <span className="text-gray-500">Chưa có video hướng dẫn</span>
+              </div>
+            )}
+
+            <div className="p-6">
+              <h3 className="text-xl font-black text-white mb-4">{infoModal.exercise.name}</h3>
+              <div className="space-y-4">
+                <div className="flex items-center gap-3 bg-gray-950 p-3 rounded-xl border border-gray-800">
+                  <div className="p-2 bg-blue-500/10 rounded-lg"><Dumbbell className="w-4 h-4 text-blue-400"/></div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-bold uppercase">Nhóm cơ chính</p>
+                    <p className="text-gray-200 font-medium">{infoModal.exercise.muscleGroup || 'Chưa phân loại'}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 bg-gray-950 p-3 rounded-xl border border-gray-800">
+                  <div className="p-2 bg-emerald-500/10 rounded-lg"><CheckCircle className="w-4 h-4 text-emerald-400"/></div>
+                  <div>
+                    <p className="text-xs text-gray-500 font-bold uppercase">Thiết bị</p>
+                    <p className="text-gray-200 font-medium">{infoModal.exercise.equipmentRequired || 'Không cần'}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BẢNG YÊU CẦU PREMIUM / XEM QUẢNG CÁO */}
       <PremiumRequireModal 
         isOpen={showPremiumModal}
         onClose={() => setShowPremiumModal(false)}
         onWatchAd={handleWatchAd}
         onUpgrade={() => {
           setShowPremiumModal(false);
-          navigate('/premium'); // Thay /premium bằng URL trang thanh toán của bạn
+          navigate('/premium'); 
         }}
         isLoadingAd={isLoadingAd}
       />
