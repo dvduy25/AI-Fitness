@@ -26,6 +26,8 @@ const workoutLogRoutes = require("./routes/workoutLogRoutes");
 // 👇 THÊM DÒNG NÀY: Khai báo file route cho lịch sử ăn uống
 const dietRoutes = require('./routes/dietRoutes'); 
 const adminRoutes = require("./routes/adminRoutes");
+const { startDailyClosingJob } = require('./services/cronService');
+const gamificationRoutes = require('./routes/gamificationRoutes');
 const app = express();
 const path = require('path'); // Nhớ import thư viện path ở trên cùng file
 
@@ -68,6 +70,11 @@ app.get("/", (req, res) => {
   res.send(" AI Fitness Coach API is running smoothly!");
 });
 app.use("/api/admin", adminRoutes);
+// BƯỚC 2: KHAI BÁO ROUTER API
+app.use('/api/gamification', gamificationRoutes);
+
+// BƯỚC 3: KÍCH HOẠT CRONJOB NGAY TRƯỚC KHI APP LISTEN
+startDailyClosingJob();
 // Bắt lỗi 404 cho các đường dẫn không tồn tại
 app.use((req, res, next) => {
   res.status(404).json({ message: "Đường dẫn (Route) này không tồn tại!" });
