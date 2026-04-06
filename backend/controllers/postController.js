@@ -314,3 +314,27 @@ exports.deleteComment = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// ==========================================
+// 11. LẤY CHI TIẾT 1 BÀI VIẾT (GET SINGLE POST)
+// ==========================================
+exports.getPostById = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    // Tìm bài viết theo ID và populate thông tin người đăng
+    const post = await Post.findById(postId)
+      .populate("userId", "name avatar role");
+
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
+    }
+
+    res.status(200).json({ success: true, post });
+  } catch (error) {
+    // Bắt lỗi nếu postId không hợp lệ (ví dụ: sai định dạng ObjectId của MongoDB)
+    if (error.kind === "ObjectId") {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
