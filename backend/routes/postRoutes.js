@@ -32,8 +32,8 @@ router.post("/:postId/comment", verifyToken, postController.addComment);
 router.get("/:postId/comments", postController.getComments);
 
 // Sửa bình luận (Cần đăng nhập)
-router.put("/comment/:commentId", authMiddleware, postController.updateComment);
+router.put("/comment/:commentId", verifyToken, postController.updateComment);
 
 // Xóa bình luận (Cần đăng nhập)
-router.delete("/comment/:commentId", authMiddleware, postController.deleteComment);
+router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
 module.exports = router;
