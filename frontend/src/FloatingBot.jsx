@@ -7,10 +7,12 @@ export default function FloatingBot() {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
 
+  // Hàm gọi API lấy dữ liệu Gamification
   const fetchGamificationStats = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token'); 
+      
       if (!token) {
         setLoading(false);
         return;
@@ -18,7 +20,7 @@ export default function FloatingBot() {
 
       const response = await axios.get('https://ai-fitness-w6fd.onrender.com/api/gamification/stats', {
         headers: {
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}` 
         }
       });
 
@@ -26,16 +28,23 @@ export default function FloatingBot() {
         setStats(response.data.stats);
       }
     } catch (error) {
-      console.error("Lỗi khi lấy dữ liệu Bot:", error);
+      // Ẩn bớt lỗi 401 (Chưa đăng nhập) để tránh làm rối console
+      if (error.response && error.response.status === 401) {
+         console.warn("Bot: Chưa đăng nhập hoặc phiên đã hết hạn.");
+      } else {
+         console.error("Lỗi khi lấy dữ liệu Bot:", error);
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  // Tự động lấy dữ liệu lần đầu khi web load
   useEffect(() => {
     fetchGamificationStats();
   }, []);
 
+  // Lấy lại dữ liệu mỗi khi người dùng bấm mở Bot
   const toggleBot = () => {
     const willOpen = !isOpen;
     setIsOpen(willOpen);
@@ -44,7 +53,9 @@ export default function FloatingBot() {
     }
   };
 
-  // Cập nhật Default State khớp với Backend mới
+  // ==========================================
+  // XỬ LÝ DỮ LIỆU MẶC ĐỊNH (KHỚP BACKEND MỚI)
+  // ==========================================
   const displayStats = stats || {
     rankPoints: 0,
     streak: 0,
@@ -53,7 +64,7 @@ export default function FloatingBot() {
     currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 }
   };
 
-  // Bóc tách dữ liệu
+  // Bóc tách dữ liệu chuẩn xác
   const { totalWorkoutSessions, totalPerfectDietDays } = displayStats;
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers;
 
@@ -63,14 +74,12 @@ export default function FloatingBot() {
       {/* KHUNG THÔNG TIN CỦA BOT */}
       {isOpen && (
         <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 mb-4 w-[320px] animate-in slide-in-from-bottom-5">
-          
-          {/* Header */}
           <div className="flex justify-between items-center border-b border-gray-800 pb-2 mb-3">
             <h3 className="text-emerald-400 font-bold flex items-center gap-2">
               <Bot className="w-5 h-5" /> Trợ lý Kỷ Luật
             </h3>
             <div className="flex items-center gap-2">
-              <button onClick={fetchGamificationStats} className="text-gray-500 hover:text-emerald-400 transition-colors" title="Làm mới">
+              <button onClick={fetchGamificationStats} className="text-gray-500 hover:text-emerald-400 transition-colors">
                 <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-emerald-400' : ''}`} />
               </button>
               <button onClick={() => setIsOpen(false)} className="text-gray-500 hover:text-red-400 transition-colors">
@@ -80,8 +89,7 @@ export default function FloatingBot() {
           </div>
 
           <div className="space-y-3">
-            
-            {/* 1. Hàng Điểm Rank & Chuỗi (Highlight) */}
+            {/* Hàng Điểm & Chuỗi */}
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 flex flex-col items-center">
                 <Trophy className="w-5 h-5 text-yellow-400 mb-1" />
@@ -99,7 +107,7 @@ export default function FloatingBot() {
               </div>
             </div>
 
-            {/* 2. Hàng Thành tích trọn đời (Mới thêm) */}
+            {/* Hàng Thành tích trọn đời */}
             <div className="flex justify-between bg-gray-800/30 p-2 rounded-lg border border-gray-800">
                <div className="flex items-center gap-2">
                   <Activity className="w-4 h-4 text-blue-400" />
@@ -111,7 +119,7 @@ export default function FloatingBot() {
                </div>
             </div>
 
-            {/* 3. Khung Cảnh báo vi phạm tuần */}
+            {/* Khung Cảnh báo vi phạm tuần */}
             <div className="mt-2 bg-gray-950 p-3 rounded-xl border border-red-500/20">
               <p className="font-bold text-red-400 text-xs mb-2 flex items-center gap-1 uppercase tracking-wider">
                 <AlertTriangle className="w-4 h-4" /> Hạn mức tuần này
@@ -160,7 +168,7 @@ export default function FloatingBot() {
           <Bot className="w-7 h-7 text-emerald-400" />
         )}
         
-        {/* Bóng đỏ cảnh báo (Ping) - Đã cập nhật logic theo currentWeekTrackers */}
+        {/* Bóng đỏ cảnh báo (Ping) */}
         {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0) && (
           <span className="absolute top-0 right-0 flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
