@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-// ĐÃ THÊM: Import icon Globe cho trang Cộng Đồng
 import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe } from 'lucide-react'; 
 
 // Import các trang (Components)
@@ -12,8 +11,10 @@ import WorkoutPlanManager from "./WorkoutPlanManager";
 import DietHistory from "./DietHistory";
 import WorkoutTracker from "./WorkoutTracker";
 import PremiumUpgrade from "./PremiumUpgrade"; 
-// ĐÃ THÊM: Import trang Community
 import Community from "./Community";
+
+// ĐÃ THÊM: Import trang chi tiết bài viết
+import PostDetail from "./PostDetail"; 
 
 // Import Component FloatingBot
 import FloatingBot from "./FloatingBot"; 
@@ -47,7 +48,7 @@ const App = () => {
     );
   }
 
-  // ĐÃ CẬP NHẬT: Thêm menu Cộng Đồng vào Navigation
+  // Menu điều hướng
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
     { path: "/community", icon: <Globe className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Cộng Đồng" },
@@ -141,8 +142,11 @@ const App = () => {
         <main className="flex-1 w-full pb-20 md:pb-0 relative">
           <Routes>
             <Route path="/" element={<TodayDashboard />} />
-            {/* ĐÃ THÊM: Route cho trang Community */}
             <Route path="/community" element={<Community />} />
+            
+            {/* ĐÃ THÊM: Route bắt ID bài viết để mở PostDetail */}
+            <Route path="/post/:postId" element={<PostDetail />} />
+
             <Route path="/diet-history" element={<DietHistory />} /> 
             <Route path="/meal-plan" element={<MealPlanManager />} />
             <Route path="/workout-plan" element={<WorkoutPlanManager />} />
