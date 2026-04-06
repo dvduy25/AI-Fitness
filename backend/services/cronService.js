@@ -12,82 +12,103 @@ const generateDailyReview = (didWorkout, didEatRight) => {
 };
 
 const startDailyClosingJob = () => {
-  // Chạy tự động vào 23:55 mỗi ngày
+
+  // 1. CHỐT SỔ NGÀY (Chạy 23:55)
   cron.schedule('55 23 * * *', async () => {
     console.log("🕒 [CRON] Đang chạy tự động chốt sổ ngày...");
-
     try {
-      const today = new Date();
-      const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-      const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-      const isMonday = today.getDay() === 1;
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      const isMonday = now.getDay() === 1;
 
       const users = await User.find({});
 
       for (const user of users) {
         const userId = user._id;
 
-        // 1. TÌM HOẶC TẠO MỚI BẢNG ĐIỂM
         let gamification = await Gamification.findOne({ userId });
         if (!gamification) gamification = new Gamification({ userId });
 
-        // Reset cảnh báo vi phạm vào đầu tuần (Thứ Hai)
-        if (isMonday && (!gamification.lastEvaluatedDate || gamification.lastEvaluatedDate < startOfDay)) {
-          gamification.weeklyStats = { eatWrongDays: 0, noWorkoutDays: 0, totalFailsDays: 0 };
-        }
-
-        // Bỏ qua nếu đã chốt rồi
         if (gamification.lastEvaluatedDate && gamification.lastEvaluatedDate >= startOfDay) continue;
 
-        // 2. KIỂM TRA LOG HÔM NAY
+        if (isMonday || !gamification.currentWeekTrackers) {
+          gamification.currentWeekTrackers = { eatWrong: 0, noWorkout: 0, bothFail: 0 };
+        }
+
         const workout = await WorkoutLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay }, isCompleted: true });
         let diet = await DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } });
 
         const didWorkout = !!workout;
         const didEatRight = diet && diet.isDayCompleted;
 
-        // 3. LOGIC CỘNG ĐIỂM VÀ CHUỖI
-        let { rankPoints, streak, weeklyStats } = gamification;
-        
+        // CỘNG TRỪ ĐIỂM
         if (didWorkout && didEatRight) {
-          rankPoints += 10; streak += 1;
-        } else if (didWorkout && !didEatRight) {
-          rankPoints += 5; weeklyStats.eatWrongDays += 1;
-        } else if (!didWorkout && didEatRight) {
-          weeklyStats.noWorkoutDays += 1;
-        } else {
-          weeklyStats.noWorkoutDays += 1;
-          weeklyStats.eatWrongDays += 1;
-          weeklyStats.totalFailsDays += 1;
+          gamification.rankPoints += 10;
+          gamification.streak += 1;
+          gamification.totalWorkoutSessions += 1;
+          gamification.totalPerfectDietDays += 1;
+        } 
+        else if (didWorkout && !didEatRight) {
+          gamification.rankPoints += 5;
+          gamification.totalWorkoutSessions += 1; 
+          gamification.failStats.eatWrongDays += 1; 
+          gamification.currentWeekTrackers.eatWrong += 1; 
+        } 
+        else if (!didWorkout && didEatRight) {
+          gamification.totalPerfectDietDays += 1;
+          gamification.failStats.noWorkoutDays += 1; 
+          gamification.currentWeekTrackers.noWorkout += 1;
+        } 
+        else {
+          gamification.failStats.totalFailsDays += 1; 
+          gamification.currentWeekTrackers.bothFail += 1;
         }
 
-        // 4. KIỂM TRA PHẠT TUẦN
+        // PHẠT TUẦN
         let isPenalized = false;
-        if (weeklyStats.totalFailsDays > 1) { // Lười cả 2 quá 1 ngày
-          rankPoints -= 100; streak = 0; isPenalized = true;
-        } else if (!isPenalized && (weeklyStats.eatWrongDays > 1 || weeklyStats.noWorkoutDays > 3)) {
-          rankPoints -= 50; streak = 0;
+        if (gamification.currentWeekTrackers.bothFail > 1) { 
+          gamification.rankPoints -= 100; 
+          gamification.streak = 0; 
+          isPenalized = true;
+        } else if (!isPenalized && (gamification.currentWeekTrackers.eatWrong > 1 || gamification.currentWeekTrackers.noWorkout > 3)) {
+          gamification.rankPoints -= 50; 
+          gamification.streak = 0;
         }
 
-        if (rankPoints < 0) rankPoints = 0; // Đảm bảo điểm không bị âm
+        if (gamification.rankPoints < 0) gamification.rankPoints = 0;
 
-        // Lưu thông số
-        gamification.rankPoints = rankPoints;
-        gamification.streak = streak;
-        gamification.weeklyStats = weeklyStats;
         gamification.lastEvaluatedDate = new Date();
         await gamification.save();
 
-        // 5. VIẾT NHẬN XÉT VÀO DIET LOG
+        // CẬP NHẬT HOẶC TẠO LOG LƯỜI BIẾNG
         if (diet) {
           diet.isDayCompleted = true;
           diet.dailyAiSummary = generateDailyReview(didWorkout, didEatRight);
           await diet.save();
+        } else {
+          await DailyDietLog.create({
+            userId,
+            date: now,
+            isDayCompleted: true,
+            dailyAiSummary: generateDailyReview(false, false)
+          });
         }
       }
-      console.log("✅ [CRON] Chốt sổ và viết đánh giá thành công!");
+      console.log("✅ [CRON] Chốt sổ thành công!");
     } catch (error) {
-      console.error("❌ [CRON] Lỗi:", error);
+      console.error("❌ [CRON] Lỗi chốt sổ:", error);
+    }
+  });
+
+  // 2. RESET RANK (Chạy 00:00 ngày mùng 1 hàng tháng)
+  cron.schedule('0 0 1 * *', async () => {
+    console.log("🔄 [CRON] Đang Reset Rank Point...");
+    try {
+        await Gamification.updateMany({}, { $set: { rankPoints: 0, lastRankResetDate: new Date() } });
+        console.log(`✅ [CRON] Đã reset Rank!`);
+    } catch (error) {
+        console.error("❌ [CRON] Lỗi reset Rank:", error);
     }
   });
 };
