@@ -234,3 +234,83 @@ exports.addComment = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// ==========================================
+// 8. LẤY DANH SÁCH BÌNH LUẬN CỦA BÀI VIẾT (GET COMMENTS)
+// ==========================================
+exports.getComments = async (req, res) => {
+  try {
+    const { postId } = req.params;
+
+    // Tìm tất cả bình luận có postId tương ứng, lấy thêm thông tin người bình luận
+    const comments = await Comment.find({ postId })
+      .populate("userId", "name avatar role")
+      .sort({ createdAt: -1 }); // Bình luận mới nhất xếp trên (có thể đổi thành 1 nếu muốn xếp dưới)
+
+    res.status(200).json({ success: true, comments });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 9. CHỈNH SỬA BÌNH LUẬN (UPDATE COMMENT)
+// ==========================================
+exports.updateComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const { content } = req.body;
+    const userId = req.user.id;
+
+    if (!content) return res.status(400).json({ message: "Nội dung không được để trống" });
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
+
+    // KIỂM TRA QUYỀN: Chỉ chủ nhân của bình luận mới được phép sửa
+    if (comment.userId.toString() !== userId) {
+      return res.status(403).json({ message: "Bạn không có quyền sửa bình luận này" });
+    }
+
+    comment.content = content;
+    await comment.save();
+
+    res.status(200).json({ success: true, message: "Đã cập nhật bình luận", comment });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 10. XÓA BÌNH LUẬN (DELETE COMMENT)
+// ==========================================
+exports.deleteComment = async (req, res) => {
+  try {
+    const { commentId } = req.params;
+    const userId = req.user.id;
+
+    const comment = await Comment.findById(commentId);
+    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
+
+    const post = await Post.findById(comment.postId);
+    if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
+
+    // KIỂM TRA QUYỀN: Người xóa phải là Chủ bài viết HOẶC Chủ bình luận
+    const isPostOwner = post.userId.toString() === userId;
+    const isCommentOwner = comment.userId.toString() === userId;
+
+    if (!isPostOwner && !isCommentOwner) {
+      return res.status(403).json({ message: "Bạn không có quyền xóa bình luận này" });
+    }
+
+    // Xóa bình luận
+    await Comment.findByIdAndDelete(commentId);
+
+    // Giảm bộ đếm commentsCount của bài viết xuống 1 (đảm bảo không bị âm)
+    post.commentsCount = Math.max(0, post.commentsCount - 1);
+    await post.save();
+
+    res.status(200).json({ success: true, message: "Đã xóa bình luận thành công" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

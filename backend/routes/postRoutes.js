@@ -28,4 +28,12 @@ router.delete("/:postId", verifyToken, postController.deletePost); // Xóa bài
 router.post("/clone", verifyToken, postController.cloneSnapshot); // Lưu về kho
 router.post("/:postId/like", verifyToken, postController.toggleLike);
 router.post("/:postId/comment", verifyToken, postController.addComment);
+// Lấy danh sách bình luận (Không cần đăng nhập cũng xem được, hoặc tuỳ bạn cấu hình authMiddleware)
+router.get("/:postId/comments", postController.getComments);
+
+// Sửa bình luận (Cần đăng nhập)
+router.put("/comment/:commentId", authMiddleware, postController.updateComment);
+
+// Xóa bình luận (Cần đăng nhập)
+router.delete("/comment/:commentId", authMiddleware, postController.deleteComment);
 module.exports = router;
