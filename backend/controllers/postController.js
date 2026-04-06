@@ -7,21 +7,39 @@ const mongoose = require("mongoose");
 // ==========================================
 // 1. TẠO BÀI VIẾT & CHIA SẺ (CREATE)
 // ==========================================
+// 📄 controllers/postController.js
+
 exports.createPost = async (req, res) => {
   try {
-    const { content, images, video, workoutLogId, dietLogId } = req.body;
+    const { content, workoutLogId, dietLogId } = req.body;
     const userId = req.user.id;
+
+    let images = [];
+    let video = "";
+
+    // Lấy Base URL của server để tạo link ảnh public (VD: http://localhost:5000)
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+
+    // Kiểm tra xem có file nào được upload lên không
+    if (req.files) {
+      // Nếu có mảng ảnh
+      if (req.files.images) {
+        images = req.files.images.map(file => `${baseUrl}/uploads/media/${file.filename}`);
+      }
+      // Nếu có file video (thường giới hạn 1 video/bài)
+      if (req.files.video && req.files.video.length > 0) {
+        video = `${baseUrl}/uploads/media/${req.files.video[0].filename}`;
+      }
+    }
 
     let workoutSnapshot = null;
     let dietSnapshot = null;
 
-    // Chụp ảnh buổi tập nếu có ID đính kèm
     if (workoutLogId) {
       const workout = await WorkoutLog.findById(workoutLogId);
       if (workout) workoutSnapshot = workout.toObject();
     }
 
-    // Chụp ảnh lịch ăn nếu có ID đính kèm
     if (dietLogId) {
       const diet = await DailyDietLog.findById(dietLogId);
       if (diet) dietSnapshot = diet.toObject();
@@ -30,8 +48,8 @@ exports.createPost = async (req, res) => {
     const newPost = new Post({
       userId,
       content,
-      images,
-      video,
+      images, // Mảng các URL ảnh
+      video,  // URL video
       originalWorkoutId: workoutLogId,
       workoutSnapshot,
       originalDietId: dietLogId,
