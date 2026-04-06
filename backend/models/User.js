@@ -5,11 +5,17 @@ const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
   password: { type: String, required: true },
   
+  // === ẢNH ĐẠI DIỆN ===
+  avatar: { 
+    type: String, 
+    default: "https://ui-avatars.com/api/?name=User&background=random" // URL ảnh mặc định nếu user chưa upload
+  },
+  
   // === THÊM CHỨC NĂNG PHÂN QUYỀN Ở ĐÂY ===
   role: { 
     type: String, 
-    enum: ["user", "admin", "trainer"], // Bạn có thể thêm/bớt role tùy ý
-    default: "user" // Mặc định ai đăng ký cũng chỉ là user thường
+    enum: ["user", "admin", "trainer"], 
+    default: "user" 
   },
 
   age: Number, 
