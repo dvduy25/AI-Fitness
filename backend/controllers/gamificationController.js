@@ -7,33 +7,44 @@ const getUserStats = async (req, res) => {
   try {
     const userId = req.user.id; 
 
-    // 1. Tìm bảng Gamification của User
+    // 1. Lấy thông tin Gamification cơ bản
     let stats = await Gamification.findOne({ userId });
-
-    // Nếu chưa có thì tạo mới một cái sườn
     if (!stats) {
       stats = new Gamification({ userId });
+      await stats.save();
     }
 
     // ==========================================
-    // 2. AUTO-SYNC: TỰ ĐỘNG ĐẾM LẠI DỮ LIỆU CŨ
+    // 2. TÍNH TOÁN DỮ LIỆU TUẦN VÀ THÁNG
     // ==========================================
-    // Chạy song song 2 lệnh đếm để không làm chậm API
-    const [realWorkouts, realDietDays] = await Promise.all([
-      WorkoutLog.countDocuments({ userId, isCompleted: true }), // Đếm các buổi tập ĐÃ HOÀN THÀNH
-      DailyDietLog.countDocuments({ userId, isDayCompleted: true }) // Đếm các ngày ăn ĐÃ HOÀN THÀNH
+    const now = new Date();
+    
+    // Tìm ngày Thứ 2 của tuần hiện tại
+    const dayOfWeek = now.getDay() || 7; // Chuyển Chủ Nhật (0) thành 7
+    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1, 0, 0, 0);
+    
+    // Tìm ngày mùng 1 của tháng hiện tại
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+
+    // Chạy song song 4 lệnh đếm để đảm bảo API vẫn chạy siêu nhanh
+    const [workoutsThisWeek, workoutsThisMonth, dietThisWeek, dietThisMonth] = await Promise.all([
+      WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfWeek } }),
+      WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfMonth } }),
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }),
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } })
     ]);
 
-    // Ghi đè con số thực tế vào stats
-    stats.totalWorkoutSessions = realWorkouts;
-    stats.totalPerfectDietDays = realDietDays;
-
-    // Lưu lại vào Database để chốt sổ
-    await stats.save();
-    // ==========================================
-
-    // Trả về cho Frontend
-    res.status(200).json({ success: true, stats });
+    // Trả về cho Frontend cả stats gốc + dữ liệu theo giai đoạn (periodStats)
+    res.status(200).json({ 
+      success: true, 
+      stats, 
+      periodStats: {
+        workoutsThisWeek,
+        workoutsThisMonth,
+        dietThisWeek,
+        dietThisMonth
+      }
+    });
 
   } catch (error) {
     console.error("Lỗi lấy dữ liệu Gamification:", error);
