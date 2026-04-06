@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown } from 'lucide-react'; 
+// ĐÃ THÊM: Import icon Globe cho trang Cộng Đồng
+import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe } from 'lucide-react'; 
 
 // Import các trang (Components)
 import AuthPage from "./AuthPage"; 
@@ -11,11 +12,10 @@ import WorkoutPlanManager from "./WorkoutPlanManager";
 import DietHistory from "./DietHistory";
 import WorkoutTracker from "./WorkoutTracker";
 import PremiumUpgrade from "./PremiumUpgrade"; 
+// ĐÃ THÊM: Import trang Community
+import Community from "./Community";
 
-// ==========================================
-// ĐÃ THÊM: Import Component FloatingBot
-// (Nhớ đổi đường dẫn nếu bạn lưu file này ở thư mục khác, VD: "./components/FloatingBot")
-// ==========================================
+// Import Component FloatingBot
 import FloatingBot from "./FloatingBot"; 
 
 const App = () => {
@@ -47,8 +47,10 @@ const App = () => {
     );
   }
 
+  // ĐÃ CẬP NHẬT: Thêm menu Cộng Đồng vào Navigation
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
+    { path: "/community", icon: <Globe className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Cộng Đồng" },
     { path: "/meal-plan", icon: <Utensils className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Ăn" },
     { path: "/workout-plan", icon: <Dumbbell className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Tập" },
     { path: "/diet-history", icon: <History className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Sử" },
@@ -139,6 +141,8 @@ const App = () => {
         <main className="flex-1 w-full pb-20 md:pb-0 relative">
           <Routes>
             <Route path="/" element={<TodayDashboard />} />
+            {/* ĐÃ THÊM: Route cho trang Community */}
+            <Route path="/community" element={<Community />} />
             <Route path="/diet-history" element={<DietHistory />} /> 
             <Route path="/meal-plan" element={<MealPlanManager />} />
             <Route path="/workout-plan" element={<WorkoutPlanManager />} />
@@ -152,8 +156,7 @@ const App = () => {
         </main>
 
         {/* ========================================== */}
-        {/* ĐÃ THÊM: COMPONENT CON BOT NỔI */}
-        {/* Đặt ngoài vùng <main> và trên Navigation Bar của Mobile để nó luôn đè lên các trang */}
+        {/* COMPONENT CON BOT NỔI */}
         {/* ========================================== */}
         <FloatingBot />
 
