@@ -4,57 +4,64 @@ const WorkoutLog = require("../models/WorkoutLog");
 const DailyDietLog = require("../models/DailyDietLog");
 const MasterWorkoutPlan = require("../models/WorkoutPlan");
 const MealPlan = require("../models/MealPlan");
+const SavedLibrary = require("../models/SavedLibrary");
+const Comment = require("../models/Comment");
 const mongoose = require("mongoose");
 
-// ==========================================
-// 1. TẠO BÀI VIẾT & CHIA SẺ (CREATE)
-// ==========================================
-// 📄 controllers/postController.js
+// Helper: Xử lý đường dẫn Media (Ảnh/Video)
+const handleMediaFiles = (req) => {
+  const baseUrl = `${req.protocol}://${req.get('host')}`;
+  let images = [];
+  let video = "";
 
+  if (req.files) {
+    if (req.files.images) {
+      images = req.files.images.map(file => `${baseUrl}/uploads/media/${file.filename}`);
+    }
+    if (req.files.video && req.files.video.length > 0) {
+      video = `${baseUrl}/uploads/media/${req.files.video[0].filename}`;
+    }
+  }
+  return { images, video };
+};
+
+// ==========================================
+// 1. TẠO BÀI VIẾT TỪ NHẬT KÝ (WORKOUT/DIET LOG)
+// ==========================================
 exports.createPost = async (req, res) => {
   try {
     const { content, workoutLogId, dietLogId } = req.body;
     const userId = req.user.id;
-
-    let images = [];
-    let video = "";
-
-    // Lấy Base URL của server để tạo link ảnh public (VD: http://localhost:5000)
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-
-    // Kiểm tra xem có file nào được upload lên không
-    if (req.files) {
-      // Nếu có mảng ảnh
-      if (req.files.images) {
-        images = req.files.images.map(file => `${baseUrl}/uploads/media/${file.filename}`);
-      }
-      // Nếu có file video (thường giới hạn 1 video/bài)
-      if (req.files.video && req.files.video.length > 0) {
-        video = `${baseUrl}/uploads/media/${req.files.video[0].filename}`;
-      }
-    }
+    const { images, video } = handleMediaFiles(req);
 
     let workoutSnapshot = null;
     let dietSnapshot = null;
+    let postType = 'text';
 
     if (workoutLogId) {
       const workout = await WorkoutLog.findById(workoutLogId);
-      if (workout) workoutSnapshot = workout.toObject();
+      if (workout) {
+        workoutSnapshot = workout.toObject();
+        postType = 'workout_log';
+      }
     }
 
     if (dietLogId) {
       const diet = await DailyDietLog.findById(dietLogId);
-      if (diet) dietSnapshot = diet.toObject();
+      if (diet) {
+        dietSnapshot = diet.toObject();
+        postType = 'diet_log';
+      }
     }
 
     const newPost = new Post({
       userId,
       content,
-      images, // Mảng các URL ảnh
-      video,  // URL video
-      originalWorkoutId: workoutLogId,
+      images,
+      video,
+      postType,
+      originalReferenceId: workoutLogId || dietLogId || null,
       workoutSnapshot,
-      originalDietId: dietLogId,
       dietSnapshot
     });
 
@@ -66,314 +73,238 @@ exports.createPost = async (req, res) => {
 };
 
 // ==========================================
-// 2. LẤY BẢNG TIN (READ - FEED)
+// 2. CHIA SẺ LỊCH MẪU (MASTER PLAN)
+// ==========================================
+exports.shareMasterPlan = async (req, res) => {
+  try {
+    const { content, shareType } = req.body; // 'workout' hoặc 'diet'
+    const userId = req.user.id;
+    const { images, video } = handleMediaFiles(req);
+
+    let workoutSnapshot = null;
+    let dietSnapshot = null;
+    let postType = shareType === 'workout' ? 'master_workout' : 'master_diet';
+
+    if (shareType === 'workout') {
+      const plan = await MasterWorkoutPlan.findOne({ userId });
+      if (!plan) return res.status(404).json({ message: "Bạn chưa thiết lập lịch tập mẫu!" });
+      workoutSnapshot = plan.toObject();
+    } else {
+      const plan = await MealPlan.findOne({ userId });
+      if (!plan) return res.status(404).json({ message: "Bạn chưa thiết lập thực đơn mẫu!" });
+      dietSnapshot = plan.toObject();
+    }
+
+    const newPost = new Post({
+      userId,
+      content: content || `Lịch ${shareType === 'workout' ? 'tập' : 'ăn'} tâm đắc của tôi!`,
+      images,
+      video,
+      postType,
+      workoutSnapshot,
+      dietSnapshot
+    });
+
+    await newPost.save();
+    res.status(201).json({ success: true, message: "Chia sẻ lịch mẫu thành công!", post: newPost });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 3. CHIA SẺ TỪ KHO LƯU TRỮ (SAVED LIBRARY)
+// ==========================================
+exports.shareFromLibrary = async (req, res) => {
+  try {
+    const { libraryId, content } = req.body;
+    const userId = req.user.id;
+    const { images, video } = handleMediaFiles(req);
+
+    const savedItem = await SavedLibrary.findOne({ _id: libraryId, userId });
+    if (!savedItem) return res.status(404).json({ message: "Mục này không có trong kho của bạn" });
+
+    const newPost = new Post({
+      userId,
+      content: content || `Gợi ý cho mọi người lịch ${savedItem.type === 'workout' ? 'tập' : 'ăn'} này!`,
+      images,
+      video,
+      postType: savedItem.type === 'workout' ? 'master_workout' : 'master_diet',
+      workoutSnapshot: savedItem.workoutData || null,
+      dietSnapshot: savedItem.dietData || null,
+      originalReferenceId: libraryId
+    });
+
+    await newPost.save();
+    res.status(201).json({ success: true, message: "Đăng từ kho thành công!", post: newPost });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
 exports.getFeed = async (req, res) => {
   try {
     const posts = await Post.find()
-      .populate("userId", "name avatar role") // Hiện thông tin người đăng
-      .sort({ createdAt: -1 }); // Mới nhất hiện trước
+      .populate("userId", "name avatar role")
+      .sort({ createdAt: -1 });
     res.status(200).json({ success: true, posts });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ==========================================
-// 3. CHỈNH SỬA BÀI VIẾT (UPDATE)
-// ==========================================
-exports.updatePost = async (req, res) => {
+exports.getPostById = async (req, res) => {
   try {
-    const { postId } = req.params;
-    const { content, images, video } = req.body;
-    const userId = req.user.id;
-
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
-
-    // Chặn người lạ sửa bài
-    if (post.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Bạn không có quyền sửa bài này" });
-    }
-
-    post.content = content || post.content;
-    post.images = images || post.images;
-    post.video = video !== undefined ? video : post.video;
-
-    await post.save();
-    res.status(200).json({ success: true, message: "Đã cập nhật!", post });
+    const post = await Post.findById(req.params.postId).populate("userId", "name avatar role");
+    if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
+    res.status(200).json({ success: true, post });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ==========================================
-// 4. XÓA BÀI VIẾT (DELETE)
-// ==========================================
-exports.deletePost = async (req, res) => {
-  try {
-    const { postId } = req.params;
-    const userId = req.user.id;
-    const userRole = req.user.role;
-
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
-
-    // Chỉ chủ bài viết hoặc Admin mới được xóa
-    if (post.userId.toString() !== userId && userRole !== 'admin') {
-      return res.status(403).json({ message: "Quyền truy cập bị từ chối" });
-    }
-
-    await Post.findByIdAndDelete(postId);
-    res.status(200).json({ success: true, message: "Đã xóa bài viết thành công" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ==========================================
-// 5. LƯU VỀ KHO (CLONE LỊCH TỪ SNAPSHOT)
-// ==========================================
-exports.cloneSnapshot = async (req, res) => {
-  try {
-    const { postId, type } = req.body; 
-    const userId = req.user.id;
-    const post = await Post.findById(postId);
-
-    if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
-
-    // Clone lịch tập
-    if (type === 'workout' && post.workoutSnapshot) {
-      const { _id, ...cleanData } = post.workoutSnapshot; // Loại bỏ ID cũ để tránh trùng
-      const clonedWorkout = new WorkoutLog({
-        ...cleanData,
-        userId,
-        date: new Date(), // Lưu cho ngày hôm nay
-        isCompleted: false 
-      });
-      await clonedWorkout.save();
-      return res.status(201).json({ success: true, message: "Đã lưu lịch tập vào kho!" });
-    }
-
-    // Clone lịch ăn
-    if (type === 'diet' && post.dietSnapshot) {
-      const { _id, ...cleanData } = post.dietSnapshot;
-      const clonedDiet = new DailyDietLog({
-        ...cleanData,
-        userId,
-        date: new Date(),
-        isDayCompleted: false
-      });
-      await clonedDiet.save();
-      return res.status(201).json({ success: true, message: "Đã lưu lịch ăn vào kho!" });
-    }
-
-    res.status(400).json({ message: "Không có dữ liệu phù hợp để lưu" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-// ==========================================
-// 6. THẢ TIM / BỎ THẢ TIM (TOGGLE LIKE)
+// 5. TƯƠNG TÁC (LIKE / COMMENT)
 // ==========================================
 exports.toggleLike = async (req, res) => {
   try {
-    const { postId } = req.params;
     const userId = req.user.id;
-
-    const post = await Post.findById(postId);
+    const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
 
-    // Kiểm tra user đã like bài này chưa
     const isLiked = post.likes.includes(userId);
-
-    if (isLiked) {
-      // Nếu đã like -> Xóa ID khỏi mảng (Bỏ like)
-      post.likes = post.likes.filter(id => id.toString() !== userId);
-    } else {
-      // Nếu chưa like -> Thêm ID vào mảng (Thả tim)
-      post.likes.push(userId);
-    }
+    isLiked ? post.likes.pull(userId) : post.likes.push(userId);
 
     await post.save();
-    
-    res.status(200).json({ 
-      success: true, 
-      message: isLiked ? "Đã bỏ tim" : "Đã thả tim", 
-      likeCount: post.likes.length,
-      likes: post.likes 
-    });
+    res.status(200).json({ success: true, isLiked: !isLiked, likeCount: post.likes.length });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-const Comment = require("../models/Comment");
 
-// ==========================================
-// 7. THÊM BÌNH LUẬN (ADD COMMENT)
-// ==========================================
 exports.addComment = async (req, res) => {
   try {
-    const { postId } = req.params;
     const { content } = req.body;
-    const userId = req.user.id;
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
 
-    if (!content) return res.status(400).json({ message: "Nội dung không được để trống" });
-
-    const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
-
-    // 1. Tạo comment mới
-    const newComment = new Comment({ postId, userId, content });
+    const newComment = new Comment({ postId: post._id, userId: req.user.id, content });
     await newComment.save();
 
-    // 2. Tăng bộ đếm commentsCount trong bảng Post lên 1
     post.commentsCount += 1;
     await post.save();
 
-    res.status(201).json({ success: true, message: "Đã bình luận", comment: newComment });
+    res.status(201).json({ success: true, comment: newComment });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ==========================================
-// 8. LẤY DANH SÁCH BÌNH LUẬN CỦA BÀI VIẾT (GET COMMENTS)
+// 6. CLONE (LƯU LỊCH VỀ CÁ NHÂN)
 // ==========================================
+exports.cloneSnapshot = async (req, res) => {
+  try {
+    const { postId, type } = req.body;
+    const post = await Post.findById(postId);
+    if (!post) return res.status(404).json({ message: "Bài viết không còn tồn tại" });
+
+    if (type === 'workout' && post.workoutSnapshot) {
+      const { _id, ...cleanData } = post.workoutSnapshot;
+      await new WorkoutLog({ ...cleanData, userId: req.user.id, date: new Date(), isCompleted: false }).save();
+      return res.status(201).json({ success: true, message: "Đã lưu lịch tập vào nhật ký hôm nay!" });
+    }
+
+    if (type === 'diet' && post.dietSnapshot) {
+      const { _id, ...cleanData } = post.dietSnapshot;
+      await new DailyDietLog({ ...cleanData, userId: req.user.id, date: new Date(), isDayCompleted: false }).save();
+      return res.status(201).json({ success: true, message: "Đã lưu thực đơn vào nhật ký hôm nay!" });
+    }
+
+    res.status(400).json({ message: "Không có dữ liệu để lưu" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 7. CẬP NHẬT & XÓA BÀI VIẾT
+// ==========================================
+exports.updatePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
+    if (post.userId.toString() !== req.user.id) return res.status(403).json({ message: "Không có quyền" });
+
+    const { content } = req.body;
+    post.content = content || post.content;
+    
+    await post.save();
+    res.status(200).json({ success: true, post });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deletePost = async (req, res) => {
+  try {
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
+
+    if (post.userId.toString() !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ message: "Quyền truy cập bị từ chối" });
+    }
+
+    await Post.findByIdAndDelete(req.params.postId);
+    await Comment.deleteMany({ postId: req.params.postId }); // Dọn sạch comment
+
+    res.status(200).json({ success: true, message: "Đã xóa bài viết và dữ liệu liên quan" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Gộp các hàm quản lý comment lẻ (CRUD Comment)
 exports.getComments = async (req, res) => {
   try {
-    const { postId } = req.params;
-
-    // Tìm tất cả bình luận có postId tương ứng, lấy thêm thông tin người bình luận
-    const comments = await Comment.find({ postId })
-      .populate("userId", "name avatar role")
-      .sort({ createdAt: -1 }); // Bình luận mới nhất xếp trên (có thể đổi thành 1 nếu muốn xếp dưới)
-
+    const comments = await Comment.find({ postId: req.params.postId }).populate("userId", "name avatar role").sort({ createdAt: -1 });
     res.status(200).json({ success: true, comments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ==========================================
-// 9. CHỈNH SỬA BÌNH LUẬN (UPDATE COMMENT)
-// ==========================================
 exports.updateComment = async (req, res) => {
   try {
-    const { commentId } = req.params;
-    const { content } = req.body;
-    const userId = req.user.id;
-
-    if (!content) return res.status(400).json({ message: "Nội dung không được để trống" });
-
-    const comment = await Comment.findById(commentId);
-    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
-
-    // KIỂM TRA QUYỀN: Chỉ chủ nhân của bình luận mới được phép sửa
-    if (comment.userId.toString() !== userId) {
-      return res.status(403).json({ message: "Bạn không có quyền sửa bình luận này" });
-    }
-
-    comment.content = content;
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment || comment.userId.toString() !== req.user.id) return res.status(403).json({ message: "Không có quyền" });
+    comment.content = req.body.content;
     await comment.save();
-
-    res.status(200).json({ success: true, message: "Đã cập nhật bình luận", comment });
+    res.status(200).json({ success: true, comment });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
-// ==========================================
-// 10. XÓA BÌNH LUẬN (DELETE COMMENT)
-// ==========================================
 exports.deleteComment = async (req, res) => {
   try {
-    const { commentId } = req.params;
-    const userId = req.user.id;
-
-    const comment = await Comment.findById(commentId);
-    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
-
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: "Không thấy bình luận" });
+    
     const post = await Post.findById(comment.postId);
-    if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
-
-    // KIỂM TRA QUYỀN: Người xóa phải là Chủ bài viết HOẶC Chủ bình luận
-    const isPostOwner = post.userId.toString() === userId;
-    const isCommentOwner = comment.userId.toString() === userId;
-
-    if (!isPostOwner && !isCommentOwner) {
-      return res.status(403).json({ message: "Bạn không có quyền xóa bình luận này" });
+    if (comment.userId.toString() !== req.user.id && post.userId.toString() !== req.user.id) {
+      return res.status(403).json({ message: "Không có quyền xóa" });
     }
 
-    // Xóa bình luận
-    await Comment.findByIdAndDelete(commentId);
-
-    // Giảm bộ đếm commentsCount của bài viết xuống 1 (đảm bảo không bị âm)
-    post.commentsCount = Math.max(0, post.commentsCount - 1);
-    await post.save();
-
-    res.status(200).json({ success: true, message: "Đã xóa bình luận thành công" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-// ==========================================
-// 11. LẤY CHI TIẾT 1 BÀI VIẾT (GET SINGLE POST)
-// ==========================================
-exports.getPostById = async (req, res) => {
-  try {
-    const { postId } = req.params;
-
-    // Tìm bài viết theo ID và populate thông tin người đăng
-    const post = await Post.findById(postId)
-      .populate("userId", "name avatar role");
-
-    if (!post) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
+    await Comment.findByIdAndDelete(req.params.commentId);
+    if (post) {
+      post.commentsCount = Math.max(0, post.commentsCount - 1);
+      await post.save();
     }
-
-    res.status(200).json({ success: true, post });
-  } catch (error) {
-    // Bắt lỗi nếu postId không hợp lệ (ví dụ: sai định dạng ObjectId của MongoDB)
-    if (error.kind === "ObjectId") {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
-    }
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-// Thêm import các Model Master ở đầu file postController.js
-
-
-// ==========================================
-// CHIA SẺ LỊCH TẬP MẪU HOẶC LỊCH ĂN MẪU LÊN BẢNG TIN
-// ==========================================
-exports.shareMasterPlan = async (req, res) => {
-  try {
-    const { content, shareType } = req.body; // shareType: 'workout' hoặc 'diet'
-    const userId = req.user.id;
-
-    let workoutSnapshot = null;
-    let dietSnapshot = null;
-
-    if (shareType === 'workout') {
-      const masterPlan = await MasterWorkoutPlan.findOne({ userId });
-      if (!masterPlan) return res.status(404).json({ message: "Bạn chưa có lịch tập để chia sẻ!" });
-      workoutSnapshot = masterPlan.toObject();
-    } else if (shareType === 'diet') {
-      const mealPlan = await MealPlan.findOne({ userId });
-      if (!mealPlan) return res.status(404).json({ message: "Bạn chưa có thực đơn để chia sẻ!" });
-      dietSnapshot = mealPlan.toObject();
-    }
-
-    const newPost = new Post({
-      userId,
-      content: content || `Tôi vừa chia sẻ một lịch ${shareType === 'workout' ? 'tập' : 'ăn'} mới!`,
-      workoutSnapshot,
-      dietSnapshot
-      // (Có thể thêm xử lý req.files ảnh/video ở đây giống hàm createPost cũ)
-    });
-
-    await newPost.save();
-    res.status(201).json({ success: true, message: "Chia sẻ lịch thành công!", post: newPost });
+    res.status(200).json({ success: true, message: "Đã xóa bình luận" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

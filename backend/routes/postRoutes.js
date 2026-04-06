@@ -1,41 +1,56 @@
-// 📄 routes/postRoutes.js
 const express = require("express");
 const router = express.Router();
 const postController = require("../controllers/postController");
-// Import middleware xác thực (bạn tự đối chiếu với code của bạn)
-const {verifyToken} = require("../middleware/authMiddleware"); 
-// Import middleware Multer vừa tạo
+
+// Middleware xác thực & Upload
+const { verifyToken } = require("../middleware/authMiddleware"); 
 const uploadMedia = require("../middleware/uploadMiddleware");
 
-// Gắn uploadMedia.fields() vào route tạo bài viết
-router.post(
-  "/", 
-  verifyToken, 
-  uploadMedia.fields([
-    { name: "images", maxCount: 4 }, // Cho phép tối đa 4 ảnh
-    { name: "video", maxCount: 1 }   // Cho phép tối đa 1 video
-  ]), 
-  postController.createPost
-);
+// Cấu hình upload chung cho các bài đăng có kèm media
+const mediaUpload = uploadMedia.fields([
+  { name: "images", maxCount: 10 }, 
+  { name: "video", maxCount: 1 }
+]);
 
-// Các routes khác giữ nguyên...
-// router.get("/feed", ...);
+// ==========================================
+// 1. QUẢN LÝ BÀI VIẾT (POSTS)
+// ==========================================
 
-      // Đăng bài
-router.get("/feed", postController.getFeed);                 // Lấy bảng tin
-router.patch("/:postId", verifyToken, postController.updatePost); // Sửa bài
-router.delete("/:postId", verifyToken, postController.deletePost); // Xóa bài
-router.post("/clone", verifyToken, postController.cloneSnapshot); // Lưu về kho
-router.post("/:postId/like", verifyToken, postController.toggleLike);
+// Tạo bài viết từ nhật ký hàng ngày (WorkoutLog/DietLog)
+router.post("/", verifyToken, mediaUpload, postController.createPost);
+
+// Chia sẻ lịch Master (Lịch tập/ăn gốc của bản thân)
+router.post("/share-master", verifyToken, postController.shareMasterPlan);
+
+// Chia sẻ bài viết từ Kho lưu trữ (Saved Library)
+router.post("/share-library", verifyToken, mediaUpload, postController.shareFromLibrary);
+
+// Lấy bảng tin (Feed) & Chi tiết bài viết
+router.get("/feed", postController.getFeed);
 router.get("/:postId", postController.getPostById);
-router.post("/:postId/comment", verifyToken, postController.addComment);
-// Lấy danh sách bình luận (Không cần đăng nhập cũng xem được, hoặc tuỳ bạn cấu hình authMiddleware)
+
+// Sửa & Xóa bài viết
+router.put("/:postId", verifyToken, postController.updatePost); // Dùng PUT hoặc PATCH tùy bạn
+router.delete("/:postId", verifyToken, postController.deletePost);
+
+// ==========================================
+// 2. TƯƠNG TÁC (LIKE & COMMENT)
+// ==========================================
+
+// Thả tim
+router.post("/:postId/like", verifyToken, postController.toggleLike);
+
+// Bình luận
 router.get("/:postId/comments", postController.getComments);
-
-// Sửa bình luận (Cần đăng nhập)
+router.post("/:postId/comment", verifyToken, postController.addComment);
 router.put("/comment/:commentId", verifyToken, postController.updateComment);
-
-// Xóa bình luận (Cần đăng nhập)
 router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
+
+// ==========================================
+// 3. TÍNH NĂNG CLONE (SAO CHÉP)
+// ==========================================
+
+// Lưu lịch từ bài đăng của người khác về nhật ký của mình
 router.post("/clone", verifyToken, postController.cloneSnapshot);
+
 module.exports = router;

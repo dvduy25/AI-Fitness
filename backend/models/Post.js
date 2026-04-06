@@ -1,3 +1,4 @@
+// models/Post.js
 const mongoose = require("mongoose");
 
 function imageLimit(val) {
@@ -14,12 +15,21 @@ const postSchema = new mongoose.Schema({
   video: { type: String, default: null },
 
   // ==========================================
+  // THÊM: PHÂN LOẠI BÀI VIẾT ĐỂ FRONTEND RENDER UI ĐÚNG
+  // ==========================================
+  postType: { 
+    type: String, 
+    enum: ['text', 'workout_log', 'diet_log', 'master_workout', 'master_diet'], 
+    default: 'text' 
+  },
+
+  // ==========================================
   // LƯU BẢN SAO (SNAPSHOT) THAY VÌ LƯU ID
   // ==========================================
-  originalWorkoutId: { type: mongoose.Schema.Types.ObjectId, ref: 'WorkoutLog' },
+  // Bỏ 'ref' cứng, vì ID này giờ có thể là WorkoutLog, DailyDietLog, MasterWorkoutPlan, hoặc MealPlan
+  originalReferenceId: { type: mongoose.Schema.Types.ObjectId, default: null }, 
+  
   workoutSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
-
-  originalDietId: { type: mongoose.Schema.Types.ObjectId, ref: 'DailyDietLog' },
   dietSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
 
   // ==========================================
