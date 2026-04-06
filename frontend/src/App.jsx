@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-// ĐÃ THÊM: Import icon Crown cho gói VIP
 import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown } from 'lucide-react'; 
 
 // Import các trang (Components)
@@ -11,9 +10,13 @@ import MealPlanManager from "./MealPlanManager";
 import WorkoutPlanManager from "./WorkoutPlanManager"; 
 import DietHistory from "./DietHistory";
 import WorkoutTracker from "./WorkoutTracker";
-
-// ĐÃ THÊM: Import trang PremiumUpgrade (Sửa đường dẫn nếu bạn để ở thư mục khác nhé)
 import PremiumUpgrade from "./PremiumUpgrade"; 
+
+// ==========================================
+// ĐÃ THÊM: Import Component FloatingBot
+// (Nhớ đổi đường dẫn nếu bạn lưu file này ở thư mục khác, VD: "./components/FloatingBot")
+// ==========================================
+import FloatingBot from "./FloatingBot"; 
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -44,7 +47,6 @@ const App = () => {
     );
   }
 
-  
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
     { path: "/meal-plan", icon: <Utensils className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Ăn" },
@@ -89,7 +91,6 @@ const App = () => {
 
           {/* Group Nút bên phải (Premium + Đăng Xuất) */}
           <div className="flex items-center gap-3">
-            {/* ĐÃ THÊM: Nút Nâng cấp VIP (Desktop) */}
             <Link 
               to="/premium"
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-white font-bold rounded-xl transition-all shadow-lg shadow-yellow-500/20"
@@ -116,7 +117,6 @@ const App = () => {
           </div>
           
           <div className="flex items-center gap-2">
-            {/* ĐÃ THÊM: Nút VIP (Mobile) */}
             <Link 
               to="/premium"
               className="p-2 text-yellow-400 hover:text-yellow-300 bg-yellow-500/10 hover:bg-yellow-500/20 rounded-lg flex items-center gap-1 font-bold text-sm"
@@ -144,14 +144,18 @@ const App = () => {
             <Route path="/workout-plan" element={<WorkoutPlanManager />} />
             <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
             <Route path="/workout-tracker" element={<WorkoutTracker />} />
-            
-            {/* ĐÃ THÊM: Route cho trang Nạp Premium */}
             <Route path="/premium" element={<PremiumUpgrade />} />
             
             {/* Fallback route */}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
+
+        {/* ========================================== */}
+        {/* ĐÃ THÊM: COMPONENT CON BOT NỔI */}
+        {/* Đặt ngoài vùng <main> và trên Navigation Bar của Mobile để nó luôn đè lên các trang */}
+        {/* ========================================== */}
+        <FloatingBot />
 
         {/* ========================================== */}
         {/* BOTTOM NAVIGATION MOBILE */}
