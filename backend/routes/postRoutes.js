@@ -20,7 +20,7 @@ const mediaUpload = uploadMedia.fields([
 router.post("/", verifyToken, mediaUpload, postController.createPost);
 
 // Chia sẻ lịch Master (Lịch tập/ăn gốc của bản thân)
-router.post("/share-master", verifyToken, postController.shareMasterPlan);
+router.post("/share-master", verifyToken, mediaUpload, postController.shareMasterPlan);
 
 // Chia sẻ bài viết từ Kho lưu trữ (Saved Library)
 router.post("/share-library", verifyToken, mediaUpload, postController.shareFromLibrary);
