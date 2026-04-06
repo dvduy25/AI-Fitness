@@ -37,4 +37,5 @@ router.put("/comment/:commentId", verifyToken, postController.updateComment);
 
 // Xóa bình luận (Cần đăng nhập)
 router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
+router.post("/clone", verifyToken, postController.cloneSnapshot);
 module.exports = router;

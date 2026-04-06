@@ -2,6 +2,8 @@ const Post = require("../models/Post");
 const User = require("../models/User");
 const WorkoutLog = require("../models/WorkoutLog");
 const DailyDietLog = require("../models/DailyDietLog");
+const MasterWorkoutPlan = require("../models/WorkoutPlan");
+const MealPlan = require("../models/MealPlan");
 const mongoose = require("mongoose");
 
 // ==========================================
@@ -335,6 +337,44 @@ exports.getPostById = async (req, res) => {
     if (error.kind === "ObjectId") {
       return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
     }
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+// Thêm import các Model Master ở đầu file postController.js
+
+
+// ==========================================
+// CHIA SẺ LỊCH TẬP MẪU HOẶC LỊCH ĂN MẪU LÊN BẢNG TIN
+// ==========================================
+exports.shareMasterPlan = async (req, res) => {
+  try {
+    const { content, shareType } = req.body; // shareType: 'workout' hoặc 'diet'
+    const userId = req.user.id;
+
+    let workoutSnapshot = null;
+    let dietSnapshot = null;
+
+    if (shareType === 'workout') {
+      const masterPlan = await MasterWorkoutPlan.findOne({ userId });
+      if (!masterPlan) return res.status(404).json({ message: "Bạn chưa có lịch tập để chia sẻ!" });
+      workoutSnapshot = masterPlan.toObject();
+    } else if (shareType === 'diet') {
+      const mealPlan = await MealPlan.findOne({ userId });
+      if (!mealPlan) return res.status(404).json({ message: "Bạn chưa có thực đơn để chia sẻ!" });
+      dietSnapshot = mealPlan.toObject();
+    }
+
+    const newPost = new Post({
+      userId,
+      content: content || `Tôi vừa chia sẻ một lịch ${shareType === 'workout' ? 'tập' : 'ăn'} mới!`,
+      workoutSnapshot,
+      dietSnapshot
+      // (Có thể thêm xử lý req.files ảnh/video ở đây giống hàm createPost cũ)
+    });
+
+    await newPost.save();
+    res.status(201).json({ success: true, message: "Chia sẻ lịch thành công!", post: newPost });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 };

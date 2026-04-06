@@ -29,6 +29,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const { startDailyClosingJob } = require('./services/cronService');
 const gamificationRoutes = require('./routes/gamificationRoutes');
 const postRoutes = require('./routes/postRoutes');
+const libraryRoutes = require('./routes/libraryRoutes');
 const app = express();
 const path = require('path'); // Nhớ import thư viện path ở trên cùng file
 
@@ -74,6 +75,7 @@ app.use("/api/admin", adminRoutes);
 // BƯỚC 2: KHAI BÁO ROUTER API
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/posts', postRoutes);
+app.use('/api/library', libraryRoutes);
 // BƯỚC 3: KÍCH HOẠT CRONJOB NGAY TRƯỚC KHI APP LISTEN
 startDailyClosingJob();
 // Bắt lỗi 404 cho các đường dẫn không tồn tại
