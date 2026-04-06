@@ -6,44 +6,39 @@ const DailyDietLog = require('../models/DailyDietLog');
 const getUserStats = async (req, res) => {
   try {
     const userId = req.user.id; 
-
-    // 1. Lấy thông tin Gamification cơ bản
     let stats = await Gamification.findOne({ userId });
-    if (!stats) {
-      stats = new Gamification({ userId });
-      await stats.save();
-    }
+    if (!stats) stats = new Gamification({ userId });
 
-    // ==========================================
-    // 2. TÍNH TOÁN DỮ LIỆU TUẦN VÀ THÁNG
-    // ==========================================
     const now = new Date();
-    
-    // Tìm ngày Thứ 2 của tuần hiện tại
-    const dayOfWeek = now.getDay() || 7; // Chuyển Chủ Nhật (0) thành 7
+    const dayOfWeek = now.getDay() || 7; 
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1, 0, 0, 0);
-    
-    // Tìm ngày mùng 1 của tháng hiện tại
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
 
-    // Chạy song song 4 lệnh đếm để đảm bảo API vẫn chạy siêu nhanh
-    const [workoutsThisWeek, workoutsThisMonth, dietThisWeek, dietThisMonth] = await Promise.all([
-      WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfWeek } }),
-      WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfMonth } }),
-      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }),
-      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } })
+    // Chạy song song 6 lệnh đếm (2 trọn đời + 2 tuần + 2 tháng)
+    const [
+      realWorkouts, realDietDays,
+      workoutsThisWeek, workoutsThisMonth,
+      dietThisWeek, dietThisMonth
+    ] = await Promise.all([
+      WorkoutLog.countDocuments({ userId, isCompleted: true }), // Trọn đời
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true }), // Trọn đời
+      
+      WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfWeek } }), // Tuần
+      WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfMonth } }), // Tháng
+      
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }), // Tuần
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }) // Tháng
     ]);
 
-    // Trả về cho Frontend cả stats gốc + dữ liệu theo giai đoạn (periodStats)
+    // Ghi đè số trọn đời vào Database để chốt sổ
+    stats.totalWorkoutSessions = realWorkouts;
+    stats.totalPerfectDietDays = realDietDays;
+    await stats.save();
+
     res.status(200).json({ 
       success: true, 
       stats, 
-      periodStats: {
-        workoutsThisWeek,
-        workoutsThisMonth,
-        dietThisWeek,
-        dietThisMonth
-      }
+      periodStats: { workoutsThisWeek, workoutsThisMonth, dietThisWeek, dietThisMonth }
     });
 
   } catch (error) {

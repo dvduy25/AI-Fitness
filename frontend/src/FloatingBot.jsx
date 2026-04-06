@@ -5,7 +5,7 @@ import axios from 'axios';
 export default function FloatingBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [stats, setStats] = useState(null);
-  const [periodStats, setPeriodStats] = useState(null); // Thêm state lưu dữ liệu tuần/tháng
+  const [periodStats, setPeriodStats] = useState(null); 
   const [loading, setLoading] = useState(false);
 
   const fetchGamificationStats = async () => {
@@ -20,7 +20,7 @@ export default function FloatingBot() {
 
       if (response.data.success) {
         setStats(response.data.stats);
-        setPeriodStats(response.data.periodStats); // Lưu dữ liệu mới trả về
+        setPeriodStats(response.data.periodStats); 
       }
     } catch (error) {
       if (error.response && error.response.status === 401) {
@@ -45,9 +45,10 @@ export default function FloatingBot() {
 
   // Dữ liệu mặc định
   const displayStats = stats || {
-    rankPoints: 0, streak: 0,
+    rankPoints: 0, streak: 0, totalWorkoutSessions: 0,
     currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 }
   };
+  const { totalWorkoutSessions } = displayStats;
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers;
 
   // Dữ liệu Tuần/Tháng mặc định
@@ -90,8 +91,19 @@ export default function FloatingBot() {
               </div>
             </div>
 
-            {/* 2. Thành tích Tuần / Tháng (Giao diện MỚI) */}
+            {/* 2. Bảng Thành Tích */}
             <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-800 space-y-2">
+               {/* Trọn đời: CHỈ HIỂN THỊ BUỔI TẬP */}
+               <div className="flex justify-between items-center text-xs pb-2 border-b border-gray-700/50">
+                  <span className="text-emerald-400 font-semibold">Tập trọn đời:</span>
+                  <div className="flex gap-4">
+                     <span title="Buổi tập" className="flex items-center gap-1">
+                        <Activity className="w-3.5 h-3.5 text-blue-400"/>
+                        <strong className="text-gray-200">{loading ? '-' : totalWorkoutSessions} buổi</strong>
+                     </span>
+                  </div>
+               </div>
+               
                {/* Tuần */}
                <div className="flex justify-between items-center text-xs">
                   <span className="text-gray-400 font-semibold">Tuần này:</span>
@@ -106,6 +118,7 @@ export default function FloatingBot() {
                      </span>
                   </div>
                </div>
+               
                {/* Tháng */}
                <div className="flex justify-between items-center text-xs pt-2 border-t border-gray-700/50">
                   <span className="text-gray-400 font-semibold">Tháng này:</span>
