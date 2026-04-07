@@ -39,7 +39,11 @@ exports.createPost = async (req, res) => {
     let postType = 'text';
 
     if (workoutLogId) {
-      const workout = await WorkoutLog.findById(workoutLogId);
+      // Đã thêm populate cho nhật ký tập luyện (áp dụng cho cả 2 kiểu cấu trúc phổ biến)
+      const workout = await WorkoutLog.findById(workoutLogId)
+        .populate('exercises.exerciseId', 'name')
+        .populate('weeklySchedule.exercises.exerciseId', 'name'); 
+        
       if (workout) {
         workoutSnapshot = workout.toObject();
         postType = 'workout_log';
@@ -86,7 +90,10 @@ exports.shareMasterPlan = async (req, res) => {
     let postType = shareType === 'workout' ? 'master_workout' : 'master_diet';
 
     if (shareType === 'workout') {
-      const plan = await MasterWorkoutPlan.findOne({ userId });
+      // Đã thêm populate lấy tên bài tập
+      const plan = await MasterWorkoutPlan.findOne({ userId })
+        .populate('weeklySchedule.exercises.exerciseId', 'name');
+        
       if (!plan) return res.status(404).json({ message: "Bạn chưa thiết lập lịch tập mẫu!" });
       workoutSnapshot = plan.toObject();
     } else {
@@ -121,7 +128,10 @@ exports.shareFromLibrary = async (req, res) => {
     const userId = req.user.id;
     const { images, video } = handleMediaFiles(req);
 
-    const savedItem = await SavedLibrary.findOne({ _id: libraryId, userId });
+    // Đã thêm populate lấy tên bài tập từ kho lưu trữ
+    const savedItem = await SavedLibrary.findOne({ _id: libraryId, userId })
+      .populate('workoutData.weeklySchedule.exercises.exerciseId', 'name');
+      
     if (!savedItem) return res.status(404).json({ message: "Mục này không có trong kho của bạn" });
 
     const newPost = new Post({
