@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe } from 'lucide-react'; 
+// ĐÃ THÊM: Import icon Bookmark cho Kho lưu trữ
+import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark } from 'lucide-react'; 
 
 // Import các trang (Components)
 import AuthPage from "./AuthPage"; 
@@ -12,9 +13,10 @@ import DietHistory from "./DietHistory";
 import WorkoutTracker from "./WorkoutTracker";
 import PremiumUpgrade from "./PremiumUpgrade"; 
 import Community from "./Community";
-
-// ĐÃ THÊM: Import trang chi tiết bài viết
 import PostDetail from "./PostDetail"; 
+
+// ĐÃ THÊM: Import trang Kho lưu trữ (MyLibrary)
+import MyLibrary from "./MyLibrary";
 
 // Import Component FloatingBot
 import FloatingBot from "./FloatingBot"; 
@@ -48,10 +50,11 @@ const App = () => {
     );
   }
 
-  // Menu điều hướng
+  // Menu điều hướng (ĐÃ THÊM KHO LƯU TRỮ)
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
     { path: "/community", icon: <Globe className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Cộng Đồng" },
+    { path: "/library", icon: <Bookmark className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Kho Lưu" }, // Đã thêm
     { path: "/meal-plan", icon: <Utensils className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Ăn" },
     { path: "/workout-plan", icon: <Dumbbell className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Tập" },
     { path: "/diet-history", icon: <History className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Sử" },
@@ -143,9 +146,10 @@ const App = () => {
           <Routes>
             <Route path="/" element={<TodayDashboard />} />
             <Route path="/community" element={<Community />} />
-            
-            {/* ĐÃ THÊM: Route bắt ID bài viết để mở PostDetail */}
             <Route path="/post/:postId" element={<PostDetail />} />
+            
+            {/* ĐÃ THÊM: Route trỏ tới MyLibrary */}
+            <Route path="/library" element={<MyLibrary />} />
 
             <Route path="/diet-history" element={<DietHistory />} /> 
             <Route path="/meal-plan" element={<MealPlanManager />} />
@@ -167,19 +171,19 @@ const App = () => {
         {/* ========================================== */}
         {/* BOTTOM NAVIGATION MOBILE */}
         {/* ========================================== */}
-        <nav className="md:hidden fixed bottom-0 left-0 w-full bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 z-50 pb-safe">
-          <div className="flex justify-around items-center h-16 px-1">
+        <nav className="md:hidden fixed bottom-0 left-0 w-full bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 z-50 pb-safe overflow-x-auto">
+          <div className="flex justify-between items-center h-16 px-1 min-w-max">
             {navItems.map((item) => (
               <NavLink 
                 key={item.path} 
                 to={item.path}
                 className={({ isActive }) => `
-                  flex flex-col items-center justify-center w-full h-full space-y-1 transition-colors
+                  flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors
                   ${isActive ? "text-emerald-400" : "text-gray-500"}
                 `}
               >
                 {item.icon}
-                <span className="text-[9px] font-bold uppercase tracking-tighter">{item.label}</span>
+                <span className="text-[9px] font-bold uppercase tracking-tighter text-center line-clamp-1">{item.label}</span>
               </NavLink>
             ))}
           </div>
