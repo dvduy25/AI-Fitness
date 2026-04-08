@@ -201,13 +201,20 @@ exports.addComment = async (req, res) => {
     const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
 
-    const newComment = new Comment({ postId: post._id, userId: req.user.id, content });
+    const newComment = new Comment({ 
+      postId: post._id, 
+      userId: req.user.id, 
+      content 
+    });
     await newComment.save();
 
     post.commentsCount += 1;
     await post.save();
 
-    res.status(201).json({ success: true, comment: newComment });
+    // POPULATE THÔNG TIN USER Ở ĐÂY ĐỂ TRẢ VỀ FRONTEND
+    const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar");
+
+    res.status(201).json({ success: true, comment: populatedComment });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

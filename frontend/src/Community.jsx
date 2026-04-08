@@ -16,7 +16,6 @@ const PlanDetailsModal = ({ plan, onClose }) => {
   if (!plan) return null;
   const { type, data } = plan;
 
-  // Hàm quét tìm tên bài tập thông minh
   const getExerciseName = (ex) => {
     if (!ex) return "Bài tập";
     if (ex.exerciseId && typeof ex.exerciseId === 'object') return ex.exerciseId.name || ex.exerciseId.title || "Bài tập";
@@ -25,7 +24,7 @@ const PlanDetailsModal = ({ plan, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div className="bg-gray-900 border border-gray-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className={`p-4 flex items-center justify-between border-b ${type === 'workout' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-yellow-500/30 bg-yellow-500/5'}`}>
@@ -150,32 +149,220 @@ const PlanDetailsModal = ({ plan, onClose }) => {
 };
 
 // ========================================================
-// COMPONENT: CAROUSEL MEDIA (Hiển thị media đã đăng)
+// COMPONENT: CAROUSEL MEDIA & XEM ẢNH TO
 // ========================================================
-const MediaCarousel = ({ images = [], video = null, onMediaClick }) => {
+const MediaCarousel = ({ images = [], video = null, onMediaClick, enlargeOnClick = false }) => {
   const mediaList = [ ...(images || []).map(img => ({ type: 'image', url: img })), ...(video ? [{ type: 'video', url: video }] : []) ];
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [isFullScreen, setIsFullScreen] = useState(false); // Trạng thái xem ảnh to
+
   if (mediaList.length === 0) return null;
   const nextMedia = (e) => { e.stopPropagation(); setCurrentIndex((prev) => (prev + 1) % mediaList.length); };
   const prevMedia = (e) => { e.stopPropagation(); setCurrentIndex((prev) => (prev === 0 ? mediaList.length - 1 : prev - 1)); };
 
+  const handleWrapperClick = (e) => {
+    e.stopPropagation();
+    // Nếu cho phép phóng to và đang xem ảnh, thì mở Modal Fullscreen
+    if (enlargeOnClick && mediaList[currentIndex].type === 'image') {
+      setIsFullScreen(true);
+    } else if (onMediaClick) {
+      onMediaClick(e);
+    }
+  };
+
   return (
-    <div className="relative w-full aspect-square md:aspect-[4/5] bg-black rounded-xl overflow-hidden mb-4 group cursor-pointer border border-gray-700/50" onClick={onMediaClick}>
-      {mediaList[currentIndex].type === 'image' ? (
-        <img src={mediaList[currentIndex].url} alt="media" className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-300" />
-      ) : (
-        <div className="relative w-full h-full flex items-center justify-center bg-black group-hover:opacity-90 transition-opacity duration-300">
-          <video src={mediaList[currentIndex].url} className="w-full h-full object-contain pointer-events-none" />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/10"><div className="bg-gray-900/70 p-4 rounded-full backdrop-blur-md shadow-lg border border-gray-600"><Play className="w-8 h-8 text-white fill-white ml-1" /></div></div>
+    <>
+      <div className={`relative w-full aspect-square md:aspect-[4/5] bg-black rounded-xl overflow-hidden mb-4 group border border-gray-700/50 ${enlargeOnClick && mediaList[currentIndex].type === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'}`} onClick={handleWrapperClick}>
+        {mediaList[currentIndex].type === 'image' ? (
+          <img src={mediaList[currentIndex].url} alt="media" className="w-full h-full object-cover group-hover:opacity-90 transition-opacity duration-300" />
+        ) : (
+          <div className="relative w-full h-full flex items-center justify-center bg-black group-hover:opacity-90 transition-opacity duration-300">
+            <video src={mediaList[currentIndex].url} controls className="w-full h-full object-contain pointer-events-auto" />
+          </div>
+        )}
+        {mediaList.length > 1 && (
+          <>
+            {currentIndex > 0 && <button onClick={prevMedia} className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full z-10 hover:bg-black/70"><ChevronLeft className="w-5 h-5" /></button>}
+            {currentIndex < mediaList.length - 1 && <button onClick={nextMedia} className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full z-10 hover:bg-black/70"><ChevronRight className="w-5 h-5" /></button>}
+            <div className="absolute top-4 right-4 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full z-10">{currentIndex + 1}/{mediaList.length}</div>
+          </>
+        )}
+      </div>
+
+      {/* MODAL PHÓNG TO ẢNH (Hiển thị khi isFullScreen = true) */}
+      {isFullScreen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200" onClick={(e) => { e.stopPropagation(); setIsFullScreen(false); }}>
+          <button className="absolute top-4 right-4 text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-800 p-3 rounded-full transition-colors z-[101]">
+            <X className="w-6 h-6" />
+          </button>
+          <img 
+            src={mediaList[currentIndex].url} 
+            alt="fullscreen" 
+            className="max-w-full max-h-screen object-contain cursor-zoom-out" 
+            onClick={(e) => { e.stopPropagation(); setIsFullScreen(false); }} 
+          />
         </div>
       )}
-      {mediaList.length > 1 && (
-        <>
-          {currentIndex > 0 && <button onClick={prevMedia} className="absolute left-3 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full z-10"><ChevronLeft className="w-5 h-5" /></button>}
-          {currentIndex < mediaList.length - 1 && <button onClick={nextMedia} className="absolute right-3 top-1/2 -translate-y-1/2 bg-black/40 text-white p-2 rounded-full z-10"><ChevronRight className="w-5 h-5" /></button>}
-          <div className="absolute top-4 right-4 bg-black/60 text-white text-xs px-2.5 py-1 rounded-full z-10">{currentIndex + 1}/{mediaList.length}</div>
-        </>
-      )}
+    </>
+  );
+};
+
+// ========================================================
+// COMPONENT: CHI TIẾT BÀI VIẾT (MODAL)
+// ========================================================
+const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, handleSaveToLibrary, setViewingPlan, setSelectedUserFilter }) => {
+  const [comments, setComments] = useState([]);
+  const [newComment, setNewComment] = useState("");
+  const [loadingComments, setLoadingComments] = useState(true);
+  const isMyPost = post.userId?._id === currentUserId || post.userId === currentUserId;
+  const hasLiked = post.likes.includes(currentUserId);
+
+  useEffect(() => {
+    const fetchComments = async () => {
+      try {
+        const response = await axios.get(`${API_BASE_URL}/api/posts/${post._id}/comments`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (response.data.success) {
+          setComments(response.data.comments || []);
+        }
+      } catch (error) {
+        console.error("Lỗi tải bình luận:", error);
+      } finally {
+        setLoadingComments(false);
+      }
+    };
+    fetchComments();
+  }, [post._id, token]);
+
+  const handlePostComment = async (e) => {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/posts/${post._id}/comments`, { content: newComment }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) {
+        setComments([...comments, response.data.comment]);
+        setNewComment("");
+      }
+    } catch (error) {
+      alert("Lỗi khi đăng bình luận. Có vẻ API Backend chưa được cấu hình!");
+      console.error(error);
+    }
+  };
+
+  const handleUserClick = () => {
+    setSelectedUserFilter({ id: post.userId?._id, name: post.userId?.name || "Người dùng" });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
+      <div className="bg-gray-900 border border-gray-700 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col md:flex-row h-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+        
+        {/* CỘT TRÁI: Nội dung bài viết */}
+        {(post.images?.length > 0 || post.video) && (
+          <div className="w-full md:w-3/5 bg-black flex items-center justify-center p-4 border-b md:border-b-0 md:border-r border-gray-700 overflow-hidden">
+            {/* Truyền enlargeOnClick = true để khi bấm vào sẽ phóng to */}
+            <MediaCarousel images={post.images} video={post.video} enlargeOnClick={true} />
+          </div>
+        )}
+
+        {/* CỘT PHẢI: Thông tin, tương tác và bình luận */}
+        <div className={`w-full flex flex-col bg-gray-900 ${post.images?.length > 0 || post.video ? 'md:w-2/5' : ''} h-full`}>
+          
+          {/* Header Post Detail */}
+          <div className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
+            <div className="flex items-center gap-3 cursor-pointer group" onClick={handleUserClick}>
+              <img src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-700 group-hover:ring-emerald-500 transition-all" />
+              <div>
+                <h4 className="font-bold text-gray-100 group-hover:text-emerald-400 transition-colors">{post.userId?.name || "Người dùng"}</h4>
+                <p className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-full transition-colors"><X className="w-5 h-5"/></button>
+          </div>
+
+          {/* Body Scrollable */}
+          <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
+            <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
+
+            {/* Hiển thị plan đính kèm */}
+            {post.workoutSnapshot && (
+              <div onClick={() => setViewingPlan({ type: 'workout', data: post.workoutSnapshot })} className="bg-gray-800 border border-emerald-500/30 p-3 rounded-xl flex items-center justify-between group cursor-pointer hover:bg-gray-700 transition-colors">
+                <div className="flex items-center gap-3 text-emerald-400">
+                  <div className="p-2 bg-emerald-500/10 rounded-lg"><Activity className="w-5 h-5" /></div>
+                  <div>
+                    <p className="font-bold text-sm text-gray-200">Lịch tập <span className="text-xs text-gray-500 font-normal ml-1">(Chạm xem)</span></p>
+                  </div>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); handleSaveToLibrary(e, post._id, 'workout'); }} className="p-2 text-emerald-400 hover:bg-emerald-500/20 rounded-lg"><Bookmark className="w-4 h-4" /></button>
+              </div>
+            )}
+            
+            {post.dietSnapshot && (
+              <div onClick={() => setViewingPlan({ type: 'diet', data: post.dietSnapshot })} className="bg-gray-800 border border-yellow-500/30 p-3 rounded-xl flex items-center justify-between group cursor-pointer hover:bg-gray-700 transition-colors">
+                <div className="flex items-center gap-3 text-yellow-400">
+                  <div className="p-2 bg-yellow-500/10 rounded-lg"><Utensils className="w-5 h-5" /></div>
+                  <div>
+                    <p className="font-bold text-sm text-gray-200">Thực đơn <span className="text-xs text-gray-500 font-normal ml-1">(Chạm xem)</span></p>
+                  </div>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); handleSaveToLibrary(e, post._id, 'diet'); }} className="p-2 text-yellow-400 hover:bg-yellow-500/20 rounded-lg"><Bookmark className="w-4 h-4" /></button>
+              </div>
+            )}
+
+            {/* Nút Like */}
+            <div className="flex items-center gap-4 py-3 border-y border-gray-700/50">
+              <button onClick={() => onToggleLike(post._id)} className="flex items-center gap-2 text-gray-400 hover:text-pink-500">
+                <Heart className={`w-6 h-6 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
+                <span className="font-bold text-sm">{post.likes?.length || 0} Thích</span>
+              </button>
+              <div className="flex items-center gap-2 text-gray-400">
+                <MessageCircle className="w-6 h-6" />
+                <span className="font-bold text-sm">{comments.length || post.commentsCount || 0} Bình luận</span>
+              </div>
+            </div>
+
+            {/* Danh sách bình luận */}
+            <div className="space-y-4 pb-2">
+              {loadingComments ? (
+                <p className="text-center text-gray-500 text-sm">Đang tải bình luận...</p>
+              ) : comments.length > 0 ? (
+                comments.map((comment, idx) => (
+                  <div key={idx} className="flex gap-3">
+                    <img src={comment.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-8 h-8 rounded-full object-cover mt-1" />
+                    <div className="bg-gray-800 px-4 py-2.5 rounded-2xl rounded-tl-none max-w-[85%] border border-gray-700/50">
+                      <p className="font-bold text-sm text-gray-200">{comment.userId?.name || "Người dùng"}</p>
+                      <p className="text-sm text-gray-300 mt-0.5">{comment.content}</p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-gray-500 text-sm italic">Chưa có bình luận nào. Hãy là người đầu tiên!</p>
+              )}
+            </div>
+          </div>
+
+          {/* Form nhập bình luận */}
+          <div className="p-4 border-t border-gray-700/50 bg-gray-900 flex-shrink-0">
+            <form onSubmit={handlePostComment} className="flex items-center gap-2">
+              <input 
+                type="text" 
+                value={newComment} 
+                onChange={(e) => setNewComment(e.target.value)} 
+                placeholder="Viết bình luận..." 
+                className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-4 py-2.5 text-sm text-white focus:outline-none focus:border-emerald-500 transition-colors"
+              />
+              <button type="submit" disabled={!newComment.trim()} className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white p-2.5 rounded-full transition-colors flex-shrink-0">
+                <Send className="w-4 h-4" />
+              </button>
+            </form>
+          </div>
+          
+        </div>
+      </div>
     </div>
   );
 };
@@ -188,18 +375,17 @@ export default function Community() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Trạng thái Tìm kiếm & Lọc
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserFilter, setSelectedUserFilter] = useState(null);
 
-  // Trạng thái tạo bài viết
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [attachPlan, setAttachPlan] = useState(null); 
   
-  // Trạng thái Modal
   const [viewingPlan, setViewingPlan] = useState(null); 
+  const [viewingPostDetails, setViewingPostDetails] = useState(null); 
+
   const [showArchiveModal, setShowArchiveModal] = useState(false); 
   const [archiveSelectionType, setArchiveSelectionType] = useState(null);
   const [archivedPlansList, setArchivedPlansList] = useState([]);
@@ -239,12 +425,10 @@ export default function Community() {
     setShowArchiveModal(false);
   };
 
-  // Xóa ảnh khỏi danh sách chờ đăng
   const handleRemovePreviewImage = (indexToRemove) => {
     setSelectedImages(prev => prev.filter((_, idx) => idx !== indexToRemove));
   };
 
-  // Xóa video khỏi danh sách chờ đăng
   const handleRemovePreviewVideo = () => {
     setSelectedVideo(null);
     if (videoInputRef.current) videoInputRef.current.value = "";
@@ -294,6 +478,7 @@ export default function Community() {
     try {
       await axios.delete(`${API_BASE_URL}/api/posts/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
       setPosts(posts.filter(p => p._id !== postId)); 
+      if (viewingPostDetails?._id === postId) setViewingPostDetails(null); 
     } catch (error) {}
   };
 
@@ -302,9 +487,16 @@ export default function Community() {
       const postIndex = posts.findIndex(p => p._id === postId);
       const isLiked = posts[postIndex].likes.includes(currentUserId);
       const updatedPosts = [...posts];
+      
       if (isLiked) updatedPosts[postIndex].likes = updatedPosts[postIndex].likes.filter(id => id !== currentUserId);
       else updatedPosts[postIndex].likes.push(currentUserId);
+      
       setPosts(updatedPosts);
+      
+      if (viewingPostDetails && viewingPostDetails._id === postId) {
+          setViewingPostDetails(updatedPosts[postIndex]);
+      }
+
       await axios.post(`${API_BASE_URL}/api/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
     } catch (error) { fetchFeed(); }
   };
@@ -323,10 +515,24 @@ export default function Community() {
   return (
     <div className="max-w-2xl mx-auto p-4 md:p-6 w-full animate-in fade-in duration-500 relative">
       
-      {/* MODAL CHI TIẾT */}
+      {/* MODAL CHI TIẾT BÀI VIẾT */}
+      {viewingPostDetails && (
+        <PostDetailsModal 
+          post={viewingPostDetails} 
+          onClose={() => setViewingPostDetails(null)}
+          currentUserId={currentUserId}
+          token={token}
+          onToggleLike={handleToggleLike}
+          handleSaveToLibrary={handleSaveToLibrary}
+          setViewingPlan={setViewingPlan}
+          setSelectedUserFilter={setSelectedUserFilter}
+        />
+      )}
+
+      {/* MODAL CHI TIẾT LỊCH TẬP/ĂN */}
       <PlanDetailsModal plan={viewingPlan} onClose={() => setViewingPlan(null)} />
 
-      {/* MODAL CHỌN LỊCH */}
+      {/* MODAL CHỌN LỊCH TỪ KHO */}
       {showArchiveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setShowArchiveModal(false)}>
           <div className="bg-gray-900 border border-gray-700 w-full max-w-sm rounded-2xl shadow-2xl p-5" onClick={e => e.stopPropagation()}>
@@ -434,7 +640,6 @@ export default function Community() {
               <div className="flex gap-2 sm:gap-3">
                 <input type="file" accept="image/*" multiple className="hidden" ref={imageInputRef} onChange={(e) => {
                     const newImages = Array.from(e.target.files);
-                    // Giới hạn chọn tối đa 4 ảnh 1 lúc, cộng dồn với ảnh cũ thì cắt bớt cho đủ 4
                     setSelectedImages(prev => [...prev, ...newImages].slice(0, 4));
                   }} 
                 />
@@ -463,9 +668,10 @@ export default function Community() {
             const hasLiked = post.likes.includes(currentUserId);
 
             return (
-              <div key={post._id} className="bg-gray-800/60 border border-gray-700/60 p-4 md:p-6 rounded-2xl shadow-lg hover:border-gray-600 transition-colors">
+              <div key={post._id} className="bg-gray-800/60 border border-gray-700/60 p-4 md:p-6 rounded-2xl shadow-lg hover:border-gray-600 transition-colors cursor-pointer" onClick={() => setViewingPostDetails(post)}>
                 <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3 cursor-pointer group" onClick={() => {
+                  <div className="flex items-center gap-3 cursor-pointer group" onClick={(e) => {
+                      e.stopPropagation();
                       if (!selectedUserFilter) {
                         setSelectedUserFilter({ id: post.userId?._id, name: post.userId?.name || "Người dùng" });
                         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -477,17 +683,18 @@ export default function Community() {
                       <p className="text-xs text-gray-400 mt-0.5">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
                     </div>
                   </div>
-                  {isMyPost && <button onClick={() => handleDeletePost(post._id)} className="text-gray-500 hover:text-red-400 p-2"><Trash2 className="w-4 h-4" /></button>}
+                  {isMyPost && <button onClick={(e) => { e.stopPropagation(); handleDeletePost(post._id); }} className="text-gray-500 hover:text-red-400 p-2"><Trash2 className="w-4 h-4" /></button>}
                 </div>
 
-                <div onClick={() => navigate(`/post/${post._id}`)} className="cursor-pointer group block mb-3">
+                <div className="group block mb-3">
                   <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
                 </div>
 
-                <MediaCarousel images={post.images} video={post.video} onMediaClick={() => navigate(`/post/${post._id}`)} />
+                {/* Không truyền enlargeOnClick ở trang Feed, ấn vào để mở Modal Post */}
+                <MediaCarousel images={post.images} video={post.video} onMediaClick={(e) => { e.stopPropagation(); setViewingPostDetails(post); }} />
 
                 {post.workoutSnapshot && (
-                  <div onClick={() => setViewingPlan({ type: 'workout', data: post.workoutSnapshot })} className="mt-3 bg-gray-900 border border-emerald-500/30 p-4 rounded-xl flex items-center justify-between group cursor-pointer hover:bg-gray-800 transition-colors">
+                  <div onClick={(e) => { e.stopPropagation(); setViewingPlan({ type: 'workout', data: post.workoutSnapshot }) }} className="mt-3 bg-gray-900 border border-emerald-500/30 p-4 rounded-xl flex items-center justify-between group hover:bg-gray-800 transition-colors">
                     <div className="flex items-center gap-3 text-emerald-400">
                       <div className="p-2.5 bg-emerald-500/10 rounded-lg group-hover:bg-emerald-500/20"><Activity className="w-5 h-5" /></div>
                       <div>
@@ -502,7 +709,7 @@ export default function Community() {
                 )}
                 
                 {post.dietSnapshot && (
-                  <div onClick={() => setViewingPlan({ type: 'diet', data: post.dietSnapshot })} className="mt-3 bg-gray-900 border border-yellow-500/30 p-4 rounded-xl flex items-center justify-between group cursor-pointer hover:bg-gray-800 transition-colors">
+                  <div onClick={(e) => { e.stopPropagation(); setViewingPlan({ type: 'diet', data: post.dietSnapshot }) }} className="mt-3 bg-gray-900 border border-yellow-500/30 p-4 rounded-xl flex items-center justify-between group hover:bg-gray-800 transition-colors">
                     <div className="flex items-center gap-3 text-yellow-400">
                       <div className="p-2.5 bg-yellow-500/10 rounded-lg group-hover:bg-yellow-500/20"><Utensils className="w-5 h-5" /></div>
                       <div>
@@ -517,11 +724,11 @@ export default function Community() {
                 )}
 
                 <div className="flex items-center gap-6 mt-5 pt-4 border-t border-gray-700/50">
-                  <button onClick={() => handleToggleLike(post._id)} className="flex items-center gap-2 text-gray-400 hover:text-pink-500 group">
+                  <button onClick={(e) => { e.stopPropagation(); handleToggleLike(post._id); }} className="flex items-center gap-2 text-gray-400 hover:text-pink-500 group">
                     <Heart className={`w-5 h-5 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
                     <span className="text-sm font-bold">{post.likes?.length || 0}</span>
                   </button>
-                  <button onClick={() => navigate(`/post/${post._id}`)} className="flex items-center gap-2 text-gray-400 hover:text-blue-400"><MessageCircle className="w-5 h-5" /><span className="text-sm font-bold">{post.commentsCount || 0}</span></button>
+                  <button className="flex items-center gap-2 text-gray-400 hover:text-blue-400"><MessageCircle className="w-5 h-5" /><span className="text-sm font-bold">{post.commentsCount || 0}</span></button>
                 </div>
               </div>
             );

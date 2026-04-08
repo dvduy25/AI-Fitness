@@ -42,7 +42,7 @@ router.post("/:postId/like", verifyToken, postController.toggleLike);
 
 // Bình luận
 router.get("/:postId/comments", postController.getComments);
-router.post("/:postId/comment", verifyToken, postController.addComment);
+router.post("/:postId/comments", verifyToken, postController.addComment);
 router.put("/comment/:commentId", verifyToken, postController.updateComment);
 router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
 
