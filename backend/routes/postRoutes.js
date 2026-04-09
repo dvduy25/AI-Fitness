@@ -30,15 +30,18 @@ router.get("/feed", postController.getFeed);
 router.get("/:postId", postController.getPostById);
 
 // Sửa & Xóa bài viết
-router.put("/:postId", verifyToken, postController.updatePost); // Dùng PUT hoặc PATCH tùy bạn
+router.put("/:postId", verifyToken, postController.updatePost);
 router.delete("/:postId", verifyToken, postController.deletePost);
 
 // ==========================================
-// 2. TƯƠNG TÁC (LIKE & COMMENT)
+// 2. TƯƠNG TÁC (LIKE, COMMENT & SHARE)
 // ==========================================
 
 // Thả tim
 router.post("/:postId/like", verifyToken, postController.toggleLike);
+
+// 🌟 ĐÃ THÊM ROUTE NÀY: Gọi API để tăng lượt chia sẻ (Share)
+router.post("/:postId/share", verifyToken, postController.incrementShare);
 
 // Bình luận
 router.get("/:postId/comments", postController.getComments);

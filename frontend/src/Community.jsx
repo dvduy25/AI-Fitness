@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Heart, MessageCircle, Send, Activity, Utensils, 
   Trash2, Image as ImageIcon, Film, X, 
-  Play, ChevronLeft, ChevronRight, Dumbbell, Apple, Bookmark, Clock, Flame, Search, User
+  Play, ChevronLeft, ChevronRight, Dumbbell, Apple, Bookmark, Clock, Flame, Search, User,
+  Eye, Share2 // Đã thêm 2 Icon này
 } from 'lucide-react';
 
 const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
@@ -26,7 +27,6 @@ const PlanDetailsModal = ({ plan, onClose }) => {
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
       <div className="bg-gray-900 border border-gray-700 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
-        {/* Header */}
         <div className={`p-4 flex items-center justify-between border-b ${type === 'workout' ? 'border-emerald-500/30 bg-emerald-500/5' : 'border-yellow-500/30 bg-yellow-500/5'}`}>
           <div className="flex items-center gap-3">
             {type === 'workout' ? <Activity className="text-emerald-400 w-6 h-6" /> : <Utensils className="text-yellow-400 w-6 h-6" />}
@@ -39,7 +39,6 @@ const PlanDetailsModal = ({ plan, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-4">
           
           {/* LỊCH TẬP: CÓ WEEKLY SCHEDULE */}
@@ -154,7 +153,7 @@ const PlanDetailsModal = ({ plan, onClose }) => {
 const MediaCarousel = ({ images = [], video = null, onMediaClick, enlargeOnClick = false }) => {
   const mediaList = [ ...(images || []).map(img => ({ type: 'image', url: img })), ...(video ? [{ type: 'video', url: video }] : []) ];
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFullScreen, setIsFullScreen] = useState(false); // Trạng thái xem ảnh to
+  const [isFullScreen, setIsFullScreen] = useState(false); 
 
   if (mediaList.length === 0) return null;
   const nextMedia = (e) => { e.stopPropagation(); setCurrentIndex((prev) => (prev + 1) % mediaList.length); };
@@ -162,7 +161,6 @@ const MediaCarousel = ({ images = [], video = null, onMediaClick, enlargeOnClick
 
   const handleWrapperClick = (e) => {
     e.stopPropagation();
-    // Nếu cho phép phóng to và đang xem ảnh, thì mở Modal Fullscreen
     if (enlargeOnClick && mediaList[currentIndex].type === 'image') {
       setIsFullScreen(true);
     } else if (onMediaClick) {
@@ -189,7 +187,7 @@ const MediaCarousel = ({ images = [], video = null, onMediaClick, enlargeOnClick
         )}
       </div>
 
-      {/* MODAL PHÓNG TO ẢNH (Hiển thị khi isFullScreen = true) */}
+      {/* MODAL PHÓNG TO ẢNH */}
       {isFullScreen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-md p-4 animate-in fade-in duration-200" onClick={(e) => { e.stopPropagation(); setIsFullScreen(false); }}>
           <button className="absolute top-4 right-4 text-gray-400 hover:text-white bg-gray-800/50 hover:bg-gray-800 p-3 rounded-full transition-colors z-[101]">
@@ -210,11 +208,10 @@ const MediaCarousel = ({ images = [], video = null, onMediaClick, enlargeOnClick
 // ========================================================
 // COMPONENT: CHI TIẾT BÀI VIẾT (MODAL)
 // ========================================================
-const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, handleSaveToLibrary, setViewingPlan, setSelectedUserFilter }) => {
+const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, handleShare, handleSaveToLibrary, setViewingPlan, setSelectedUserFilter }) => {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(true);
-  const isMyPost = post.userId?._id === currentUserId || post.userId === currentUserId;
   const hasLiked = post.likes.includes(currentUserId);
 
   useEffect(() => {
@@ -264,7 +261,6 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
         {/* CỘT TRÁI: Nội dung bài viết */}
         {(post.images?.length > 0 || post.video) && (
           <div className="w-full md:w-3/5 bg-black flex items-center justify-center p-4 border-b md:border-b-0 md:border-r border-gray-700 overflow-hidden">
-            {/* Truyền enlargeOnClick = true để khi bấm vào sẽ phóng to */}
             <MediaCarousel images={post.images} video={post.video} enlargeOnClick={true} />
           </div>
         )}
@@ -272,7 +268,6 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
         {/* CỘT PHẢI: Thông tin, tương tác và bình luận */}
         <div className={`w-full flex flex-col bg-gray-900 ${post.images?.length > 0 || post.video ? 'md:w-2/5' : ''} h-full`}>
           
-          {/* Header Post Detail */}
           <div className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
             <div className="flex items-center gap-3 cursor-pointer group" onClick={handleUserClick}>
               <img src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-700 group-hover:ring-emerald-500 transition-all" />
@@ -284,11 +279,9 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
             <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-full transition-colors"><X className="w-5 h-5"/></button>
           </div>
 
-          {/* Body Scrollable */}
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
             <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
 
-            {/* Hiển thị plan đính kèm */}
             {post.workoutSnapshot && (
               <div onClick={() => setViewingPlan({ type: 'workout', data: post.workoutSnapshot })} className="bg-gray-800 border border-emerald-500/30 p-3 rounded-xl flex items-center justify-between group cursor-pointer hover:bg-gray-700 transition-colors">
                 <div className="flex items-center gap-3 text-emerald-400">
@@ -313,19 +306,35 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
               </div>
             )}
 
-            {/* Nút Like */}
-            <div className="flex items-center gap-4 py-3 border-y border-gray-700/50">
-              <button onClick={() => onToggleLike(post._id)} className="flex items-center gap-2 text-gray-400 hover:text-pink-500">
-                <Heart className={`w-6 h-6 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
-                <span className="font-bold text-sm">{post.likes?.length || 0} Thích</span>
-              </button>
-              <div className="flex items-center gap-2 text-gray-400">
-                <MessageCircle className="w-6 h-6" />
-                <span className="font-bold text-sm">{comments.length || post.commentsCount || 0} Bình luận</span>
+            {/* THANH TƯƠNG TÁC CHI TIẾT BÀI VIẾT */}
+            <div className="flex flex-wrap items-center justify-between py-3 border-y border-gray-700/50 gap-y-2">
+              <div className="flex items-center gap-4">
+                <button onClick={() => onToggleLike(post._id)} className="flex items-center gap-1.5 text-gray-400 hover:text-pink-500 transition-colors">
+                  <Heart className={`w-5 h-5 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
+                  <span className="font-bold text-sm">{post.likes?.length || 0}</span>
+                </button>
+                <div className="flex items-center gap-1.5 text-gray-400">
+                  <MessageCircle className="w-5 h-5" />
+                  <span className="font-bold text-sm">{comments.length || post.commentsCount || 0}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-gray-500 cursor-default" title="Lượt xem">
+                  <Eye className="w-5 h-5" />
+                  <span className="text-sm font-medium">{post.viewsCount || 0}</span>
+                </div>
+                <button onClick={() => handleShare(post._id)} className="flex items-center gap-1.5 text-gray-400 hover:text-green-400 transition-colors" title="Chia sẻ">
+                  <Share2 className="w-5 h-5" />
+                  <span className="font-bold text-sm">{post.sharesCount || 0}</span>
+                </button>
               </div>
+              
+              {(post.workoutSnapshot || post.dietSnapshot) && (
+                <div className="flex items-center gap-1.5 text-yellow-500/80 cursor-default bg-yellow-500/10 px-2 py-1 rounded-full">
+                  <Bookmark className="w-4 h-4 fill-yellow-500/50" />
+                  <span className="text-xs font-bold">{post.savesCount || 0} lượt lưu</span>
+                </div>
+              )}
             </div>
 
-            {/* Danh sách bình luận */}
             <div className="space-y-4 pb-2">
               {loadingComments ? (
                 <p className="text-center text-gray-500 text-sm">Đang tải bình luận...</p>
@@ -345,7 +354,6 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
             </div>
           </div>
 
-          {/* Form nhập bình luận */}
           <div className="p-4 border-t border-gray-700/50 bg-gray-900 flex-shrink-0">
             <form onSubmit={handlePostComment} className="flex items-center gap-2">
               <input 
@@ -410,6 +418,25 @@ export default function Community() {
 
   useEffect(() => { fetchFeed(); }, []);
 
+  // 🌟 HÀM XỬ LÝ CHIA SẺ
+  const handleShare = async (postId) => {
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/posts/${postId}/share`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.data.success) {
+        setPosts(posts.map(p => p._id === postId ? { ...p, sharesCount: res.data.sharesCount } : p));
+        if (viewingPostDetails && viewingPostDetails._id === postId) {
+          setViewingPostDetails(prev => ({ ...prev, sharesCount: res.data.sharesCount }));
+        }
+        navigator.clipboard.writeText(`${window.location.origin}/post/${postId}`);
+        alert("Đã sao chép liên kết bài viết! Bạn có thể gửi cho bạn bè.");
+      }
+    } catch (error) {
+      console.error("Lỗi khi chia sẻ:", error);
+    }
+  };
+
   const openArchiveSelector = async (type) => {
     setArchiveSelectionType(type);
     setShowArchiveModal(true);
@@ -468,8 +495,15 @@ export default function Community() {
   const handleSaveToLibrary = async (e, postId, type) => {
     e.stopPropagation();
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/library`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
-      if (response.data.success) alert(`✅ ${response.data.message}`);
+      const response = await axios.post(`${API_BASE_URL}/api/posts/clone`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
+      if (response.data.success) {
+        alert(`✅ ${response.data.message}`);
+        // Tăng hiển thị savesCount ngay lập tức trên UI
+        setPosts(posts.map(p => p._id === postId ? { ...p, savesCount: (p.savesCount || 0) + 1 } : p));
+        if (viewingPostDetails && viewingPostDetails._id === postId) {
+          setViewingPostDetails(prev => ({ ...prev, savesCount: (prev.savesCount || 0) + 1 }));
+        }
+      }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi lưu dữ liệu."); }
   };
 
@@ -510,6 +544,20 @@ export default function Community() {
     return true;
   });
 
+  const handleViewPostDetails = async (post) => {
+    setViewingPostDetails(post);
+    // Gọi API lấy lại chi tiết post để tăng view ngầm
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/posts/${post._id}`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.success) {
+        setViewingPostDetails(res.data.post);
+        setPosts(posts.map(p => p._id === post._id ? res.data.post : p));
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   if (loading) return <div className="flex justify-center items-center min-h-[50vh]"><div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500"></div></div>;
 
   return (
@@ -523,6 +571,7 @@ export default function Community() {
           currentUserId={currentUserId}
           token={token}
           onToggleLike={handleToggleLike}
+          handleShare={handleShare}
           handleSaveToLibrary={handleSaveToLibrary}
           setViewingPlan={setViewingPlan}
           setSelectedUserFilter={setSelectedUserFilter}
@@ -668,7 +717,7 @@ export default function Community() {
             const hasLiked = post.likes.includes(currentUserId);
 
             return (
-              <div key={post._id} className="bg-gray-800/60 border border-gray-700/60 p-4 md:p-6 rounded-2xl shadow-lg hover:border-gray-600 transition-colors cursor-pointer" onClick={() => setViewingPostDetails(post)}>
+              <div key={post._id} className="bg-gray-800/60 border border-gray-700/60 p-4 md:p-6 rounded-2xl shadow-lg hover:border-gray-600 transition-colors cursor-pointer" onClick={() => handleViewPostDetails(post)}>
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3 cursor-pointer group" onClick={(e) => {
                       e.stopPropagation();
@@ -690,8 +739,7 @@ export default function Community() {
                   <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
                 </div>
 
-                {/* Không truyền enlargeOnClick ở trang Feed, ấn vào để mở Modal Post */}
-                <MediaCarousel images={post.images} video={post.video} onMediaClick={(e) => { e.stopPropagation(); setViewingPostDetails(post); }} />
+                <MediaCarousel images={post.images} video={post.video} onMediaClick={(e) => { e.stopPropagation(); handleViewPostDetails(post); }} />
 
                 {post.workoutSnapshot && (
                   <div onClick={(e) => { e.stopPropagation(); setViewingPlan({ type: 'workout', data: post.workoutSnapshot }) }} className="mt-3 bg-gray-900 border border-emerald-500/30 p-4 rounded-xl flex items-center justify-between group hover:bg-gray-800 transition-colors">
@@ -723,13 +771,39 @@ export default function Community() {
                   </div>
                 )}
 
-                <div className="flex items-center gap-6 mt-5 pt-4 border-t border-gray-700/50">
-                  <button onClick={(e) => { e.stopPropagation(); handleToggleLike(post._id); }} className="flex items-center gap-2 text-gray-400 hover:text-pink-500 group">
-                    <Heart className={`w-5 h-5 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
-                    <span className="text-sm font-bold">{post.likes?.length || 0}</span>
-                  </button>
-                  <button className="flex items-center gap-2 text-gray-400 hover:text-blue-400"><MessageCircle className="w-5 h-5" /><span className="text-sm font-bold">{post.commentsCount || 0}</span></button>
+                {/* THANH TƯƠNG TÁC (TÍCH HỢP ĐẦY ĐỦ TIM, COMMENT, VIEW, SHARE, SAVE) */}
+                <div className="flex items-center justify-between mt-5 pt-4 border-t border-gray-700/50 flex-wrap gap-y-3">
+                  <div className="flex items-center gap-4 sm:gap-6">
+                    <button onClick={(e) => { e.stopPropagation(); handleToggleLike(post._id); }} className="flex items-center gap-1.5 text-gray-400 hover:text-pink-500 group">
+                      <Heart className={`w-5 h-5 sm:w-5 sm:h-5 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
+                      <span className="text-sm font-bold">{post.likes?.length || 0}</span>
+                    </button>
+                    <button className="flex items-center gap-1.5 text-gray-400 hover:text-blue-400">
+                      <MessageCircle className="w-5 h-5 sm:w-5 sm:h-5" />
+                      <span className="text-sm font-bold">{post.commentsCount || 0}</span>
+                    </button>
+                  </div>
+
+                  <div className="flex items-center gap-4 sm:gap-6">
+                    <div className="flex items-center gap-1.5 text-gray-500" title="Lượt xem">
+                      <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span className="text-xs sm:text-sm font-semibold">{post.viewsCount || 0}</span>
+                    </div>
+                    
+                    {(post.workoutSnapshot || post.dietSnapshot) && (
+                      <div className="flex items-center gap-1.5 text-yellow-500/80 bg-yellow-500/10 px-2 py-0.5 rounded-full" title="Số người đã lưu lịch này">
+                        <Bookmark className="w-3 h-3 sm:w-4 sm:h-4 fill-yellow-500/50" />
+                        <span className="text-xs sm:text-sm font-semibold">{post.savesCount || 0}</span>
+                      </div>
+                    )}
+
+                    <button onClick={(e) => { e.stopPropagation(); handleShare(post._id); }} className="flex items-center gap-1.5 text-gray-500 hover:text-emerald-400 transition-colors" title="Chia sẻ">
+                      <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
+                      <span className="text-xs sm:text-sm font-semibold">{post.sharesCount || 0}</span>
+                    </button>
+                  </div>
                 </div>
+
               </div>
             );
           })

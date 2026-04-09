@@ -255,7 +255,6 @@ export default function DailyDashboard() {
     } catch (err) { alert(err.response?.data?.message || "Có lỗi xảy ra khi ghi nhận."); } finally { setIsLogging(false); }
   };
 
-  // Hàm chuyển đổi link Youtube cho iframe
   const getYouTubeEmbedUrl = (url) => {
     if (!url) return null;
     let videoId = '';
@@ -348,6 +347,26 @@ export default function DailyDashboard() {
       {error && <div className="w-full px-4 md:px-8 lg:px-12 mt-4"><div className="p-3 bg-red-900/30 text-red-400 border border-red-800/50 rounded-xl text-sm">{error}</div></div>}
 
       <div className="w-full px-4 md:px-8 lg:px-12 py-6">
+
+        {/* 🌟 NÚT TRUY CẬP NHANH LỊCH TẬP / LỊCH ĂN 🌟 */}
+        <div className="flex gap-3 md:gap-4 mb-6">
+          <button 
+            onClick={() => navigate('/workout-plan')}
+            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600/20 to-indigo-600/20 border border-blue-500/30 hover:bg-blue-600/30 text-blue-400 hover:text-blue-300 px-4 py-3 md:py-4 rounded-2xl font-bold transition-all active:scale-95 shadow-lg shadow-blue-900/20"
+          >
+            <Dumbbell className="w-5 h-5 md:w-6 md:h-6" />
+            <span className="text-sm md:text-base">Quản lý Lịch Tập</span>
+          </button>
+
+          <button 
+            onClick={() => navigate('/meal-plan')}
+            className="flex-1 flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600/20 to-teal-600/20 border border-emerald-500/30 hover:bg-emerald-600/30 text-emerald-400 hover:text-emerald-300 px-4 py-3 md:py-4 rounded-2xl font-bold transition-all active:scale-95 shadow-lg shadow-emerald-900/20"
+          >
+            <Utensils className="w-5 h-5 md:w-6 md:h-6" />
+            <span className="text-sm md:text-base">Quản lý Lịch Ăn</span>
+          </button>
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
           <div className="lg:col-span-7 xl:col-span-8 space-y-6">

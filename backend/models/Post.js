@@ -33,9 +33,15 @@ const postSchema = new mongoose.Schema({
   dietSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
 
   // ==========================================
+  // CÁC CHỈ SỐ TƯƠNG TÁC (TIM, BÌNH LUẬN, LƯU, XEM, CHIA SẺ)
+  // ==========================================
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   commentsCount: { type: Number, default: 0 },
-  savesCount: { type: Number, default: 0 } 
+  savesCount: { type: Number, default: 0 },
+  
+  // 🌟 ĐÃ THÊM 2 TRƯỜNG NÀY ĐỂ HIỂN THỊ LƯỢT XEM VÀ LƯỢT CHIA SẺ
+  viewsCount: { type: Number, default: 0 },
+  sharesCount: { type: Number, default: 0 }
 
 }, { timestamps: true });
 

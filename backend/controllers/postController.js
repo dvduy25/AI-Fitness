@@ -39,7 +39,6 @@ exports.createPost = async (req, res) => {
     let postType = 'text';
 
     if (workoutLogId) {
-      // Đã thêm populate cho nhật ký tập luyện (áp dụng cho cả 2 kiểu cấu trúc phổ biến)
       const workout = await WorkoutLog.findById(workoutLogId)
         .populate('exercises.exerciseId', 'name')
         .populate('weeklySchedule.exercises.exerciseId', 'name'); 
@@ -90,7 +89,6 @@ exports.shareMasterPlan = async (req, res) => {
     let postType = shareType === 'workout' ? 'master_workout' : 'master_diet';
 
     if (shareType === 'workout') {
-      // Đã thêm populate lấy tên bài tập
       const plan = await MasterWorkoutPlan.findOne({ userId })
         .populate('weeklySchedule.exercises.exerciseId', 'name');
         
@@ -128,7 +126,6 @@ exports.shareFromLibrary = async (req, res) => {
     const userId = req.user.id;
     const { images, video } = handleMediaFiles(req);
 
-    // Đã thêm populate lấy tên bài tập từ kho lưu trữ
     const savedItem = await SavedLibrary.findOne({ _id: libraryId, userId })
       .populate('workoutData.weeklySchedule.exercises.exerciseId', 'name');
       
@@ -168,7 +165,13 @@ exports.getFeed = async (req, res) => {
 
 exports.getPostById = async (req, res) => {
   try {
-    const post = await Post.findById(req.params.postId).populate("userId", "name avatar role");
+    // 🌟 ĐÃ SỬA: Tự động đếm View khi ai đó bấm vào bài viết
+    const post = await Post.findByIdAndUpdate(
+      req.params.postId, 
+      { $inc: { viewsCount: 1 } },
+      { new: true }
+    ).populate("userId", "name avatar role");
+
     if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
     res.status(200).json({ success: true, post });
   } catch (error) {
@@ -211,7 +214,6 @@ exports.addComment = async (req, res) => {
     post.commentsCount += 1;
     await post.save();
 
-    // POPULATE THÔNG TIN USER Ở ĐÂY ĐỂ TRẢ VỀ FRONTEND
     const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar");
 
     res.status(201).json({ success: true, comment: populatedComment });
@@ -232,12 +234,22 @@ exports.cloneSnapshot = async (req, res) => {
     if (type === 'workout' && post.workoutSnapshot) {
       const { _id, ...cleanData } = post.workoutSnapshot;
       await new WorkoutLog({ ...cleanData, userId: req.user.id, date: new Date(), isCompleted: false }).save();
+      
+      // 🌟 ĐÃ THÊM: Tự động cộng 1 lượt lưu khi có người clone lịch tập
+      post.savesCount = (post.savesCount || 0) + 1;
+      await post.save();
+
       return res.status(201).json({ success: true, message: "Đã lưu lịch tập vào nhật ký hôm nay!" });
     }
 
     if (type === 'diet' && post.dietSnapshot) {
       const { _id, ...cleanData } = post.dietSnapshot;
       await new DailyDietLog({ ...cleanData, userId: req.user.id, date: new Date(), isDayCompleted: false }).save();
+      
+      // 🌟 ĐÃ THÊM: Tự động cộng 1 lượt lưu khi có người clone thực đơn
+      post.savesCount = (post.savesCount || 0) + 1;
+      await post.save();
+
       return res.status(201).json({ success: true, message: "Đã lưu thực đơn vào nhật ký hôm nay!" });
     }
 
@@ -276,7 +288,7 @@ exports.deletePost = async (req, res) => {
     }
 
     await Post.findByIdAndDelete(req.params.postId);
-    await Comment.deleteMany({ postId: req.params.postId }); // Dọn sạch comment
+    await Comment.deleteMany({ postId: req.params.postId });
 
     res.status(200).json({ success: true, message: "Đã xóa bài viết và dữ liệu liên quan" });
   } catch (error) {
@@ -322,6 +334,26 @@ exports.deleteComment = async (req, res) => {
       await post.save();
     }
     res.status(200).json({ success: true, message: "Đã xóa bình luận" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 8. TĂNG LƯỢT CHIA SẺ (SHARE)
+// ==========================================
+exports.incrementShare = async (req, res) => {
+  try {
+    // 🌟 ĐÃ THÊM: Tự động đếm số lần có người bấm nút Share
+    const post = await Post.findByIdAndUpdate(
+      req.params.postId, 
+      { $inc: { sharesCount: 1 } }, 
+      { new: true }
+    );
+    
+    if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
+    
+    res.status(200).json({ success: true, sharesCount: post.sharesCount });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
