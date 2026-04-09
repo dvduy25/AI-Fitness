@@ -11,12 +11,19 @@ const userSchema = new mongoose.Schema({
     default: "https://ui-avatars.com/api/?name=User&background=random" // URL ảnh mặc định nếu user chưa upload
   },
   
-  // === THÊM CHỨC NĂNG PHÂN QUYỀN Ở ĐÂY ===
+  // === CHỨC NĂNG PHÂN QUYỀN ===
   role: { 
     type: String, 
     enum: ["user", "admin", "trainer"], 
     default: "user" 
   },
+
+  // ==========================================
+  // 🌟 THÊM MỚI: MẠNG XÃ HỘI & TÍCH XANH
+  // ==========================================
+  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // Những người theo dõi tài khoản này
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // Những người mà tài khoản này đang theo dõi
+  isVerified: { type: Boolean, default: false }, // Tích xanh (Mặc định là false, Admin có thể set thành true)
 
   age: Number, 
   gender: String, 

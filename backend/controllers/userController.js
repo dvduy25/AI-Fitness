@@ -3,41 +3,35 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const WeightLog = require("../models/WeightLog");
 const crypto = require('crypto');
-const Transaction = require('../models/Transaction');  // Thư viện có sẵn của Node.js, không cần cài đặt
+const Transaction = require('../models/Transaction');  
 require("dotenv").config();
 
 // ==========================================
 // HÀM TỰ ĐỘNG TÍNH TOÁN CALO & MACROS
 // ==========================================
 const calculateMacros = (age, gender, height, weight, goal, fitnessLevel) => {
-  // 1. Tính BMR (Tỷ lệ trao đổi chất cơ bản) theo công thức Mifflin-St Jeor
   let bmr = (10 * weight) + (6.25 * height) - (5 * age);
   bmr = gender === "male" ? bmr + 5 : bmr - 161;
 
-  // 2. Tính TDEE (Tổng năng lượng tiêu hao) dựa trên mức độ vận động
-  let tdeeMultiplier = 1.2; // Mặc định
-  if (fitnessLevel === "beginner") tdeeMultiplier = 1.375; // Vận động nhẹ
-  if (fitnessLevel === "intermediate") tdeeMultiplier = 1.55; // Vận động vừa
-  if (fitnessLevel === "advanced") tdeeMultiplier = 1.725; // Vận động nhiều
+  let tdeeMultiplier = 1.2; 
+  if (fitnessLevel === "beginner") tdeeMultiplier = 1.375; 
+  if (fitnessLevel === "intermediate") tdeeMultiplier = 1.55; 
+  if (fitnessLevel === "advanced") tdeeMultiplier = 1.725; 
   
   let tdee = bmr * tdeeMultiplier;
 
-  // 3. Tính Calo mục tiêu (Dựa vào Goal)
   let targetCalories = tdee;
-  if (goal === "lose_weight") targetCalories -= 500; // Giảm cân: Thâm hụt 500 calo
-  if (goal === "gain_muscle") targetCalories += 300; // Tăng cơ: Dư thừa 300 calo
+  if (goal === "lose_weight") targetCalories -= 500; 
+  if (goal === "gain_muscle") targetCalories += 300; 
 
   targetCalories = Math.round(targetCalories);
 
-  // 4. Chia tỷ lệ Macros (Tỉ lệ chuẩn: 30% Protein, 45% Carbs, 25% Fat)
-  // Lưu ý: 1g Protein = 4 kcal, 1g Carb = 4 kcal, 1g Fat = 9 kcal
   const protein = Math.round((targetCalories * 0.3) / 4);
   const carbs = Math.round((targetCalories * 0.45) / 4);
   const fat = Math.round((targetCalories * 0.25) / 9);
 
   return { calories: targetCalories, protein, carbs, fat };
 };
-
 
 exports.register = async (req, res) => {
   try {
@@ -48,20 +42,14 @@ exports.register = async (req, res) => {
       medicalConditions
     } = req.body;
 
-    // 1. Kiểm tra email
     const userExist = await User.findOne({ email });
-    if (userExist) {
-      return res.status(400).json({ message: "Email này đã được sử dụng!" });
-    }
+    if (userExist) return res.status(400).json({ message: "Email này đã được sử dụng!" });
 
-    // 2. Mã hóa mật khẩu
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 3. HỆ THỐNG TỰ TÍNH MACROS
     const generatedMacros = calculateMacros(age, gender, height, weight, goal, fitnessLevel);
 
-    // 4. Lưu User mới vào Database
     const newUser = new User({
       name, email, password: hashedPassword,
       age, gender, height, weight,
@@ -72,24 +60,13 @@ exports.register = async (req, res) => {
 
     await newUser.save();
 
-    // =======================================================
-    // 5. LƯU NGAY CÂN NẶNG BAN ĐẦU VÀO BẢNG THEO DÕI (WEIGHT LOG)
-    // =======================================================
     if (weight) {
-      const newWeightLog = new WeightLog({
-        userId: newUser._id,
-        weight: weight,
-        date: new Date() // Lưu với thời gian lúc đăng ký
-      });
+      const newWeightLog = new WeightLog({ userId: newUser._id, weight: weight, date: new Date() });
       await newWeightLog.save();
     }
 
-    // 6. Tạo Token
-    const token = jwt.sign(
-      { id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    // 7. Trả về kết quả
     const { password: _, ...userWithoutPassword } = newUser._doc;
     res.status(201).json({
       message: "Đăng ký thành công! Hệ thống đã tự lên Macros cho bạn.",
@@ -98,83 +75,51 @@ exports.register = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Lỗi Register:", error);
     res.status(500).json({ message: "Lỗi server khi đăng ký", error: error.message });
   }
 };
 
-// ... (Giữ nguyên phần API LOGIN ở dưới nhé)
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // 1. Tìm user theo email
     const user = await User.findOne({ email });
-    if (!user) {
-      return res.status(400).json({ message: "Không tìm thấy tài khoản với email này!" });
-    }
+    if (!user) return res.status(400).json({ message: "Không tìm thấy tài khoản với email này!" });
 
-    // 2. So sánh mật khẩu
     const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword) {
-      return res.status(400).json({ message: "Sai mật khẩu, vui lòng thử lại!" });
-    }
+    if (!validPassword) return res.status(400).json({ message: "Sai mật khẩu, vui lòng thử lại!" });
 
-    // 3. Tạo Token
-    const token = jwt.sign(
-      { id: user._id },
-      process.env.JWT_SECRET,
-      { expiresIn: "7d" }
-    );
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
-    // 4. Loại bỏ password trước khi trả về
     const { password: _, ...userWithoutPassword } = user._doc;
-
-    // 5. Trả về kết quả
-    res.status(200).json({
-      message: "Đăng nhập thành công!",
-      user: userWithoutPassword,
-      token: token
-    });
+    res.status(200).json({ message: "Đăng nhập thành công!", user: userWithoutPassword, token: token });
 
   } catch (error) {
-    console.error("Lỗi Login:", error);
     res.status(500).json({ message: "Lỗi server khi đăng nhập", error: error.message });
   }
 };
 
-
-// 1. LẤY THÔNG TIN CÁ NHÂN (READ)
 exports.getProfile = async (req, res) => {
   try {
-    // Tìm user theo ID từ Token và loại bỏ trường password khỏi kết quả trả về
     const user = await User.findById(req.user.id).select("-password");
     if (!user) return res.status(404).json({ message: "Người dùng không tồn tại" });
-
     res.status(200).json(user);
   } catch (error) {
     res.status(500).json({ message: "Lỗi lấy thông tin", error: error.message });
   }
 };
 
-// 2. CẬP NHẬT THÔNG TIN (UPDATE)
-
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
     const updates = req.body;
 
-    // Ngăn chặn cập nhật các trường nhạy cảm
     delete updates.password;
     delete updates.email; 
 
-    // 1. Tìm User hiện tại để lấy các chỉ số gốc (tuổi, chiều cao, giới tính...)
     const currentUser = await User.findById(userId);
-    if (!currentUser) {
-      return res.status(404).json({ message: "Người dùng không tồn tại" });
-    }
+    if (!currentUser) return res.status(404).json({ message: "Người dùng không tồn tại" });
 
-    // 2. Lấy dữ liệu mới (nếu có gửi lên) hoặc dùng dữ liệu cũ
     const age = updates.age || currentUser.age;
     const gender = updates.gender || currentUser.gender;
     const height = updates.height || currentUser.height;
@@ -182,27 +127,87 @@ exports.updateProfile = async (req, res) => {
     const goal = updates.goal || currentUser.goal;
     const fitnessLevel = updates.fitnessLevel || currentUser.fitnessLevel;
 
-    // 3. TỰ ĐỘNG TÍNH TOÁN LẠI MACROS MỚI TẠI ĐÂY!
     const newMacros = calculateMacros(age, gender, height, weight, goal, fitnessLevel);
-    
-    // Gán cục Macros mới vào dữ liệu chuẩn bị Update
     updates.targetMacros = newMacros;
 
-    // 4. Lưu vào Database
-    const updatedUser = await User.findByIdAndUpdate(
-      userId,
-      { $set: updates },
-      { new: true, runValidators: true }
-    ).select("-password");
-
+    const updatedUser = await User.findByIdAndUpdate(userId, { $set: updates }, { new: true, runValidators: true }).select("-password");
     res.status(200).json({ message: "Cập nhật thành công! Macros đã được tính lại.", user: updatedUser });
   } catch (error) {
-    console.error("Lỗi cập nhật profile:", error);
     res.status(500).json({ message: "Lỗi cập nhật", error: error.message });
   }
 };
 
+// ==========================================
+// TÍNH NĂNG MẠNG XÃ HỘI (FOLLOW / UNFOLLOW)
+// ==========================================
 
+// 1. Hàm Follow / Unfollow
+exports.toggleFollow = async (req, res) => {
+  try {
+    const targetUserId = req.params.id; // ID người bị follow
+    const currentUserId = req.user.id;  // ID người bấm follow
+
+    if (targetUserId === currentUserId) {
+      return res.status(400).json({ message: "Bạn không thể tự theo dõi chính mình!" });
+    }
+
+    const targetUser = await User.findById(targetUserId);
+    const currentUser = await User.findById(currentUserId);
+
+    if (!targetUser || !currentUser) return res.status(404).json({ message: "Người dùng không tồn tại!" });
+
+    // Kiểm tra xem đã follow chưa
+    const isFollowing = targetUser.followers.includes(currentUserId);
+
+    if (isFollowing) {
+      // Đã follow -> Hủy theo dõi
+      await targetUser.updateOne({ $pull: { followers: currentUserId } });
+      await currentUser.updateOne({ $pull: { following: targetUserId } });
+      res.status(200).json({ success: true, message: "Đã bỏ theo dõi", isFollowing: false });
+    } else {
+      // Chưa follow -> Theo dõi
+      await targetUser.updateOne({ $push: { followers: currentUserId } });
+      await currentUser.updateOne({ $push: { following: targetUserId } });
+      res.status(200).json({ success: true, message: "Đã theo dõi", isFollowing: true });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi hệ thống", error: error.message });
+  }
+};
+
+// 2. Lấy danh sách những người MÌNH ĐANG THEO DÕI (Following)
+exports.getFollowing = async (req, res) => {
+  try {
+    // Lấy ID từ param (nếu xem người khác) hoặc từ token (nếu xem chính mình)
+    const userId = req.params.id || req.user.id; 
+    
+    // Tìm User và lấy chi tiết (populate) thông tin của những người trong mảng 'following'
+    const user = await User.findById(userId).populate("following", "name avatar isVerified role");
+    
+    if (!user) return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+
+    res.status(200).json({ success: true, following: user.following });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi lấy danh sách theo dõi", error: error.message });
+  }
+};
+
+// 3. Lấy danh sách những người ĐANG THEO DÕI MÌNH (Followers)
+exports.getFollowers = async (req, res) => {
+  try {
+    const userId = req.params.id || req.user.id;
+    
+    const user = await User.findById(userId).populate("followers", "name avatar isVerified role");
+    
+    if (!user) return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+
+    res.status(200).json({ success: true, followers: user.followers });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi lấy danh sách người theo dõi", error: error.message });
+  }
+};
+
+// ... Các phần code thanh toán Premium và Admob bên dưới giữ nguyên như cũ
 // ==========================================
 // CẤU HÌNH GÓI PREMIUM VÀ GIÁ TIỀN
 // Bạn có thể chỉnh sửa giá và số tháng ở đây
