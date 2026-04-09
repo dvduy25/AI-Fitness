@@ -142,6 +142,7 @@ exports.updateProfile = async (req, res) => {
 // ==========================================
 
 // 1. Hàm Follow / Unfollow
+// 1. Hàm Follow / Unfollow
 exports.toggleFollow = async (req, res) => {
   try {
     const targetUserId = req.params.id; // ID người bị follow
@@ -154,23 +155,31 @@ exports.toggleFollow = async (req, res) => {
     const targetUser = await User.findById(targetUserId);
     const currentUser = await User.findById(currentUserId);
 
-    if (!targetUser || !currentUser) return res.status(404).json({ message: "Người dùng không tồn tại!" });
+    if (!targetUser || !currentUser) {
+        return res.status(404).json({ message: "Người dùng không tồn tại!" });
+    }
 
+    // Đảm bảo mảng tồn tại để tránh lỗi undefined với các tài khoản cũ
+    const targetFollowers = targetUser.followers || [];
+    
     // Kiểm tra xem đã follow chưa
-    const isFollowing = targetUser.followers.includes(currentUserId);
+    const isFollowing = targetFollowers.includes(currentUserId);
 
     if (isFollowing) {
-      // Đã follow -> Hủy theo dõi
-      await targetUser.updateOne({ $pull: { followers: currentUserId } });
-      await currentUser.updateOne({ $pull: { following: targetUserId } });
+      // Đã follow -> Hủy theo dõi ($pull để xóa khỏi mảng)
+      await User.findByIdAndUpdate(targetUserId, { $pull: { followers: currentUserId } });
+      await User.findByIdAndUpdate(currentUserId, { $pull: { following: targetUserId } });
+      
       res.status(200).json({ success: true, message: "Đã bỏ theo dõi", isFollowing: false });
     } else {
-      // Chưa follow -> Theo dõi
-      await targetUser.updateOne({ $push: { followers: currentUserId } });
-      await currentUser.updateOne({ $push: { following: targetUserId } });
+      // Chưa follow -> Theo dõi ($addToSet để thêm vào mảng mà không bị trùng lặp)
+      await User.findByIdAndUpdate(targetUserId, { $addToSet: { followers: currentUserId } });
+      await User.findByIdAndUpdate(currentUserId, { $addToSet: { following: targetUserId } });
+      
       res.status(200).json({ success: true, message: "Đã theo dõi", isFollowing: true });
     }
   } catch (error) {
+    console.error("Lỗi khi Follow:", error);
     res.status(500).json({ success: false, message: "Lỗi hệ thống", error: error.message });
   }
 };
