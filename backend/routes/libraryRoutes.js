@@ -1,21 +1,26 @@
-// 📄 routes/libraryRoutes.js
 const express = require("express");
 const router = express.Router();
 const libraryController = require("../controllers/libraryController");
 
-// Middleware xác thực
+// Middleware xác thực (Điều chỉnh đường dẫn theo dự án của bạn)
 const { verifyToken } = require("../middleware/authMiddleware");
 
-// 1. Lưu bài viết (chứa lịch tập/ăn) vào kho thư viện
+// 1. Lưu bài viết có chứa lịch vào kho
 router.post("/", verifyToken, libraryController.saveToLibrary);
 
-// 2. Lấy danh sách kho lưu trữ của bản thân (Có thể truyền thêm query ?type=workout hoặc ?type=diet)
+// 2. Lưu lịch Master HIỆN TẠI của bản thân vào kho
+router.post("/save-master", verifyToken, libraryController.saveMasterToLibrary);
+
+// 3. Lấy danh sách kho lưu trữ (?type=workout hoặc ?type=diet)
 router.get("/", verifyToken, libraryController.getMyLibrary);
 
-// 3. Xóa một mục khỏi kho lưu trữ
+// 4. Xóa một mục khỏi kho lưu trữ
 router.delete("/:libraryId", verifyToken, libraryController.removeFromLibrary);
 
-// 4. Áp dụng dữ liệu từ kho đè vào Lịch Master cá nhân
+// 5. Áp dụng lịch từ kho (Dùng cho code Frontend mới: /api/library/:id/apply)
 router.post("/:libraryId/apply", verifyToken, libraryController.applyFromLibrary);
+
+// 6. Áp dụng lịch từ kho (Dùng cho code Frontend cũ: gọi POST thẳng vào gốc kèm body.libraryId)
+router.post("/apply", verifyToken, libraryController.applyFromLibrary);
 
 module.exports = router;

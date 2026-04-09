@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Bot, Sparkles, Target, Activity, Dumbbell, Play, Pause, MapPin,
   Clock, AlertTriangle, CheckCircle, Loader2, MessageSquareText,
-  Plus, Trash2, Edit2, X, Search, Calendar, ChevronDown, ChevronUp, Video
+  Plus, Trash2, Edit2, X, Search, Calendar, ChevronDown, ChevronUp, Video,
+  ArrowLeft, BookmarkPlus, Library // <-- CÁC ICON MỚI THÊM
 } from 'lucide-react';
 import MasterWorkoutEvaluation from './MasterWorkoutEvaluation';
 import PremiumRequireModal from './PremiumRequireModal'; 
@@ -41,6 +42,11 @@ export default function WorkoutPlanManager() {
 
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isLoadingAd, setIsLoadingAd] = useState(false);
+
+  // --- STATE MỚI CHO TÍNH NĂNG KHO (LIBRARY) ---
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(false);
 
   const getHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
@@ -159,6 +165,67 @@ export default function WorkoutPlanManager() {
   };
 
   // ==========================================
+  // CÁC CHỨC NĂNG KHO (LIBRARY) & ĐIỀU HƯỚNG MỚI
+  // ==========================================
+  const handleGoHome = () => navigate('/home');
+
+  const handleSaveToLibrary = async () => {
+    if (!workoutPlan) return alert("Chưa có lịch để lưu!");
+    try {
+      setIsProcessing(true);
+      const res = await axios.post(`${API_BASE_URL}/api/library/save-master`, 
+        { type: 'workout' }, 
+        getHeaders()
+      );
+      if (res.data.success) {
+        setSuccessMsg("Đã lưu lịch tập vào kho thành công!");
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi khi lưu vào kho!");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleOpenLibrary = async () => {
+    try {
+      setIsLibraryLoading(true);
+      setShowLibraryModal(true);
+      const res = await axios.get(`${API_BASE_URL}/api/library?type=workout`, getHeaders());
+      setLibraryItems(res.data.library || []);
+    } catch (error) {
+      setError("Không thể tải kho lưu trữ!");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsLibraryLoading(false);
+    }
+  };
+
+  const handleApplyFromLibrary = async (libraryId) => {
+    if (!window.confirm("Lịch từ kho sẽ GHI ĐÈ lên lịch tập hiện tại. Bạn có chắc chắn?")) return;
+    try {
+      setIsLibraryLoading(true);
+      const res = await axios.post(`${API_BASE_URL}/api/workout-plan/apply-library`, 
+        { libraryId }, 
+        getHeaders()
+      );
+      if (res.data.success) {
+        setWorkoutPlan(res.data.plan);
+        setShowLibraryModal(false);
+        setSuccessMsg("Đã áp dụng lịch từ kho thành công!");
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi khi áp dụng lịch!");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsLibraryLoading(false);
+    }
+  };
+
+  // ==========================================
   // CHỈNH SỬA TỪNG NGÀY / BÀI TẬP
   // ==========================================
   const handleUpdateDayTitle = async (dayOfWeek, currentTitle) => {
@@ -177,10 +244,9 @@ export default function WorkoutPlanManager() {
     }
   };
 
-  // TÍNH NĂNG MỚI: Cập nhật giờ tập
   const handleUpdateScheduledTime = async (dayOfWeek, currentScheduledTime) => {
     const newTime = prompt("Nhập giờ tập dự kiến mới (VD: 17:00 - 18:30):", currentScheduledTime || "");
-    if (newTime === null || newTime === currentScheduledTime) return; // Hủy hoặc không đổi
+    if (newTime === null || newTime === currentScheduledTime) return;
 
     try {
       await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, 
@@ -278,10 +344,13 @@ export default function WorkoutPlanManager() {
   return (
     <div className="bg-gray-950 min-h-screen !w-full !max-w-none text-gray-200 font-sans selection:bg-blue-500/30 overflow-x-hidden">
       
-      {/* HEADER TỔNG */}
+      {/* HEADER TỔNG CÓ THÊM NÚT BACK */}
       <header className="bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 p-3 sm:p-4 sticky top-0 z-40 w-full shadow-lg">
         <div className="w-full px-2 sm:px-4 md:px-6 lg:px-8 flex flex-row items-center justify-between gap-2">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 flex items-center gap-2 md:gap-4">
+            <button onClick={handleGoHome} className="p-1.5 md:p-2 bg-gray-800 text-gray-400 hover:text-white rounded-full transition-colors shrink-0">
+              <ArrowLeft className="w-5 h-5 md:w-6 md:h-6" />
+            </button>
             <h1 className="text-lg md:text-2xl font-black text-white tracking-tight flex items-center gap-1.5 md:gap-2 truncate">
               <Dumbbell className="w-6 h-6 md:w-8 md:h-8 text-blue-500 drop-shadow-[0_0_8px_rgba(59,130,246,0.5)] shrink-0" /> 
               Quản lý Lịch Tập
@@ -380,29 +449,48 @@ export default function WorkoutPlanManager() {
 
               {/* TRẠNG THÁI CHƯA CÓ LỊCH TRỐNG */}
               {!isLoadingPlan && !isGenerating && !workoutPlan && (
-                <div className="flex flex-col items-center justify-center min-h-[500px] text-center border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 px-4">
+                <div className="flex flex-col items-center justify-center min-h-[500px] text-center border-2 border-dashed border-gray-800 rounded-3xl bg-gray-900/30 px-4 py-8">
                   <Calendar className="w-16 h-16 text-gray-600 mb-6" />
                   <h3 className="text-white font-black text-2xl mb-2">Chưa có lịch tập</h3>
-                  <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto mb-8">Hãy sử dụng tính năng tạo lịch bằng AI bên trái để tự động tạo một lịch trình hoàn hảo, hoặc tự xây dựng lịch thủ công.</p>
+                  <p className="text-sm text-gray-400 mt-2 max-w-md mx-auto mb-8">Hãy sử dụng tính năng tạo lịch bằng AI bên trái để tự động tạo một lịch trình hoàn hảo, tự xây dựng, hoặc lấy từ kho lưu trữ.</p>
                   
-                  <button 
-                    onClick={handleCreateManualPlan}
-                    disabled={isProcessing}
-                    className="px-6 md:px-8 py-3.5 md:py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg border border-gray-700"
-                  >
-                    {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
-                    Tạo lịch trống thủ công
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-3 justify-center items-center mt-2">
+                    <button 
+                      onClick={handleCreateManualPlan}
+                      disabled={isProcessing}
+                      className="px-6 md:px-8 py-3.5 md:py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg border border-gray-700"
+                    >
+                      {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
+                      Tạo lịch trống
+                    </button>
+                    <button
+                      onClick={handleOpenLibrary}
+                      disabled={isProcessing}
+                      className="px-6 md:px-8 py-3.5 md:py-4 bg-purple-600/20 hover:bg-purple-600/30 text-purple-400 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-lg border border-purple-500/30"
+                    >
+                      <Library className="w-5 h-5" />
+                      Chọn từ kho
+                    </button>
+                  </div>
                 </div>
               )}
 
               {/* TRẠNG THÁI ĐÃ CÓ LỊCH */}
               {!isLoadingPlan && !isGenerating && workoutPlan && (
                 <div className={`w-full ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <div className="bg-gradient-to-r from-gray-900 to-gray-950 p-4 md:p-5 rounded-3xl border border-blue-900/30 shadow-xl mb-6 md:mb-8 w-full flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  {/* THANH CÔNG CỤ: TÊN LỊCH & CÁC NÚT LƯU KHO */}
+                  <div className="bg-gradient-to-r from-gray-900 to-gray-950 p-4 md:p-5 rounded-3xl border border-blue-900/30 shadow-xl mb-6 md:mb-8 w-full flex flex-col md:flex-row justify-between md:items-center gap-4">
                     <div>
                       <h3 className="text-blue-400 font-black flex items-center gap-2 text-lg md:text-xl"><Calendar className="w-5 h-5 md:w-6 md:h-6"/> Lịch Tập 7 Ngày</h3>
                       <p className="text-xs md:text-sm text-gray-400 mt-1 font-medium">Bạn có thể tự do thêm, sửa, xóa bài tập hoặc đổi tên, đổi giờ tập.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button onClick={handleSaveToLibrary} disabled={!workoutPlan || isProcessing} className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-800 text-blue-400 border border-blue-500/30 rounded-xl hover:bg-gray-700 transition-colors text-sm font-semibold">
+                        <BookmarkPlus className="w-4 h-4" /> Lưu vào kho
+                      </button>
+                      <button onClick={handleOpenLibrary} className="flex items-center gap-2 px-3 md:px-4 py-2 bg-gray-800 text-purple-400 border border-purple-500/30 rounded-xl hover:bg-gray-700 transition-colors text-sm font-semibold">
+                        <Library className="w-4 h-4" /> Chọn từ kho
+                      </button>
                     </div>
                   </div>
 
@@ -634,6 +722,37 @@ export default function WorkoutPlanManager() {
               <button onClick={handleUpdateExercise} className="flex-1 py-2.5 md:py-3 text-sm md:text-base text-white bg-blue-600 rounded-lg md:rounded-xl hover:bg-blue-500 font-bold flex justify-center items-center transition-colors">
                 {isProcessing ? <Loader2 className="w-4 h-4 md:w-5 md:h-5 animate-spin" /> : 'Lưu lại'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL KHO LƯU TRỮ (LIBRARY) THÊM MỚI */}
+      {showLibraryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in" onClick={() => setShowLibraryModal(false)}>
+          <div className="bg-gray-900 border border-gray-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50">
+              <h3 className="font-bold text-lg text-white flex items-center gap-2"><Library className="w-5 h-5 text-purple-400"/> Kho Lịch Tập</h3>
+              <button onClick={() => setShowLibraryModal(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-3">
+              {isLibraryLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-purple-500"/></div>
+              ) : libraryItems.length > 0 ? (
+                libraryItems.map(item => (
+                  <div key={item._id} className="bg-gray-800 border border-gray-700 p-4 rounded-xl flex justify-between items-center hover:border-purple-500/50 transition-colors">
+                    <div className="min-w-0 pr-2">
+                      <p className="font-bold text-gray-200 truncate">{item.title || item.workoutData?.title || "Lịch tập lưu trữ"}</p>
+                      <p className="text-xs text-gray-400 mt-1">{new Date(item.createdAt).toLocaleDateString('vi-VN')}</p>
+                    </div>
+                    <button onClick={() => handleApplyFromLibrary(item._id)} className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white text-sm font-bold rounded-lg transition-colors shrink-0">
+                      Áp dụng
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-gray-500 py-8">Kho lưu trữ của bạn đang trống.</p>
+              )}
             </div>
           </div>
         </div>

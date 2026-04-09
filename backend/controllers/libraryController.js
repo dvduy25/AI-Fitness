@@ -1,21 +1,19 @@
-// 📄 controllers/libraryController.js
 const Post = require("../models/Post");
 const SavedLibrary = require("../models/SavedLibrary");
 const MasterWorkoutPlan = require("../models/WorkoutPlan");
 const MealPlan = require("../models/MealPlan");
 
 // ==========================================
-// 1. LƯU BÀI VIẾT (CHỨA LỊCH) VỀ KHO LƯU TRỮ
+// 1. LƯU BÀI VIẾT (TỪ BẢNG TIN) VỀ KHO LƯU TRỮ
 // ==========================================
 exports.saveToLibrary = async (req, res) => {
   try {
-    const { postId, type } = req.body; // type: 'workout' hoặc 'diet'
+    const { postId, type } = req.body;
     const userId = req.user.id;
 
     const post = await Post.findById(postId).populate('userId', 'name');
     if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
 
-    // Kiểm tra xem đã lưu chưa để tránh trùng lặp
     const existingSave = await SavedLibrary.findOne({ userId, originalPostId: postId, type });
     if (existingSave) return res.status(400).json({ message: "Bạn đã lưu lịch này vào kho rồi!" });
 
@@ -30,21 +28,12 @@ exports.saveToLibrary = async (req, res) => {
       title = `Lịch ăn từ ${post.userId.name}`;
       dietData = post.dietSnapshot;
     } else {
-      return res.status(400).json({ message: "Bài viết này không có dữ liệu phù hợp để lưu" });
+      return res.status(400).json({ message: "Bài viết không có dữ liệu phù hợp" });
     }
 
-    const newSavedItem = new SavedLibrary({
-      userId,
-      originalPostId: postId,
-      type,
-      title,
-      workoutData,
-      dietData
-    });
-
+    const newSavedItem = new SavedLibrary({ userId, originalPostId: postId, type, title, workoutData, dietData });
     await newSavedItem.save();
 
-    // Tăng biến đếm savesCount trong Post
     post.savesCount = (post.savesCount || 0) + 1;
     await post.save();
 
@@ -55,12 +44,49 @@ exports.saveToLibrary = async (req, res) => {
 };
 
 // ==========================================
-// 2. LẤY DANH SÁCH KHO LƯU TRỮ CỦA USER
+// 2. LƯU LỊCH MASTER HIỆN TẠI CỦA MÌNH VÀO KHO (MỚI)
+// ==========================================
+exports.saveMasterToLibrary = async (req, res) => {
+  try {
+    const { type } = req.body; // 'workout' hoặc 'diet'
+    const userId = req.user.id;
+    let title = "";
+    let workoutData = null;
+    let dietData = null;
+
+    if (type === 'workout') {
+      const plan = await MasterWorkoutPlan.findOne({ userId });
+      if (!plan || !plan.weeklySchedule || plan.weeklySchedule.length === 0) {
+        return res.status(404).json({ message: "Bạn chưa có lịch tập nào để lưu!" });
+      }
+      title = `Lịch tập cá nhân - ${new Date().toLocaleDateString('vi-VN')}`;
+      workoutData = plan.toObject();
+    } else if (type === 'diet') {
+      const plan = await MealPlan.findOne({ userId });
+      if (!plan || !plan.meals || plan.meals.length === 0) {
+        return res.status(404).json({ message: "Bạn chưa có thực đơn nào để lưu!" });
+      }
+      title = `Thực đơn cá nhân - ${new Date().toLocaleDateString('vi-VN')}`;
+      dietData = plan.toObject();
+    } else {
+      return res.status(400).json({ message: "Loại dữ liệu không hợp lệ" });
+    }
+
+    const newSavedItem = new SavedLibrary({ userId, type, title, workoutData, dietData });
+    await newSavedItem.save();
+
+    res.status(201).json({ success: true, message: "Đã lưu lịch hiện tại vào kho!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 3. LẤY DANH SÁCH KHO LƯU TRỮ CỦA USER
 // ==========================================
 exports.getMyLibrary = async (req, res) => {
   try {
     const userId = req.user.id;
-    // Lấy danh sách, có thể filter theo type (workout/diet) từ req.query nếu cần
     const filter = { userId };
     if (req.query.type) filter.type = req.query.type;
 
@@ -72,7 +98,7 @@ exports.getMyLibrary = async (req, res) => {
 };
 
 // ==========================================
-// 3. XÓA KHỎI KHO LƯU TRỮ
+// 4. XÓA KHỎI KHO LƯU TRỮ
 // ==========================================
 exports.removeFromLibrary = async (req, res) => {
   try {
@@ -89,43 +115,43 @@ exports.removeFromLibrary = async (req, res) => {
 };
 
 // ==========================================
-// 4. ÁP DỤNG LỊCH TỪ KHO VÀO LỊCH CÁ NHÂN
+// 5. ÁP DỤNG LỊCH TỪ KHO VÀO LỊCH CÁ NHÂN (ĐÃ NÂNG CẤP)
 // ==========================================
 exports.applyFromLibrary = async (req, res) => {
   try {
-    const { libraryId } = req.params;
+    // Hỗ trợ lấy ID từ cả URL param (req.params) hoặc Body (req.body)
+    const libraryId = req.params.libraryId || req.body.libraryId;
     const userId = req.user.id;
+
+    if (!libraryId) return res.status(400).json({ message: "Thiếu ID của lịch trong kho" });
 
     const savedItem = await SavedLibrary.findOne({ _id: libraryId, userId });
     if (!savedItem) return res.status(404).json({ message: "Không tìm thấy dữ liệu trong kho" });
 
-    if (savedItem.type === 'workout') {
-      // Dọn dẹp dữ liệu rác trước khi đè (loại bỏ _id cũ)
+    if (savedItem.type === 'workout' && savedItem.workoutData) {
       const cleanWeeklySchedule = savedItem.workoutData.weeklySchedule.map(day => ({
         ...day,
         _id: undefined, 
         exercises: day.exercises.map(ex => ({ ...ex, _id: undefined }))
       }));
 
-      // Tìm và cập nhật đè (upsert: true nghĩa là chưa có thì tạo mới)
-      await MasterWorkoutPlan.findOneAndUpdate(
+      const newPlan = await MasterWorkoutPlan.findOneAndUpdate(
         { userId },
         { $set: { weeklySchedule: cleanWeeklySchedule } },
         { upsert: true, new: true }
       );
 
-      return res.status(200).json({ success: true, message: "Đã áp dụng lịch tập thành công!" });
+      return res.status(200).json({ success: true, message: "Đã áp dụng lịch tập thành công!", plan: newPlan });
     } 
     
-    if (savedItem.type === 'diet') {
-      // Ghi đè vào MealPlan
+    if (savedItem.type === 'diet' && savedItem.dietData) {
       const cleanMeals = savedItem.dietData.meals.map(meal => ({
         ...meal,
         _id: undefined,
         items: meal.items.map(item => ({ ...item, _id: undefined }))
       }));
 
-      await MealPlan.findOneAndUpdate(
+      const newPlan = await MealPlan.findOneAndUpdate(
         { userId },
         { 
           $set: { 
@@ -136,10 +162,10 @@ exports.applyFromLibrary = async (req, res) => {
         { upsert: true, new: true }
       );
 
-      return res.status(200).json({ success: true, message: "Đã áp dụng thực đơn thành công!" });
+      return res.status(200).json({ success: true, message: "Đã áp dụng thực đơn thành công!", plan: newPlan });
     }
 
-    res.status(400).json({ message: "Loại dữ liệu không hợp lệ" });
+    res.status(400).json({ message: "Lịch trong kho bị lỗi hoặc không có dữ liệu" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

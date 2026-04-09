@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   Bot, Sparkles, Utensils, Target, Flame, Beef, 
   Wheat, Droplet, Clock, AlertTriangle, CheckCircle, Loader2, MessageSquareText,
-  Plus, Trash2, Edit2, X, Search, BrainCircuit 
+  Plus, Trash2, Edit2, X, Search, BrainCircuit,
+  ArrowLeft, BookmarkPlus, Library // <-- CÁC ICON MỚI THÊM
 } from 'lucide-react';
 
 import MasterMealEvaluation from './MasterMealEvaluation';
@@ -43,6 +44,11 @@ export default function MealPlanManager() {
 
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isLoadingAd, setIsLoadingAd] = useState(false);
+
+  // --- STATE MỚI CHO TÍNH NĂNG KHO (LIBRARY) ---
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [libraryItems, setLibraryItems] = useState([]);
+  const [isLibraryLoading, setIsLibraryLoading] = useState(false);
 
   const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   const getHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
@@ -129,6 +135,67 @@ export default function MealPlanManager() {
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tạo lịch ăn. Thử lại sau.");
     } finally { setIsGenerating(false); }
+  };
+
+  // ==========================================
+  // CÁC CHỨC NĂNG KHO (LIBRARY) & ĐIỀU HƯỚNG MỚI
+  // ==========================================
+  const handleGoHome = () => navigate('/home'); // Quay lại trang chủ
+
+  const handleSaveToLibrary = async () => {
+    if (!generatedPlan) return alert("Chưa có thực đơn để lưu!");
+    try {
+      setIsProcessing(true);
+      const res = await axios.post(`${API_BASE_URL}/api/library/save-master`, 
+        { type: 'diet' }, 
+        getHeaders()
+      );
+      if (res.data.success) {
+        setSuccessMsg("Đã lưu thực đơn vào kho thành công!");
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi khi lưu vào kho!");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleOpenLibrary = async () => {
+    try {
+      setIsLibraryLoading(true);
+      setShowLibraryModal(true);
+      const res = await axios.get(`${API_BASE_URL}/api/library?type=diet`, getHeaders());
+      setLibraryItems(res.data.library || []);
+    } catch (error) {
+      setError("Không thể tải kho lưu trữ!");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsLibraryLoading(false);
+    }
+  };
+
+  const handleApplyFromLibrary = async (libraryId) => {
+    if (!window.confirm("Thực đơn từ kho sẽ GHI ĐÈ lên thực đơn hiện tại. Bạn có chắc chắn?")) return;
+    try {
+      setIsLibraryLoading(true);
+      const res = await axios.post(`${API_BASE_URL}/api/meal-plan/apply-library`, 
+        { libraryId }, 
+        getHeaders()
+      );
+      if (res.data.success) {
+        setGeneratedPlan(res.data.plan);
+        setShowLibraryModal(false);
+        setSuccessMsg("Đã áp dụng thực đơn từ kho thành công!");
+        setTimeout(() => setSuccessMsg(""), 3000);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi khi áp dụng thực đơn!");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsLibraryLoading(false);
+    }
   };
 
   // ==========================================
@@ -231,16 +298,22 @@ export default function MealPlanManager() {
 
   return (
     <div className="bg-gray-950 min-h-screen text-gray-200 pb-12">
-      {/* HEADER */}
+      {/* HEADER TỔNG CÓ THÊM NÚT BACK */}
       <header className="bg-gray-900 border-b border-gray-800 p-5 sticky top-0 z-20 shadow-md">
         <div className="w-full px-4 md:px-8 lg:px-12 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-              <Bot className="w-6 h-6 text-emerald-400" /> AI Dinh Dưỡng
-            </h1>
-            <p className="text-sm text-gray-400 mt-1 hidden sm:block">
-              Tự động lên thực đơn chuẩn Macro dựa trên chỉ số cơ thể của bạn.
-            </p>
+          <div className="flex items-center gap-3">
+            {/* Thêm nút Back */}
+            <button onClick={handleGoHome} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-full transition-colors shrink-0">
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
+                <Bot className="w-6 h-6 text-emerald-400" /> AI Dinh Dưỡng
+              </h1>
+              <p className="text-sm text-gray-400 mt-1 hidden sm:block">
+                Tự động lên thực đơn chuẩn Macro dựa trên chỉ số cơ thể của bạn.
+              </p>
+            </div>
           </div>
           
           <div className="flex items-center gap-3">
@@ -388,33 +461,42 @@ export default function MealPlanManager() {
                 </div>
               )}
 
-              {/* TRẠNG THÁI TRỐNG: CHỈ CÒN NÚT TẠO THỦ CÔNG */}
+              {/* TRẠNG THÁI TRỐNG: NÚT TẠO THỦ CÔNG & CHỌN TỪ KHO */}
               {!isLoadingPlan && !isGenerating && !generatedPlan && (
                 <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center border-2 border-dashed border-gray-800 rounded-xl bg-gray-900/50">
                   <div className="p-4 bg-gray-800 rounded-full mb-3"><Utensils className="w-8 h-8 text-gray-500" /></div>
                   <h3 className="text-gray-300 font-bold text-lg">Chưa có lịch ăn nào</h3>
                   <p className="text-sm text-gray-500 mt-2 max-w-sm mb-4">
-                    Tạo khung lịch ăn trống theo số bữa bạn đã chọn ở bên trái, sau đó tự do thêm món ăn nhé.
+                    Tạo khung lịch ăn trống theo số bữa bạn đã chọn ở bên trái, sau đó tự do thêm món ăn nhé, hoặc chọn từ kho.
                   </p>
                   
-                  <div className="flex justify-center mt-2">
+                  <div className="flex flex-col sm:flex-row justify-center mt-2 gap-3">
                     <button 
                       onClick={handleCreateManualPlan} 
                       disabled={isProcessing} 
-                      className="px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all"
+                      className="px-6 md:px-8 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl shadow-lg shadow-emerald-500/20 flex items-center gap-2 transition-all"
                     >
                       {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Plus className="w-5 h-5" />}
                       Tạo lịch thủ công
+                    </button>
+                    
+                    <button
+                      onClick={handleOpenLibrary}
+                      disabled={isProcessing}
+                      className="px-6 md:px-8 py-3.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 font-bold rounded-xl shadow-lg border border-orange-500/30 flex items-center gap-2 transition-all"
+                    >
+                      <Library className="w-5 h-5" /> Chọn từ kho
                     </button>
                   </div>
                 </div>
               )}
 
+              {/* TRẠNG THÁI CÓ LỊCH ĂN */}
               {!isLoadingPlan && !isGenerating && generatedPlan && (
                 <div className={`space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
                   
-                  {/* HEADER TỔNG KẾT BỮA ĂN */}
-                  <div className="bg-gray-950 p-4 rounded-xl border border-emerald-900/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  {/* HEADER TỔNG KẾT BỮA ĂN (TÍCH HỢP NÚT LƯU KHO/CHỌN KHO) */}
+                  <div className="bg-gray-950 p-4 rounded-xl border border-emerald-900/50 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
                     <div>
                       <h3 className="text-emerald-400 font-bold flex items-center gap-2 text-lg">
                         <CheckCircle className="w-5 h-5"/> Lịch ăn của bạn
@@ -422,16 +504,29 @@ export default function MealPlanManager() {
                       <p className="text-sm text-gray-400 mt-1">Tổng cộng <strong className="text-white">{generatedPlan?.meals?.length || 0}</strong> bữa ăn.</p>
                     </div>
                     
-                    <div className="flex gap-4 items-center bg-gray-900 p-3 rounded-xl border border-gray-800">
-                       <div className="text-center px-3 border-r border-gray-700">
-                         <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider">Tổng Calo</span>
-                         <span className="text-xl font-black text-white">{Math.round(generatedPlan?.dailyTotal?.calories || 0)} <span className="text-xs font-normal text-gray-500">kcal</span></span>
-                       </div>
-                       <div className="flex gap-3 text-xs font-semibold">
-                         <span className="text-blue-400 flex flex-col items-center">P <span className="text-white">{Math.round(generatedPlan?.dailyTotal?.protein || 0)}g</span></span>
-                         <span className="text-yellow-400 flex flex-col items-center">C <span className="text-white">{Math.round(generatedPlan?.dailyTotal?.carbs || 0)}g</span></span>
-                         <span className="text-red-400 flex flex-col items-center">F <span className="text-white">{Math.round(generatedPlan?.dailyTotal?.fat || 0)}g</span></span>
-                       </div>
+                    <div className="flex flex-col md:flex-row gap-3 items-center">
+                      {/* Thêm 2 nút Lưu Kho và Chọn Kho */}
+                      <div className="flex items-center gap-2 md:mr-2">
+                        <button onClick={handleSaveToLibrary} disabled={!generatedPlan || isProcessing} className="flex items-center gap-2 px-3 py-2 bg-gray-900 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-gray-800 transition-colors text-sm font-semibold">
+                          <BookmarkPlus className="w-4 h-4" /> Lưu vào kho
+                        </button>
+                        <button onClick={handleOpenLibrary} className="flex items-center gap-2 px-3 py-2 bg-gray-900 text-orange-400 border border-orange-500/30 rounded-lg hover:bg-gray-800 transition-colors text-sm font-semibold">
+                          <Library className="w-4 h-4" /> Chọn từ kho
+                        </button>
+                      </div>
+
+                      {/* Hiển thị Tổng Calo và Macro */}
+                      <div className="flex gap-4 items-center bg-gray-900 p-3 rounded-xl border border-gray-800 w-full md:w-auto justify-center">
+                        <div className="text-center px-3 border-r border-gray-700">
+                          <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider">Tổng Calo</span>
+                          <span className="text-xl font-black text-white">{Math.round(generatedPlan?.dailyTotal?.calories || 0)} <span className="text-xs font-normal text-gray-500">kcal</span></span>
+                        </div>
+                        <div className="flex gap-3 text-xs font-semibold">
+                          <span className="text-blue-400 flex flex-col items-center">P <span className="text-white">{Math.round(generatedPlan?.dailyTotal?.protein || 0)}g</span></span>
+                          <span className="text-yellow-400 flex flex-col items-center">C <span className="text-white">{Math.round(generatedPlan?.dailyTotal?.carbs || 0)}g</span></span>
+                          <span className="text-red-400 flex flex-col items-center">F <span className="text-white">{Math.round(generatedPlan?.dailyTotal?.fat || 0)}g</span></span>
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -525,7 +620,7 @@ export default function MealPlanManager() {
         </div>
       </div>
 
-      {/* NÚT AI ĐÁNH GIÁ ĐÃ ĐƯỢC CHẶN TRƯỚC KHI BẬT MODAL */}
+      {/* NÚT AI ĐÁNH GIÁ */}
       {!isLoadingPlan && generatedPlan && (
         <div className="w-full px-4 md:px-8 lg:px-12 pb-10 mt-6">
           <button onClick={handleEvaluatePlanClick} className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-500 rounded-2xl text-white font-bold flex justify-center items-center gap-2 shadow-lg hover:scale-[1.02] transition-transform">
@@ -534,7 +629,9 @@ export default function MealPlanManager() {
         </div>
       )}
 
-      {/* CÁC MODALS KHÁC ĐƯỢC GIỮ NGUYÊN */}
+      {/* ========================================================= */}
+      {/* CÁC MODALS (POPUP) HIỂN THỊ */}
+      {/* ========================================================= */}
       
       {/* MODAL 1: CHỈNH SỬA SỐ GRAM */}
       {showEditGramModal && (
@@ -729,12 +826,42 @@ export default function MealPlanManager() {
         </div>
       )}
 
-      {/* 🌟 MODAL 6 ĐÁNH GIÁ THỰC ĐƠN */}
+      {/* MODAL 6: KHO LƯU TRỮ (LIBRARY) THÊM MỚI */}
+      {showLibraryModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowLibraryModal(false)}>
+          <div className="bg-gray-900 border border-gray-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-800/50">
+              <h3 className="font-bold text-lg text-white flex items-center gap-2"><Library className="w-5 h-5 text-orange-400"/> Kho Thực Đơn</h3>
+              <button onClick={() => setShowLibraryModal(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5"/></button>
+            </div>
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 space-y-3">
+              {isLibraryLoading ? (
+                <div className="flex justify-center py-8"><Loader2 className="w-6 h-6 animate-spin text-orange-500"/></div>
+              ) : libraryItems.length > 0 ? (
+                libraryItems.map(item => (
+                  <div key={item._id} className="bg-gray-800 border border-gray-700 p-4 rounded-xl flex justify-between items-center hover:border-orange-500/50 transition-colors">
+                    <div className="min-w-0 pr-2">
+                      <p className="font-bold text-gray-200 truncate">{item.title || item.dietData?.title || "Thực đơn lưu trữ"}</p>
+                      <p className="text-xs text-gray-400 mt-1">{new Date(item.createdAt).toLocaleDateString('vi-VN')}</p>
+                    </div>
+                    <button onClick={() => handleApplyFromLibrary(item._id)} className="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-lg transition-colors shrink-0">
+                      Áp dụng
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-gray-500 py-8">Kho lưu trữ của bạn đang trống.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🌟 MODAL 7 ĐÁNH GIÁ THỰC ĐƠN */}
       {showEvaluation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-gray-900 w-full max-w-3xl rounded-3xl border border-gray-800 shadow-2xl overflow-hidden h-[85vh] flex flex-col relative">
             
-            {/* Nút đóng cho màn hình lớn */}
             <button 
               onClick={() => setShowEvaluation(false)}
               className="absolute top-4 right-4 z-[60] p-2 bg-gray-800 text-gray-400 rounded-full hover:text-white hover:bg-gray-700 transition-colors hidden md:block"
@@ -742,7 +869,6 @@ export default function MealPlanManager() {
               <X className="w-5 h-5"/>
             </button>
             
-            {/* Gọi Component Đánh Giá vào đây */}
             <div className="overflow-y-auto h-full custom-scrollbar">
               <MasterMealEvaluation 
                 planData={generatedPlan} 
@@ -750,7 +876,6 @@ export default function MealPlanManager() {
                 onClose={() => setShowEvaluation(false)} 
               />
             </div>
-
           </div>
         </div>
       )}
@@ -762,11 +887,10 @@ export default function MealPlanManager() {
         onWatchAd={handleWatchAd}
         onUpgrade={() => {
           setShowPremiumModal(false);
-          navigate('/premium'); // Đổi sang route chứa trang thanh toán của bạn
+          navigate('/premium'); 
         }}
         isLoadingAd={isLoadingAd}
       />
-
     </div>
   );
 }
