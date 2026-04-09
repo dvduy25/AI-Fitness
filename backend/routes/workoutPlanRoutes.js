@@ -13,7 +13,7 @@ const {
     removeExerciseFromDay,
     getWorkoutPlanForToday
 } = require("../controllers/workoutPlanController");
-
+const libraryController = require("../controllers/libraryController");
 // ==========================================
 // ROUTES CHO TOÀN BỘ LỊCH TẬP VÀ NGÀY
 // ==========================================
@@ -42,5 +42,9 @@ router.patch("/exercise", verifyToken, updateExerciseInDay);
 
 // [DELETE] Xóa 1 bài tập khỏi 1 ngày
 router.delete("/exercise", verifyToken, removeExerciseFromDay);
+// Thêm import controller ở đầu file
 
+
+// Thêm dòng này vào phần định tuyến
+router.post("/apply-library", verifyToken, libraryController.applyFromLibrary);
 module.exports = router;
