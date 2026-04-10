@@ -153,93 +153,81 @@ exports.shareFromLibrary = async (req, res) => {
 // ==========================================
 // 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
+
+
 exports.getFeed = async (req, res) => {
   try {
+    // 1. Lấy ID user hiện tại (giả định bạn đã có middleware auth gán req.user)
     const currentUserId = req.user.id || req.user._id;
 
-    // 1. NHẬN PARAMETER PHÂN TRANG TỪ FRONTEND
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
+    // 2. Lấy thông tin user để biết "Mục tiêu" và "Danh sách theo dõi"
     const currentUser = await User.findById(currentUserId);
     if (!currentUser) {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
     }
 
+    // Giả sử model User của bạn có trường 'goal' (VD: 'giam_can') và mảng 'following'
     const userGoal = currentUser.goal || ""; 
     const followingList = currentUser.following || []; 
 
-    // 2. DÙNG $facet ĐỂ VỪA ĐẾM TỔNG SỐ BÀI, VỪA LẤY DỮ LIỆU PHÂN TRANG CÙNG LÚC
-    const aggregationResult = await Post.aggregate([
+    // 3. Xây dựng bộ lọc thông minh bằng Aggregation
+    const posts = await Post.aggregate([
       {
         $addFields: {
+          // Check 1: Bài viết có phải của người mình đang follow không?
           isFollowing: { $in: ["$userId", followingList] },
-          // 🌟 ĐÃ FIX LỖI 500 Ở ĐÂY: Dùng $or và $ifNull để chống lỗi sập pipeline
+          
+          // Check 2: Bài viết có đúng với mục tiêu của User không?
+          // (Giả sử model Post có trường 'tags' (dạng mảng) hoặc 'category' (dạng chuỗi))
           isGoalMatch: {
-            $or: [
-              { $in: [userGoal, { $ifNull: ["$tags", []] }] },
-              { $eq: [{ $ifNull: ["$category", ""] }, userGoal] }
-            ]
+            $cond: {
+              if: { $isArray: "$tags" },
+              then: { $in: [userGoal, "$tags"] },
+              else: { $eq: ["$category", userGoal] }
+            }
           }
         }
       },
       {
         $addFields: {
+          // 4. Chấm điểm bài viết (Thuật toán hiển thị)
           feedScore: {
             $add: [
-              { $cond: ["$isGoalMatch", 20, 0] },
-              { $cond: ["$isFollowing", 10, 0] } 
+              { $cond: ["$isGoalMatch", 20, 0] }, // Ưu tiên 1: Cùng mục tiêu cộng 20đ
+              { $cond: ["$isFollowing", 10, 0] }  // Ưu tiên 2: Có follow cộng 10đ
             ]
           }
+          // Kết quả: 
+          // 30đ = Vừa cùng mục tiêu vừa đang follow
+          // 20đ = Cùng mục tiêu nhưng người lạ
+          // 10đ = Đang follow nhưng khác mục tiêu
+          // 0đ = Lạ và khác mục tiêu
         }
       },
+      // 5. Sắp xếp: Ưu tiên điểm cao lên đầu, bằng điểm thì xếp theo thời gian mới nhất
       { $sort: { feedScore: -1, createdAt: -1 } },
       
-      // TÁCH NHÁNH XỬ LÝ (FACET)
+      // 6. Tương đương với .populate("userId", "name avatar role")
       {
-        $facet: {
-          // Nhánh 1: Đếm tổng số bài viết thỏa mãn
-          metadata: [ { $count: "totalPosts" } ],
-          
-          // Nhánh 2: Lấy dữ liệu bài viết theo trang
-          postData: [
-            { $skip: skip },
-            { $limit: limit },
-            {
-              $lookup: {
-                from: "users", // Chú ý: Đảm bảo bảng trong DB của bạn tên là "users" (chữ s cuối)
-                localField: "userId",
-                foreignField: "_id",
-                pipeline: [
-                  { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
-                ],
-                as: "userId"
-              }
-            },
-            { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
-            { $project: { isFollowing: 0, isGoalMatch: 0 } }
-          ]
+        $lookup: {
+          from: "users", // Lưu ý: Tên collection trong DB thường là số nhiều (users)
+          localField: "userId",
+          foreignField: "_id",
+          pipeline: [
+            // Chỉ lấy ra name, avatar, role để tối ưu băng thông
+            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+          ],
+          as: "userId"
         }
-      }
+      },
+      // Chuyển mảng userId thành Object
+      { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
+      
+      // (Tùy chọn) Ẩn các trường tính toán đi để dữ liệu trả về sạch đẹp
+      { $project: { isFollowing: 0, isGoalMatch: 0 } }
     ]);
 
-    // 3. XỬ LÝ KẾT QUẢ TRẢ VỀ
-    const posts = aggregationResult[0].postData;
-    const totalPosts = aggregationResult[0].metadata[0] ? aggregationResult[0].metadata[0].totalPosts : 0;
-    const totalPages = Math.ceil(totalPosts / limit);
-    const hasMore = page < totalPages;
-
-    res.status(200).json({ 
-      success: true, 
-      posts,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalPosts,
-        hasMore
-      }
-    });
+    res.status(200).json({ success: true, posts });
   } catch (error) {
     console.error("Lỗi getFeed:", error);
     res.status(500).json({ success: false, message: error.message });
