@@ -157,11 +157,7 @@ exports.getFeed = async (req, res) => {
   try {
     const currentUserId = req.user.id || req.user._id;
 
-    // 1. Nhận parameter phân trang từ Frontend
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 10;
-    const skip = (page - 1) * limit;
-
+    // Lấy thông tin user để biết "Danh sách đang theo dõi"
     const currentUser = await User.findById(currentUserId);
     if (!currentUser) {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
@@ -169,63 +165,44 @@ exports.getFeed = async (req, res) => {
 
     const followingList = currentUser.following || []; 
 
-    // 2. DÙNG $facet VÀ AGGREGATION AN TOÀN CHO SCHEMA CỦA BẠN
-    const aggregationResult = await Post.aggregate([
+    // Dùng Aggregation an toàn: KHÔNG phân trang, KHÔNG check tags gây lỗi
+    const posts = await Post.aggregate([
       {
         $addFields: {
-          // Check xem bài viết này có phải của người mình đang follow không
+          // Kiểm tra: Bài viết có phải của người mình đang follow không?
           isFollowing: { $in: ["$userId", followingList] }
         }
       },
       {
         $addFields: {
-          // Chấm điểm: Nếu là người đang follow thì cộng 10 điểm, đẩy lên đầu
+          // Chấm điểm: Nếu là người đang follow thì cộng 10 điểm
           feedScore: { $cond: ["$isFollowing", 10, 0] }
         }
       },
       // Sắp xếp: Ai điểm cao lên trước, bằng điểm thì bài mới đăng lên trước
       { $sort: { feedScore: -1, createdAt: -1 } },
       
+      // Tương đương với .populate("userId")
       {
-        $facet: {
-          metadata: [ { $count: "totalPosts" } ],
-          postData: [
-            { $skip: skip },
-            { $limit: limit },
-            {
-              $lookup: {
-                from: "users", // Map với bảng users
-                localField: "userId",
-                foreignField: "_id",
-                pipeline: [
-                  { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
-                ],
-                as: "userId"
-              }
-            },
-            { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
-            { $project: { isFollowing: 0 } } // Ẩn trường phụ đi cho data gọn nhẹ
-          ]
+        $lookup: {
+          from: "users", // Lưu ý: Tên collection trong DB là số nhiều (users)
+          localField: "userId",
+          foreignField: "_id",
+          pipeline: [
+            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+          ],
+          as: "userId"
         }
-      }
+      },
+      // Chuyển mảng userId thành Object
+      { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
+      
+      // Ẩn các trường tính toán đi để dữ liệu trả về sạch đẹp
+      { $project: { isFollowing: 0, feedScore: 0 } }
     ]);
 
-    // 3. Xử lý kết quả trả về
-    const posts = aggregationResult[0].postData;
-    const totalPosts = aggregationResult[0].metadata[0] ? aggregationResult[0].metadata[0].totalPosts : 0;
-    const totalPages = Math.ceil(totalPosts / limit);
-    const hasMore = page < totalPages;
-
-    res.status(200).json({ 
-      success: true, 
-      posts,
-      pagination: {
-        currentPage: page,
-        totalPages,
-        totalPosts,
-        hasMore
-      }
-    });
+    // Trả về thẳng danh sách bài viết (Không có pagination)
+    res.status(200).json({ success: true, posts });
   } catch (error) {
     console.error("Lỗi getFeed:", error);
     res.status(500).json({ success: false, message: error.message });
