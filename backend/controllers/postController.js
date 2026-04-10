@@ -153,87 +153,84 @@ exports.shareFromLibrary = async (req, res) => {
 // ==========================================
 // 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
-
-
 exports.getFeed = async (req, res) => {
   try {
-    // 1. Lấy ID user hiện tại (giả định bạn đã có middleware auth gán req.user)
     const currentUserId = req.user.id || req.user._id;
 
-    // 2. Lấy thông tin user để biết "Mục tiêu" và "Danh sách theo dõi"
+    // 1. Nhận parameter phân trang từ Frontend
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     const currentUser = await User.findById(currentUserId);
     if (!currentUser) {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
     }
 
-    // Giả sử model User của bạn có trường 'goal' (VD: 'giam_can') và mảng 'following'
-    const userGoal = currentUser.goal || ""; 
     const followingList = currentUser.following || []; 
 
-    // 3. Xây dựng bộ lọc thông minh bằng Aggregation
-    const posts = await Post.aggregate([
+    // 2. DÙNG $facet VÀ AGGREGATION AN TOÀN CHO SCHEMA CỦA BẠN
+    const aggregationResult = await Post.aggregate([
       {
         $addFields: {
-          // Check 1: Bài viết có phải của người mình đang follow không?
-          isFollowing: { $in: ["$userId", followingList] },
-          
-          // Check 2: Bài viết có đúng với mục tiêu của User không?
-          // (Giả sử model Post có trường 'tags' (dạng mảng) hoặc 'category' (dạng chuỗi))
-          isGoalMatch: {
-            $cond: {
-              if: { $isArray: "$tags" },
-              then: { $in: [userGoal, "$tags"] },
-              else: { $eq: ["$category", userGoal] }
-            }
-          }
+          // Check xem bài viết này có phải của người mình đang follow không
+          isFollowing: { $in: ["$userId", followingList] }
         }
       },
       {
         $addFields: {
-          // 4. Chấm điểm bài viết (Thuật toán hiển thị)
-          feedScore: {
-            $add: [
-              { $cond: ["$isGoalMatch", 20, 0] }, // Ưu tiên 1: Cùng mục tiêu cộng 20đ
-              { $cond: ["$isFollowing", 10, 0] }  // Ưu tiên 2: Có follow cộng 10đ
-            ]
-          }
-          // Kết quả: 
-          // 30đ = Vừa cùng mục tiêu vừa đang follow
-          // 20đ = Cùng mục tiêu nhưng người lạ
-          // 10đ = Đang follow nhưng khác mục tiêu
-          // 0đ = Lạ và khác mục tiêu
+          // Chấm điểm: Nếu là người đang follow thì cộng 10 điểm, đẩy lên đầu
+          feedScore: { $cond: ["$isFollowing", 10, 0] }
         }
       },
-      // 5. Sắp xếp: Ưu tiên điểm cao lên đầu, bằng điểm thì xếp theo thời gian mới nhất
+      // Sắp xếp: Ai điểm cao lên trước, bằng điểm thì bài mới đăng lên trước
       { $sort: { feedScore: -1, createdAt: -1 } },
       
-      // 6. Tương đương với .populate("userId", "name avatar role")
       {
-        $lookup: {
-          from: "users", // Lưu ý: Tên collection trong DB thường là số nhiều (users)
-          localField: "userId",
-          foreignField: "_id",
-          pipeline: [
-            // Chỉ lấy ra name, avatar, role để tối ưu băng thông
-            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
-          ],
-          as: "userId"
+        $facet: {
+          metadata: [ { $count: "totalPosts" } ],
+          postData: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: "users", // Map với bảng users
+                localField: "userId",
+                foreignField: "_id",
+                pipeline: [
+                  { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+                ],
+                as: "userId"
+              }
+            },
+            { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
+            { $project: { isFollowing: 0 } } // Ẩn trường phụ đi cho data gọn nhẹ
+          ]
         }
-      },
-      // Chuyển mảng userId thành Object
-      { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
-      
-      // (Tùy chọn) Ẩn các trường tính toán đi để dữ liệu trả về sạch đẹp
-      { $project: { isFollowing: 0, isGoalMatch: 0 } }
+      }
     ]);
 
-    res.status(200).json({ success: true, posts });
+    // 3. Xử lý kết quả trả về
+    const posts = aggregationResult[0].postData;
+    const totalPosts = aggregationResult[0].metadata[0] ? aggregationResult[0].metadata[0].totalPosts : 0;
+    const totalPages = Math.ceil(totalPosts / limit);
+    const hasMore = page < totalPages;
+
+    res.status(200).json({ 
+      success: true, 
+      posts,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPosts,
+        hasMore
+      }
+    });
   } catch (error) {
     console.error("Lỗi getFeed:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 exports.getPostById = async (req, res) => {
   try {
     // 🌟 ĐÃ SỬA: Tự động đếm View khi ai đó bấm vào bài viết
