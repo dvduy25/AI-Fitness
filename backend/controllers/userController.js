@@ -185,12 +185,12 @@ exports.toggleFollow = async (req, res) => {
 };
 
 // 2. Lấy danh sách những người MÌNH ĐANG THEO DÕI (Following)
+// 2. Lấy danh sách những người MÌNH ĐANG THEO DÕI (Following)
 exports.getFollowing = async (req, res) => {
   try {
-    // Lấy ID từ param (nếu xem người khác) hoặc từ token (nếu xem chính mình)
-    const userId = req.params.id || req.user.id; 
+    // 🌟 SỬA DÒNG NÀY: Nếu id là 'me' thì lấy id của tài khoản đang đăng nhập
+    const userId = req.params.id === 'me' ? req.user.id : req.params.id; 
     
-    // Tìm User và lấy chi tiết (populate) thông tin của những người trong mảng 'following'
     const user = await User.findById(userId).populate("following", "name avatar isVerified role");
     
     if (!user) return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
@@ -204,7 +204,8 @@ exports.getFollowing = async (req, res) => {
 // 3. Lấy danh sách những người ĐANG THEO DÕI MÌNH (Followers)
 exports.getFollowers = async (req, res) => {
   try {
-    const userId = req.params.id || req.user.id;
+    // 🌟 SỬA DÒNG NÀY:
+    const userId = req.params.id === 'me' ? req.user.id : req.params.id;
     
     const user = await User.findById(userId).populate("followers", "name avatar isVerified role");
     
