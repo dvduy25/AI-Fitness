@@ -153,16 +153,11 @@ exports.shareFromLibrary = async (req, res) => {
 // ==========================================
 // 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
-
-
-
-
 exports.getFeed = async (req, res) => {
   try {
     const currentUserId = req.user.id || req.user._id;
 
     // 1. NHẬN PARAMETER PHÂN TRANG TỪ FRONTEND
-    // Nếu frontend không gửi, mặc định là trang 1, mỗi trang 10 bài
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
@@ -180,12 +175,12 @@ exports.getFeed = async (req, res) => {
       {
         $addFields: {
           isFollowing: { $in: ["$userId", followingList] },
+          // 🌟 ĐÃ FIX LỖI 500 Ở ĐÂY: Dùng $or và $ifNull để chống lỗi sập pipeline
           isGoalMatch: {
-            $cond: {
-              if: { $isArray: "$tags" },
-              then: { $in: [userGoal, "$tags"] },
-              else: { $eq: ["$category", userGoal] }
-            }
+            $or: [
+              { $in: [userGoal, { $ifNull: ["$tags", []] }] },
+              { $eq: [{ $ifNull: ["$category", ""] }, userGoal] }
+            ]
           }
         }
       },
@@ -204,16 +199,16 @@ exports.getFeed = async (req, res) => {
       // TÁCH NHÁNH XỬ LÝ (FACET)
       {
         $facet: {
-          // Nhánh 1: Đếm tổng số bài viết thỏa mãn (để tính tổng số trang)
+          // Nhánh 1: Đếm tổng số bài viết thỏa mãn
           metadata: [ { $count: "totalPosts" } ],
           
-          // Nhánh 2: Lấy dữ liệu bài viết theo đúng trang hiện tại
+          // Nhánh 2: Lấy dữ liệu bài viết theo trang
           postData: [
             { $skip: skip },
             { $limit: limit },
             {
               $lookup: {
-                from: "users", 
+                from: "users", // Chú ý: Đảm bảo bảng trong DB của bạn tên là "users" (chữ s cuối)
                 localField: "userId",
                 foreignField: "_id",
                 pipeline: [
@@ -233,7 +228,7 @@ exports.getFeed = async (req, res) => {
     const posts = aggregationResult[0].postData;
     const totalPosts = aggregationResult[0].metadata[0] ? aggregationResult[0].metadata[0].totalPosts : 0;
     const totalPages = Math.ceil(totalPosts / limit);
-    const hasMore = page < totalPages; // Cờ báo hiệu cho Frontend biết còn dữ liệu để cuộn tiếp không
+    const hasMore = page < totalPages;
 
     res.status(200).json({ 
       success: true, 
