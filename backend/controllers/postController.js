@@ -6,6 +6,7 @@ const MasterWorkoutPlan = require("../models/WorkoutPlan");
 const MealPlan = require("../models/MealPlan");
 const SavedLibrary = require("../models/SavedLibrary");
 const Comment = require("../models/Comment");
+
 const mongoose = require("mongoose");
 
 // Helper: Xử lý đường dẫn Media (Ảnh/Video)
@@ -152,13 +153,100 @@ exports.shareFromLibrary = async (req, res) => {
 // ==========================================
 // 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
+
+
+
+
 exports.getFeed = async (req, res) => {
   try {
-    const posts = await Post.find()
-      .populate("userId", "name avatar role")
-      .sort({ createdAt: -1 });
-    res.status(200).json({ success: true, posts });
+    const currentUserId = req.user.id || req.user._id;
+
+    // 1. NHẬN PARAMETER PHÂN TRANG TỪ FRONTEND
+    // Nếu frontend không gửi, mặc định là trang 1, mỗi trang 10 bài
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const currentUser = await User.findById(currentUserId);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
+    }
+
+    const userGoal = currentUser.goal || ""; 
+    const followingList = currentUser.following || []; 
+
+    // 2. DÙNG $facet ĐỂ VỪA ĐẾM TỔNG SỐ BÀI, VỪA LẤY DỮ LIỆU PHÂN TRANG CÙNG LÚC
+    const aggregationResult = await Post.aggregate([
+      {
+        $addFields: {
+          isFollowing: { $in: ["$userId", followingList] },
+          isGoalMatch: {
+            $cond: {
+              if: { $isArray: "$tags" },
+              then: { $in: [userGoal, "$tags"] },
+              else: { $eq: ["$category", userGoal] }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
+          feedScore: {
+            $add: [
+              { $cond: ["$isGoalMatch", 20, 0] },
+              { $cond: ["$isFollowing", 10, 0] } 
+            ]
+          }
+        }
+      },
+      { $sort: { feedScore: -1, createdAt: -1 } },
+      
+      // TÁCH NHÁNH XỬ LÝ (FACET)
+      {
+        $facet: {
+          // Nhánh 1: Đếm tổng số bài viết thỏa mãn (để tính tổng số trang)
+          metadata: [ { $count: "totalPosts" } ],
+          
+          // Nhánh 2: Lấy dữ liệu bài viết theo đúng trang hiện tại
+          postData: [
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: "users", 
+                localField: "userId",
+                foreignField: "_id",
+                pipeline: [
+                  { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+                ],
+                as: "userId"
+              }
+            },
+            { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
+            { $project: { isFollowing: 0, isGoalMatch: 0 } }
+          ]
+        }
+      }
+    ]);
+
+    // 3. XỬ LÝ KẾT QUẢ TRẢ VỀ
+    const posts = aggregationResult[0].postData;
+    const totalPosts = aggregationResult[0].metadata[0] ? aggregationResult[0].metadata[0].totalPosts : 0;
+    const totalPages = Math.ceil(totalPosts / limit);
+    const hasMore = page < totalPages; // Cờ báo hiệu cho Frontend biết còn dữ liệu để cuộn tiếp không
+
+    res.status(200).json({ 
+      success: true, 
+      posts,
+      pagination: {
+        currentPage: page,
+        totalPages,
+        totalPosts,
+        hasMore
+      }
+    });
   } catch (error) {
+    console.error("Lỗi getFeed:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
