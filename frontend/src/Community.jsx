@@ -21,14 +21,9 @@ export default function Community() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // STATE CHO PHÂN TRANG (INFINITE SCROLL)
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserFilter, setSelectedUserFilter] = useState(null);
-  const [savedScrollPos, setSavedScrollPos] = useState(0); 
+  const [savedScrollPos, setSavedScrollPos] = useState(0); // State lưu vị trí cuộn chuột
 
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
@@ -60,33 +55,12 @@ export default function Community() {
   };
   const currentUserId = getCurrentUserId();
 
-  // ================= TẢI DỮ LIỆU & PHÂN TRANG =================
-  const fetchFeed = async (pageNumber = 1) => {
-    if (pageNumber === 1) setLoading(true);
-    else setLoadingMore(true);
-
+  // TẢI DỮ LIỆU BAN ĐẦU
+  const fetchFeed = async () => {
     try {
-      // Gọi API kèm theo page và limit (mỗi lần lấy 10 bài)
-      const response = await axios.get(`${API_BASE_URL}/api/posts/feed?page=${pageNumber}&limit=10`, { 
-        headers: { Authorization: `Bearer ${token}` } 
-      });
-      
-      if (response.data.success) {
-        if (pageNumber === 1) {
-          setPosts(response.data.posts); // Tải lại từ đầu
-        } else {
-          setPosts(prev => [...prev, ...response.data.posts]); // Cộng dồn bài cũ + mới
-        }
-        
-        setHasMore(response.data.pagination.hasMore);
-        setPage(pageNumber);
-      }
-    } catch (error) { 
-      console.error(error); 
-    } finally { 
-      setLoading(false);
-      setLoadingMore(false);
-    }
+      const response = await axios.get(`${API_BASE_URL}/api/posts/feed`, { headers: { Authorization: `Bearer ${token}` } });
+      if (response.data.success) setPosts(response.data.posts);
+    } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
   const fetchFollowing = async () => {
@@ -96,31 +70,18 @@ export default function Community() {
     } catch (error) { console.error("Lỗi tải danh sách theo dõi", error); }
   };
 
-  // Tải dữ liệu lần đầu tiên (Trang 1)
   useEffect(() => { 
-    fetchFeed(1); 
+    fetchFeed(); 
     fetchFollowing();
   }, []);
 
-  // Bắt sự kiện cuộn chuột để tải thêm bài viết
-  useEffect(() => {
-    const handleScroll = () => {
-      // Nếu không đang filter (tìm kiếm hoặc xem trang cá nhân) và cuộn đến cách đáy 200px
-      if (!selectedUserFilter && !searchTerm && window.innerHeight + document.documentElement.scrollTop + 200 >= document.documentElement.offsetHeight) {
-        if (hasMore && !loadingMore && !loading) {
-          fetchFeed(page + 1);
-        }
-      }
-    };
-
-    window.addEventListener('scroll', handleScroll);
-    return () => window.removeEventListener('scroll', handleScroll);
-  }, [hasMore, loadingMore, loading, page, selectedUserFilter, searchTerm]);
-
-  // ================= XEM VÀ ĐÓNG PROFILE CHI TIẾT =================
+  // XEM VÀ ĐÓNG PROFILE CHI TIẾT
   const handleViewProfile = async (userId, basicInfo) => {
+    // 1. Lưu vị trí cuộn hiện tại
     setSavedScrollPos(window.scrollY);
+    
     setSelectedUserFilter({ id: userId, ...basicInfo, isLoading: true });
+    // 2. Cuộn lên đầu trang mượt mà
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -140,7 +101,10 @@ export default function Community() {
 
   const handleCloseProfile = () => {
     setSelectedUserFilter(null);
-    setTimeout(() => { window.scrollTo({ top: savedScrollPos, behavior: 'instant' }); }, 10); 
+    // Trả màn hình về lại vị trí cũ ngay lập tức
+    setTimeout(() => {
+      window.scrollTo({ top: savedScrollPos, behavior: 'instant' });
+    }, 10); 
   };
 
   const handleToggleFollow = async (userId) => {
@@ -162,7 +126,7 @@ export default function Community() {
     } catch (error) { console.error(error); }
   };
 
-  // ================= QUẢN LÝ ĐĂNG BÀI & ĐÍNH KÈM =================
+  // QUẢN LÝ ĐĂNG BÀI & ĐÍNH KÈM
   const openArchiveSelector = async (type) => {
     setArchiveSelectionType(type);
     setShowArchiveModal(true);
@@ -207,13 +171,12 @@ export default function Community() {
         setNewPostContent(""); setSelectedImages([]); setSelectedVideo(null); setAttachPlan(null);
         if (imageInputRef.current) imageInputRef.current.value = "";
         if (videoInputRef.current) videoInputRef.current.value = "";
-        // Reset về trang 1 để xem bài vừa đăng
-        fetchFeed(1); 
+        fetchFeed(); 
       }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi đăng bài!"); }
   };
 
-  // ================= TƯƠNG TÁC BÀI VIẾT =================
+  // TƯƠNG TÁC BÀI VIẾT
   const handleSaveToLibrary = async (e, postId, type) => {
     e.stopPropagation();
     try {
@@ -247,7 +210,7 @@ export default function Community() {
       setPosts(updatedPosts);
       if (viewingPostDetails?._id === postId) setViewingPostDetails(updatedPosts[postIndex]);
       await axios.post(`${API_BASE_URL}/api/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
-    } catch (error) { fetchFeed(page); } // Lỗi thì tải lại trang hiện tại
+    } catch (error) { fetchFeed(); }
   };
 
   const handleViewPostDetails = async (post) => {
@@ -574,19 +537,6 @@ export default function Community() {
               <Search className="w-16 h-16 text-gray-600 mx-auto mb-5" />
               <p className="text-gray-300 font-bold text-lg mb-2">Không tìm thấy bài viết nào.</p>
               <p className="text-base text-gray-500">Hãy thử tạo một bài viết mới hoặc thay đổi từ khóa nhé!</p>
-            </div>
-          )}
-
-          {/* HIỆN THỊ TRẠNG THÁI CUỘN MÀN HÌNH (LOADING THÊM BÀI) */}
-          {loadingMore && (
-            <div className="flex justify-center py-6">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div>
-            </div>
-          )}
-          
-          {!hasMore && posts.length > 0 && !searchTerm && !selectedUserFilter && (
-            <div className="text-center py-8 text-gray-500 text-sm font-medium">
-              Bạn đã xem hết bài viết! Theo dõi thêm người dùng để cập nhật tin tức nhé.
             </div>
           )}
         </div>
