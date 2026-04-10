@@ -26,7 +26,7 @@ router.post("/share-master", verifyToken, mediaUpload, postController.shareMaste
 router.post("/share-library", verifyToken, mediaUpload, postController.shareFromLibrary);
 
 // Lấy bảng tin (Feed) & Chi tiết bài viết
-router.get("/feed", postController.getFeed);
+router.get("/feed",verifyToken, postController.getFeed);
 router.get("/:postId", postController.getPostById);
 
 // Sửa & Xóa bài viết
