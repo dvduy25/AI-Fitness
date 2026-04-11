@@ -6,6 +6,7 @@ const MasterWorkoutPlan = require("../models/WorkoutPlan");
 const MealPlan = require("../models/MealPlan");
 const SavedLibrary = require("../models/SavedLibrary");
 const Comment = require("../models/Comment");
+const Notification = require("../models/Notification"); // 🌟 ĐÃ THÊM: Import Model Thông Báo
 
 const mongoose = require("mongoose");
 
@@ -32,7 +33,7 @@ const handleMediaFiles = (req) => {
 exports.createPost = async (req, res) => {
   try {
     const { content, workoutLogId, dietLogId } = req.body;
-    const userId = req.user.id;
+    const userId = req.user.id || req.user._id;
     const { images, video } = handleMediaFiles(req);
 
     let workoutSnapshot = null;
@@ -70,6 +71,20 @@ exports.createPost = async (req, res) => {
     });
 
     await newPost.save();
+
+    // 🌟 TÍNH NĂNG MỚI: Bắn thông báo cho những người đang Follow khi có bài mới
+    const usersFollowingMe = await User.find({ following: userId });
+    const notifications = usersFollowingMe.map(u => ({
+      userId: u._id,
+      senderId: userId,
+      type: 'new_post',
+      postId: newPost._id
+    }));
+    
+    if (notifications.length > 0) {
+      await Notification.insertMany(notifications);
+    }
+
     res.status(201).json({ success: true, message: "Đăng bài thành công!", post: newPost });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -81,7 +96,7 @@ exports.createPost = async (req, res) => {
 // ==========================================
 exports.shareMasterPlan = async (req, res) => {
   try {
-    const { content, shareType } = req.body; // 'workout' hoặc 'diet'
+    const { content, shareType } = req.body;
     const userId = req.user.id;
     const { images, video } = handleMediaFiles(req);
 
@@ -153,34 +168,23 @@ exports.shareFromLibrary = async (req, res) => {
 // ==========================================
 // 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
-// ==========================================
-// 4. LẤY BẢNG TIN (THUẬT TOÁN ĐỀ XUẤT TỐI ƯU HÓA)
-// ==========================================
 exports.getFeed = async (req, res) => {
   try {
-    const mongoose = require("mongoose");
     const currentUserId = req.user.id || req.user._id;
 
-    // 1. Lấy thông tin user hiện tại
     const currentUser = await User.findById(currentUserId);
     if (!currentUser) {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
     }
 
-    // 2. Chuẩn bị dữ liệu để Aggregation so sánh
     const followingListObj = (currentUser.following || []).map(id => new mongoose.Types.ObjectId(id));
     const currentUserIdObj = new mongoose.Types.ObjectId(currentUserId);
 
-    // 🌟 TỐI ƯU 1: CHỈ QUÉT BÀI VIẾT TRONG 30 NGÀY QUA (Giảm tải RAM & CPU cho Server)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-    // 3. Chạy thuật toán chấm điểm bảng tin
     const posts = await Post.aggregate([
-      // Lọc ngay lập tức: Chỉ lấy bài viết từ 30 ngày trước đến nay
       { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-
-      // --- BƯỚC A: LẤY DANH SÁCH NGƯỜI COMMENT VÀ TỔNG SỐ LIKE ---
       {
         $lookup: {
           from: "comments", 
@@ -193,53 +197,37 @@ exports.getFeed = async (req, res) => {
       {
         $addFields: {
           commenterIds: { $map: { input: "$commentsData", as: "c", in: "$$c.userId" } },
-          // Đếm số lượt Like để tính điểm Trending
           totalLikes: { $size: { $ifNull: ["$likes", []] } }
         }
       },
-
-      // --- BƯỚC B: PHÂN TÍCH TƯƠNG TÁC ĐỂ CHẤM ĐIỂM ---
       {
         $addFields: {
           isAuthorFollowed: { $in: ["$userId", followingListObj] },
-          
           isLikedByFollowed: { 
             $gt: [{ $size: { $setIntersection: [{ $ifNull: ["$likes", []] }, followingListObj] } }, 0] 
           },
-          
           isCommentedByFollowed: { 
             $gt: [{ $size: { $setIntersection: ["$commenterIds", followingListObj] } }, 0] 
           },
-
           isLikedByMe: { $in: [currentUserIdObj, { $ifNull: ["$likes", []] }] },
           isCommentedByMe: { $in: [currentUserIdObj, "$commenterIds"] }
         }
       },
-
-      // --- BƯỚC C: TỔNG HỢP ĐIỂM SỐ (SCORING & TRENDING) ---
       {
         $addFields: {
           feedScore: {
             $add: [
-              { $cond: ["$isAuthorFollowed", 50, 0] },         // Của người đang theo dõi: +50đ
-              { $cond: ["$isLikedByFollowed", 20, 0] },        // Bạn bè đã Like: +20đ
-              { $cond: ["$isCommentedByFollowed", 20, 0] },    // Bạn bè đã Comment: +20đ
-              { $cond: ["$isLikedByMe", -500, 0] },            // Mình đã Like: PHẠT TRỪ 500đ (Chìm xuống đáy)
-              { $cond: ["$isCommentedByMe", -500, 0] },        // Mình đã Comment: PHẠT TRỪ 500đ (Chìm xuống đáy)
-              // 🌟 TỐI ƯU 2: YẾU TỐ TRENDING (KHÁM PHÁ)
-              // Dù là người lạ, nhưng nếu bài có nhiều Like thì cứ 1 Like được cộng 2 điểm.
-              // VD: Bài có 30 likes sẽ được +60 điểm (vượt mặt cả bài của người đang Follow).
-              { $multiply: ["$totalLikes", 2] }                
+              { $cond: ["$isAuthorFollowed", 50, 0] },
+              { $cond: ["$isLikedByFollowed", 20, 0] },
+              { $cond: ["$isCommentedByFollowed", 20, 0] },
+              { $cond: ["$isLikedByMe", -500, 0] },
+              { $cond: ["$isCommentedByMe", -500, 0] },
+              { $multiply: ["$totalLikes", 2] }
             ]
           }
         }
       },
-
-      // --- BƯỚC D: SẮP XẾP VÀ TRẢ VỀ ---
-      // Ưu tiên điểm cao nhất lên đầu. Bằng điểm thì bài mới đăng lên đầu
       { $sort: { feedScore: -1, createdAt: -1 } },
-      
-      // Ghép thông tin Avatar, Tên người dùng
       {
         $lookup: {
           from: "users",
@@ -252,8 +240,6 @@ exports.getFeed = async (req, res) => {
         }
       },
       { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
-      
-      // Xóa các trường nháp dùng để tính toán để tiết kiệm băng thông (tăng tốc độ mạng)
       { 
         $project: { 
           commentsData: 0, commenterIds: 0, isAuthorFollowed: 0, 
@@ -265,13 +251,12 @@ exports.getFeed = async (req, res) => {
 
     res.status(200).json({ success: true, posts });
   } catch (error) {
-    console.error("Lỗi getFeed:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 exports.getPostById = async (req, res) => {
   try {
-    // 🌟 ĐÃ SỬA: Tự động đếm View khi ai đó bấm vào bài viết
     const post = await Post.findByIdAndUpdate(
       req.params.postId, 
       { $inc: { viewsCount: 1 } },
@@ -295,7 +280,15 @@ exports.toggleLike = async (req, res) => {
     if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
 
     const isLiked = post.likes.includes(userId);
-    isLiked ? post.likes.pull(userId) : post.likes.push(userId);
+    if (isLiked) {
+      post.likes.pull(userId);
+    } else {
+      post.likes.push(userId);
+      // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Like
+      if (post.userId.toString() !== userId.toString()) {
+        await Notification.create({ userId: post.userId, senderId: userId, type: 'like', postId: post._id });
+      }
+    }
 
     await post.save();
     res.status(200).json({ success: true, isLiked: !isLiked, likeCount: post.likes.length });
@@ -320,6 +313,11 @@ exports.addComment = async (req, res) => {
     post.commentsCount += 1;
     await post.save();
 
+    // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Comment
+    if (post.userId.toString() !== req.user.id.toString()) {
+      await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'comment', postId: post._id });
+    }
+
     const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar");
 
     res.status(201).json({ success: true, comment: populatedComment });
@@ -341,9 +339,13 @@ exports.cloneSnapshot = async (req, res) => {
       const { _id, ...cleanData } = post.workoutSnapshot;
       await new WorkoutLog({ ...cleanData, userId: req.user.id, date: new Date(), isCompleted: false }).save();
       
-      // 🌟 ĐÃ THÊM: Tự động cộng 1 lượt lưu khi có người clone lịch tập
       post.savesCount = (post.savesCount || 0) + 1;
       await post.save();
+
+      // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Lưu lịch
+      if (post.userId.toString() !== req.user.id.toString()) {
+        await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id });
+      }
 
       return res.status(201).json({ success: true, message: "Đã lưu lịch tập vào nhật ký hôm nay!" });
     }
@@ -352,9 +354,13 @@ exports.cloneSnapshot = async (req, res) => {
       const { _id, ...cleanData } = post.dietSnapshot;
       await new DailyDietLog({ ...cleanData, userId: req.user.id, date: new Date(), isDayCompleted: false }).save();
       
-      // 🌟 ĐÃ THÊM: Tự động cộng 1 lượt lưu khi có người clone thực đơn
       post.savesCount = (post.savesCount || 0) + 1;
       await post.save();
+
+      // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Lưu lịch
+      if (post.userId.toString() !== req.user.id.toString()) {
+        await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id });
+      }
 
       return res.status(201).json({ success: true, message: "Đã lưu thực đơn vào nhật ký hôm nay!" });
     }
@@ -402,7 +408,7 @@ exports.deletePost = async (req, res) => {
   }
 };
 
-// Gộp các hàm quản lý comment lẻ (CRUD Comment)
+// CRUD Comment
 exports.getComments = async (req, res) => {
   try {
     const comments = await Comment.find({ postId: req.params.postId }).populate("userId", "name avatar role").sort({ createdAt: -1 });
@@ -450,7 +456,6 @@ exports.deleteComment = async (req, res) => {
 // ==========================================
 exports.incrementShare = async (req, res) => {
   try {
-    // 🌟 ĐÃ THÊM: Tự động đếm số lần có người bấm nút Share
     const post = await Post.findByIdAndUpdate(
       req.params.postId, 
       { $inc: { sharesCount: 1 } }, 
@@ -464,6 +469,7 @@ exports.incrementShare = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ==========================================
 // 9. LẤY BÀI VIẾT CỦA NGƯỜI MÌNH ĐANG FOLLOW
 // ==========================================
@@ -476,8 +482,8 @@ exports.getFollowingPosts = async (req, res) => {
     const followingList = currentUser.following || [];
 
     const posts = await Post.aggregate([
-      { $match: { userId: { $in: followingList } } }, // Chỉ lấy bài của người trong danh sách follow
-      { $sort: { createdAt: -1 } }, // Mới nhất lên đầu
+      { $match: { userId: { $in: followingList } } },
+      { $sort: { createdAt: -1 } },
       {
         $lookup: {
           from: "users",
@@ -502,10 +508,7 @@ exports.getFollowingPosts = async (req, res) => {
 exports.getLikedPosts = async (req, res) => {
   try {
     const currentUserId = req.user.id || req.user._id;
-    const mongoose = require("mongoose");
-
     const posts = await Post.aggregate([
-      // Chỉ lấy những bài mà ID của mình nằm trong mảng 'likes'
       { $match: { likes: new mongoose.Types.ObjectId(currentUserId) } }, 
       { $sort: { createdAt: -1 } },
       {
@@ -525,19 +528,15 @@ exports.getLikedPosts = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ==========================================
-// 11. LẤY BÀI VIẾT MỚI NHẤT TOÀN HỆ THỐNG (LATEST)
+// 11. LẤY BÀI VIẾT MỚI NHẤT TOÀN HỆ THỐNG
 // ==========================================
 exports.getLatestPosts = async (req, res) => {
   try {
     const posts = await Post.aggregate([
-      // Sắp xếp theo thời gian tạo: Mới nhất lên đầu
       { $sort: { createdAt: -1 } }, 
-      
-      // Giới hạn lấy 100 bài mới nhất để tránh lag server nếu có quá nhiều dữ liệu
       { $limit: 100 }, 
-      
-      // Lấy thông tin người đăng (Avatar, Tên)
       {
         $lookup: {
           from: "users",
@@ -553,6 +552,54 @@ exports.getLatestPosts = async (req, res) => {
     ]);
 
     res.status(200).json({ success: true, posts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 12. LẤY DANH SÁCH THÔNG BÁO CỦA TÔI
+// ==========================================
+exports.getNotifications = async (req, res) => {
+  try {
+    const notifications = await Notification.find({ userId: req.user.id || req.user._id })
+      .populate('senderId', 'name avatar isVerified')
+      .sort({ createdAt: -1 })
+      .limit(30); // Lấy 30 thông báo gần nhất
+      
+    res.status(200).json({ success: true, notifications });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 13. CHIA SẺ BÀI VIẾT TỚI USER ĐANG FOLLOW
+// ==========================================
+exports.sharePostToUser = async (req, res) => {
+  try {
+    const { targetUserId } = req.body;
+    
+    await Notification.create({
+      userId: targetUserId,
+      senderId: req.user.id || req.user._id,
+      type: 'share_post',
+      postId: req.params.postId
+    });
+
+    res.status(200).json({ success: true, message: "Đã gửi bài viết tới người dùng!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 14. XÓA THÔNG BÁO
+// ==========================================
+exports.deleteNotification = async (req, res) => {
+  try {
+    await Notification.findByIdAndDelete(req.params.notiId);
+    res.status(200).json({ success: true, message: "Đã xóa thông báo" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
