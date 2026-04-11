@@ -153,39 +153,96 @@ exports.shareFromLibrary = async (req, res) => {
 // ==========================================
 // 4. LẤY BẢNG TIN & CHI TIẾT
 // ==========================================
+// ==========================================
+// 4. LẤY BẢNG TIN (THUẬT TOÁN ĐỀ XUẤT TỐI ƯU HÓA)
+// ==========================================
 exports.getFeed = async (req, res) => {
   try {
+    const mongoose = require("mongoose");
     const currentUserId = req.user.id || req.user._id;
 
-    // Lấy thông tin user để biết "Danh sách đang theo dõi"
+    // 1. Lấy thông tin user hiện tại
     const currentUser = await User.findById(currentUserId);
     if (!currentUser) {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng" });
     }
 
-    const followingList = currentUser.following || []; 
+    // 2. Chuẩn bị dữ liệu để Aggregation so sánh
+    const followingListObj = (currentUser.following || []).map(id => new mongoose.Types.ObjectId(id));
+    const currentUserIdObj = new mongoose.Types.ObjectId(currentUserId);
 
-    // Dùng Aggregation an toàn: KHÔNG phân trang, KHÔNG check tags gây lỗi
+    // 🌟 TỐI ƯU 1: CHỈ QUÉT BÀI VIẾT TRONG 30 NGÀY QUA (Giảm tải RAM & CPU cho Server)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // 3. Chạy thuật toán chấm điểm bảng tin
     const posts = await Post.aggregate([
-      {
-        $addFields: {
-          // Kiểm tra: Bài viết có phải của người mình đang follow không?
-          isFollowing: { $in: ["$userId", followingList] }
-        }
-      },
-      {
-        $addFields: {
-          // Chấm điểm: Nếu là người đang follow thì cộng 10 điểm
-          feedScore: { $cond: ["$isFollowing", 10, 0] }
-        }
-      },
-      // Sắp xếp: Ai điểm cao lên trước, bằng điểm thì bài mới đăng lên trước
-      { $sort: { feedScore: -1, createdAt: -1 } },
-      
-      // Tương đương với .populate("userId")
+      // Lọc ngay lập tức: Chỉ lấy bài viết từ 30 ngày trước đến nay
+      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+
+      // --- BƯỚC A: LẤY DANH SÁCH NGƯỜI COMMENT VÀ TỔNG SỐ LIKE ---
       {
         $lookup: {
-          from: "users", // Lưu ý: Tên collection trong DB là số nhiều (users)
+          from: "comments", 
+          localField: "_id",
+          foreignField: "postId",
+          pipeline: [{ $project: { userId: 1 } }],
+          as: "commentsData"
+        }
+      },
+      {
+        $addFields: {
+          commenterIds: { $map: { input: "$commentsData", as: "c", in: "$$c.userId" } },
+          // Đếm số lượt Like để tính điểm Trending
+          totalLikes: { $size: { $ifNull: ["$likes", []] } }
+        }
+      },
+
+      // --- BƯỚC B: PHÂN TÍCH TƯƠNG TÁC ĐỂ CHẤM ĐIỂM ---
+      {
+        $addFields: {
+          isAuthorFollowed: { $in: ["$userId", followingListObj] },
+          
+          isLikedByFollowed: { 
+            $gt: [{ $size: { $setIntersection: [{ $ifNull: ["$likes", []] }, followingListObj] } }, 0] 
+          },
+          
+          isCommentedByFollowed: { 
+            $gt: [{ $size: { $setIntersection: ["$commenterIds", followingListObj] } }, 0] 
+          },
+
+          isLikedByMe: { $in: [currentUserIdObj, { $ifNull: ["$likes", []] }] },
+          isCommentedByMe: { $in: [currentUserIdObj, "$commenterIds"] }
+        }
+      },
+
+      // --- BƯỚC C: TỔNG HỢP ĐIỂM SỐ (SCORING & TRENDING) ---
+      {
+        $addFields: {
+          feedScore: {
+            $add: [
+              { $cond: ["$isAuthorFollowed", 50, 0] },         // Của người đang theo dõi: +50đ
+              { $cond: ["$isLikedByFollowed", 20, 0] },        // Bạn bè đã Like: +20đ
+              { $cond: ["$isCommentedByFollowed", 20, 0] },    // Bạn bè đã Comment: +20đ
+              { $cond: ["$isLikedByMe", -500, 0] },            // Mình đã Like: PHẠT TRỪ 500đ (Chìm xuống đáy)
+              { $cond: ["$isCommentedByMe", -500, 0] },        // Mình đã Comment: PHẠT TRỪ 500đ (Chìm xuống đáy)
+              // 🌟 TỐI ƯU 2: YẾU TỐ TRENDING (KHÁM PHÁ)
+              // Dù là người lạ, nhưng nếu bài có nhiều Like thì cứ 1 Like được cộng 2 điểm.
+              // VD: Bài có 30 likes sẽ được +60 điểm (vượt mặt cả bài của người đang Follow).
+              { $multiply: ["$totalLikes", 2] }                
+            ]
+          }
+        }
+      },
+
+      // --- BƯỚC D: SẮP XẾP VÀ TRẢ VỀ ---
+      // Ưu tiên điểm cao nhất lên đầu. Bằng điểm thì bài mới đăng lên đầu
+      { $sort: { feedScore: -1, createdAt: -1 } },
+      
+      // Ghép thông tin Avatar, Tên người dùng
+      {
+        $lookup: {
+          from: "users",
           localField: "userId",
           foreignField: "_id",
           pipeline: [
@@ -194,14 +251,18 @@ exports.getFeed = async (req, res) => {
           as: "userId"
         }
       },
-      // Chuyển mảng userId thành Object
       { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
       
-      // Ẩn các trường tính toán đi để dữ liệu trả về sạch đẹp
-      { $project: { isFollowing: 0, feedScore: 0 } }
+      // Xóa các trường nháp dùng để tính toán để tiết kiệm băng thông (tăng tốc độ mạng)
+      { 
+        $project: { 
+          commentsData: 0, commenterIds: 0, isAuthorFollowed: 0, 
+          isLikedByFollowed: 0, isCommentedByFollowed: 0, 
+          isLikedByMe: 0, isCommentedByMe: 0, totalLikes: 0, feedScore: 0 
+        } 
+      }
     ]);
 
-    // Trả về thẳng danh sách bài viết (Không có pagination)
     res.status(200).json({ success: true, posts });
   } catch (error) {
     console.error("Lỗi getFeed:", error);
