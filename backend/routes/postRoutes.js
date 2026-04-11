@@ -25,8 +25,16 @@ router.post("/share-master", verifyToken, mediaUpload, postController.shareMaste
 // Chia sẻ bài viết từ Kho lưu trữ (Saved Library)
 router.post("/share-library", verifyToken, mediaUpload, postController.shareFromLibrary);
 
-// Lấy bảng tin (Feed) & Chi tiết bài viết
-router.get("/feed",verifyToken, postController.getFeed);
+// ==========================================
+// 2. CÁC TÍNH NĂNG LẤY BẢNG TIN (FEED)
+// ⚠️ LƯU Ý: CÁC ROUTE CỐ ĐỊNH PHẢI ĐỨNG TRÊN ROUTE /:postId
+// ==========================================
+router.get("/feed", verifyToken, postController.getFeed);
+router.get("/latest", verifyToken, postController.getLatestPosts);
+router.get("/following", verifyToken, postController.getFollowingPosts);
+router.get("/liked", verifyToken, postController.getLikedPosts);
+
+// Lấy chi tiết 1 bài viết (Route động /:postId phải nằm DƯỚI CÙNG của các lệnh GET)
 router.get("/:postId", verifyToken, postController.getPostById);
 
 // Sửa & Xóa bài viết
@@ -34,24 +42,13 @@ router.put("/:postId", verifyToken, postController.updatePost);
 router.delete("/:postId", verifyToken, postController.deletePost);
 
 // ==========================================
-// 2. TƯƠNG TÁC (LIKE, COMMENT & SHARE)
+// 3. TƯƠNG TÁC (LIKE, COMMENT & SHARE)
 // ==========================================
 
-// Thả tim
-// Lấy bảng tin (Feed) & Chi tiết bài viết
-router.get("/feed", verifyToken, postController.getFeed); // Đây là dòng cũ
-
-// THÊM 2 DÒNG NÀY VÀO ĐÂY NHÉ 👇
-router.get("/following", verifyToken, postController.getFollowingPosts);
-router.get("/liked", verifyToken, postController.getLikedPosts);
-
-router.get("/:postId", postController.getPostById); // Đây là dòng cũ
+// Thả tim & Chia sẻ
 router.post("/:postId/like", verifyToken, postController.toggleLike);
-
-// 🌟 ĐÃ THÊM ROUTE NÀY: Gọi API để tăng lượt chia sẻ (Share)
 router.post("/:postId/share", verifyToken, postController.incrementShare);
-// Thêm dòng này vào danh sách các route của Feed
-router.get("/latest", verifyToken, postController.getLatestPosts);
+
 // Bình luận
 router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/comments", verifyToken, postController.addComment);
@@ -59,7 +56,7 @@ router.put("/comment/:commentId", verifyToken, postController.updateComment);
 router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
 
 // ==========================================
-// 3. TÍNH NĂNG CLONE (SAO CHÉP)
+// 4. TÍNH NĂNG CLONE (SAO CHÉP)
 // ==========================================
 
 // Lưu lịch từ bài đăng của người khác về nhật ký của mình
