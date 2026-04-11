@@ -38,6 +38,14 @@ router.delete("/:postId", verifyToken, postController.deletePost);
 // ==========================================
 
 // Thả tim
+// Lấy bảng tin (Feed) & Chi tiết bài viết
+router.get("/feed", verifyToken, postController.getFeed); // Đây là dòng cũ
+
+// THÊM 2 DÒNG NÀY VÀO ĐÂY NHÉ 👇
+router.get("/following", verifyToken, postController.getFollowingPosts);
+router.get("/liked", verifyToken, postController.getLikedPosts);
+
+router.get("/:postId", postController.getPostById); // Đây là dòng cũ
 router.post("/:postId/like", verifyToken, postController.toggleLike);
 
 // 🌟 ĐÃ THÊM ROUTE NÀY: Gọi API để tăng lượt chia sẻ (Share)
