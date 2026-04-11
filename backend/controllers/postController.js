@@ -525,3 +525,35 @@ exports.getLikedPosts = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// ==========================================
+// 11. LẤY BÀI VIẾT MỚI NHẤT TOÀN HỆ THỐNG (LATEST)
+// ==========================================
+exports.getLatestPosts = async (req, res) => {
+  try {
+    const posts = await Post.aggregate([
+      // Sắp xếp theo thời gian tạo: Mới nhất lên đầu
+      { $sort: { createdAt: -1 } }, 
+      
+      // Giới hạn lấy 100 bài mới nhất để tránh lag server nếu có quá nhiều dữ liệu
+      { $limit: 100 }, 
+      
+      // Lấy thông tin người đăng (Avatar, Tên)
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          pipeline: [
+            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+          ],
+          as: "userId"
+        }
+      },
+      { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } }
+    ]);
+
+    res.status(200).json({ success: true, posts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

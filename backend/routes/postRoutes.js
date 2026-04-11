@@ -50,7 +50,8 @@ router.post("/:postId/like", verifyToken, postController.toggleLike);
 
 // 🌟 ĐÃ THÊM ROUTE NÀY: Gọi API để tăng lượt chia sẻ (Share)
 router.post("/:postId/share", verifyToken, postController.incrementShare);
-
+// Thêm dòng này vào danh sách các route của Feed
+router.get("/latest", verifyToken, postController.getLatestPosts);
 // Bình luận
 router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/comments", verifyToken, postController.addComment);
