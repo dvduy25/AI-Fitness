@@ -21,9 +21,12 @@ export default function Community() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   
+  // Quản lý xem user đang ở Tab nào (Bảng tin chung, Mới nhất, Theo dõi, Đã thích)
+  const [activeTab, setActiveTab] = useState('feed'); 
+  
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserFilter, setSelectedUserFilter] = useState(null);
-  const [savedScrollPos, setSavedScrollPos] = useState(0); // State lưu vị trí cuộn chuột
+  const [savedScrollPos, setSavedScrollPos] = useState(0); 
 
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
@@ -55,12 +58,25 @@ export default function Community() {
   };
   const currentUserId = getCurrentUserId();
 
-  // TẢI DỮ LIỆU BAN ĐẦU
-  const fetchFeed = async () => {
+  // TẢI BẢNG TIN THEO TAB ĐƯỢC CHỌN
+  const fetchPosts = async (type = activeTab) => {
+    setLoading(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/posts/feed`, { headers: { Authorization: `Bearer ${token}` } });
-      if (response.data.success) setPosts(response.data.posts);
-    } catch (error) { console.error(error); } finally { setLoading(false); }
+      let endpoint = `${API_BASE_URL}/api/posts/feed`; // Mặc định: Dành cho bạn
+      
+      if (type === 'latest') endpoint = `${API_BASE_URL}/api/posts/latest`;
+      else if (type === 'following') endpoint = `${API_BASE_URL}/api/posts/following`;
+      else if (type === 'liked') endpoint = `${API_BASE_URL}/api/posts/liked`;
+
+      const response = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (response.data.success) {
+        setPosts(response.data.posts);
+      }
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const fetchFollowing = async () => {
@@ -70,18 +86,16 @@ export default function Community() {
     } catch (error) { console.error("Lỗi tải danh sách theo dõi", error); }
   };
 
+  // Lắng nghe sự thay đổi của activeTab, bấm qua tab khác tự fetch lại
   useEffect(() => { 
-    fetchFeed(); 
+    fetchPosts(activeTab); 
     fetchFollowing();
-  }, []);
+  }, [activeTab]);
 
   // XEM VÀ ĐÓNG PROFILE CHI TIẾT
   const handleViewProfile = async (userId, basicInfo) => {
-    // 1. Lưu vị trí cuộn hiện tại
     setSavedScrollPos(window.scrollY);
-    
     setSelectedUserFilter({ id: userId, ...basicInfo, isLoading: true });
-    // 2. Cuộn lên đầu trang mượt mà
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -101,7 +115,6 @@ export default function Community() {
 
   const handleCloseProfile = () => {
     setSelectedUserFilter(null);
-    // Trả màn hình về lại vị trí cũ ngay lập tức
     setTimeout(() => {
       window.scrollTo({ top: savedScrollPos, behavior: 'instant' });
     }, 10); 
@@ -110,7 +123,18 @@ export default function Community() {
   const handleToggleFollow = async (userId) => {
     try {
       const res = await axios.post(`${API_BASE_URL}/api/users/${userId}/follow`, {}, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.data.success) fetchFollowing(); 
+      if (res.data.success) {
+        fetchFollowing(); 
+        // Cập nhật mượt mà số người theo dõi nếu đang xem profile
+        if (selectedUserFilter && selectedUserFilter.id === userId) {
+          setSelectedUserFilter(prev => ({
+            ...prev,
+            followersCount: res.data.isFollowing 
+              ? (prev.followersCount || 0) + 1 
+              : Math.max(0, (prev.followersCount || 0) - 1)
+          }));
+        }
+      }
     } catch (error) { console.error(error); }
   };
 
@@ -171,7 +195,7 @@ export default function Community() {
         setNewPostContent(""); setSelectedImages([]); setSelectedVideo(null); setAttachPlan(null);
         if (imageInputRef.current) imageInputRef.current.value = "";
         if (videoInputRef.current) videoInputRef.current.value = "";
-        fetchFeed(); 
+        fetchPosts(activeTab); // Tải lại tab hiện tại
       }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi đăng bài!"); }
   };
@@ -210,7 +234,7 @@ export default function Community() {
       setPosts(updatedPosts);
       if (viewingPostDetails?._id === postId) setViewingPostDetails(updatedPosts[postIndex]);
       await axios.post(`${API_BASE_URL}/api/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
-    } catch (error) { fetchFeed(); }
+    } catch (error) { fetchPosts(activeTab); }
   };
 
   const handleViewPostDetails = async (post) => {
@@ -233,7 +257,7 @@ export default function Community() {
     return true;
   });
 
-  if (loading) return <div className="flex justify-center items-center min-h-[70vh]"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div></div>;
+  if (loading && posts.length === 0) return <div className="flex justify-center items-center min-h-[70vh]"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div></div>;
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
@@ -429,9 +453,41 @@ export default function Community() {
           </div>
         )}
 
+        {/* ================= THANH ĐIỀU HƯỚNG BẢNG TIN (TABS) ================= */}
+        {!selectedUserFilter && (
+          <div className="flex overflow-x-auto gap-3 pb-2 mb-2 custom-scrollbar">
+            <button
+              onClick={() => setActiveTab('feed')}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'feed' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+            >
+              <Flame className="w-4 h-4" /> Dành cho bạn
+            </button>
+            <button
+              onClick={() => setActiveTab('latest')}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'latest' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+            >
+               Mới nhất
+            </button>
+            <button
+              onClick={() => setActiveTab('following')}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'following' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+            >
+              <User className="w-4 h-4" /> Đang theo dõi
+            </button>
+            <button
+              onClick={() => setActiveTab('liked')}
+              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'liked' ? 'bg-pink-600 text-white shadow-lg shadow-pink-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+            >
+              <Heart className="w-4 h-4" /> Đã thích
+            </button>
+          </div>
+        )}
+
         {/* DANH SÁCH BÀI VIẾT (FEED) */}
         <div className="space-y-6">
-          {filteredPosts.length > 0 ? (
+          {loading ? (
+             <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>
+          ) : filteredPosts.length > 0 ? (
             filteredPosts.map(post => {
               const isMyPost = post.userId?._id === currentUserId || post.userId === currentUserId;
               const hasLiked = post.likes.includes(currentUserId);
@@ -536,7 +592,7 @@ export default function Community() {
             <div className="text-center py-16 bg-gray-800/40 border border-gray-700/50 rounded-3xl backdrop-blur-sm">
               <Search className="w-16 h-16 text-gray-600 mx-auto mb-5" />
               <p className="text-gray-300 font-bold text-lg mb-2">Không tìm thấy bài viết nào.</p>
-              <p className="text-base text-gray-500">Hãy thử tạo một bài viết mới hoặc thay đổi từ khóa nhé!</p>
+              <p className="text-base text-gray-500">Hãy thử tạo một bài viết mới hoặc chuyển sang tab khác nhé!</p>
             </div>
           )}
         </div>
