@@ -284,10 +284,6 @@ exports.deleteEntireMealPlan = async (req, res) => {
 };
 
 // ==========================================
-// KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN GỐC
-// ==========================================
-// [GET] /api/ai/check-meal-plan (Hoặc mapping tương ứng trong file route của bạn)
-e// ==========================================
 // KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN (ĐÃ FIX BUG)
 // ==========================================
 // [GET] /api/ai/check-meal-plan
