@@ -50,7 +50,7 @@ export default function MealPlanManager() {
   const [libraryItems, setLibraryItems] = useState([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
 
-  // --- STATE CHO TÍNH NĂNG KIỂM TRA ĐỘ LỆCH CALO/MACRO (MỚI THÊM) ---
+  // --- STATE CHO TÍNH NĂNG KIỂM TRA ĐỘ LỆCH CALO/MACRO ---
   const [deviationData, setDeviationData] = useState(null);
 
   const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
@@ -110,7 +110,6 @@ export default function MealPlanManager() {
     }
   };
 
-  // Gọi API kiểm tra độ lệch Calo mục tiêu so với thực đơn hiện hành
   const fetchPlanDeviation = async () => {
     try {
       const res = await axios.get(`${API_BASE_URL}/api/meal-plan/check-deviation`, getHeaders());
@@ -162,6 +161,32 @@ export default function MealPlanManager() {
     } catch (err) {
       setError(err.response?.data?.message || "Lỗi tạo lịch ăn. Thử lại sau.");
     } finally { setIsGenerating(false); }
+  };
+
+  // --- HÀM MỚI: TỰ ĐỘNG CÂN BẰNG GRAM BẰNG AI ---
+  const handleAutoBalanceGrams = async () => {
+    if (!checkAiAccess()) {
+      setShowPremiumModal(true);
+      return;
+    }
+    
+    setIsProcessing(true);
+    setError(null);
+    setSuccessMsg("");
+    
+    try {
+      // Gọi endpoint cân bằng tự động của bạn (điều chỉnh đường dẫn cho phù hợp với Backend)
+      const res = await axios.post(`${API_BASE_URL}/api/ai/adjust-meal-plan-by-ai`, {}, getHeaders());
+      setGeneratedPlan(res.data.masterMealPlan || res.data.plan);
+      setSuccessMsg("AI đã cân bằng lại định lượng thành công!");
+      fetchUserData(); // Cập nhật lại số vé AI
+      fetchPlanDeviation(); // Kiểm tra lại độ lệch sau khi cân bằng
+    } catch (err) {
+      setError(err.response?.data?.message || "Lỗi khi cân bằng bằng AI.");
+      setTimeout(() => setError(""), 3000);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleGoHome = () => navigate('/home');
@@ -497,7 +522,7 @@ export default function MealPlanManager() {
                       Tạo lịch thủ công
                     </button>
                     
-                    <button
+                    <button 
                       onClick={handleOpenLibrary}
                       disabled={isProcessing}
                       className="px-6 md:px-8 py-3.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 font-bold rounded-xl shadow-lg border border-orange-500/30 flex items-center gap-2 transition-all"
@@ -545,18 +570,31 @@ export default function MealPlanManager() {
                     </div>
                   </div>
 
-                  {/* BANNER HIỂN THỊ ĐỘ LỆCH DINH DƯỠNG THỜI GIAN THỰC (MỚI THÊM) */}
+                  {/* BANNER HIỂN THỊ ĐỘ LỆCH DINH DƯỠNG THỜI GIAN THỰC (TÍCH HỢP NÚT AUTO BALANCE) */}
                   {deviationData && (
-                    <div className={`p-4 rounded-xl border text-sm flex items-start gap-3 shadow-md transition-all ${
+                    <div className={`p-4 rounded-xl border text-sm flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-md transition-all ${
                       deviationData.isDeviated 
                         ? 'bg-amber-950/40 border-amber-500/40 text-amber-300' 
                         : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400'
                     }`}>
-                      <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${deviationData.isDeviated ? 'text-amber-400' : 'text-emerald-400'}`} />
-                      <div>
-                        <h4 className="font-bold mb-0.5">{deviationData.isDeviated ? "Cảnh báo chênh lệch dinh dưỡng thủ công!" : "Lịch ăn đạt tiêu chuẩn dinh dưỡng!"}</h4>
-                        <p className="text-gray-400 text-xs sm:text-sm">{deviationData.message}</p>
+                      <div className="flex items-start gap-3">
+                        <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${deviationData.isDeviated ? 'text-amber-400' : 'text-emerald-400'}`} />
+                        <div>
+                          <h4 className="font-bold mb-0.5">{deviationData.isDeviated ? "Cảnh báo chênh lệch dinh dưỡng thủ công!" : "Lịch ăn đạt tiêu chuẩn dinh dưỡng!"}</h4>
+                          <p className="text-gray-400 text-xs sm:text-sm">{deviationData.message}</p>
+                        </div>
                       </div>
+                      
+                      {deviationData.isDeviated && (
+                        <button 
+                          onClick={handleAutoBalanceGrams}
+                          disabled={isProcessing}
+                          className="shrink-0 flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white rounded-xl font-bold shadow-lg hover:scale-[1.02] transition-transform text-sm"
+                        >
+                          {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
+                          AI Cân Bằng Nhanh
+                        </button>
+                      )}
                     </div>
                   )}
 
