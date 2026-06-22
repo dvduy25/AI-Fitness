@@ -515,12 +515,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
       { new: true } 
     );
 
-    // 8. Trừ vé AI (Lưu ý: Nếu middleware verifyPremiumOrTicket đã trừ vé thì hãy BỎ đoạn này để tránh trừ 2 lần)
-    if (!user.isPremium) {
-      user.aiTickets = Math.max(0, user.aiTickets - 1);
-      await user.save();
-    }
-
+  
     // 9. Trả kết quả
     return res.status(200).json({ 
       success: true,
