@@ -287,6 +287,10 @@ exports.deleteEntireMealPlan = async (req, res) => {
 // KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN GỐC
 // ==========================================
 // [GET] /api/ai/check-meal-plan (Hoặc mapping tương ứng trong file route của bạn)
+e// ==========================================
+// KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN (ĐÃ FIX BUG)
+// ==========================================
+// [GET] /api/ai/check-meal-plan
 exports.checkMealPlanDeviation = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -303,12 +307,17 @@ exports.checkMealPlanDeviation = async (req, res) => {
     if (!mealPlan) {
       return res.status(200).json({
         success: true,
+        isDeviated: false,
         isDeviationHigh: false,
         message: "Người dùng chưa khởi tạo lịch ăn cố định."
       });
     }
 
-    // Lấy calories mục tiêu (mặc định 2000 nếu chưa cấu hình) và calories thực tế trong plan hiện tại
+    // 🔥 FIX BUG 2: Ép hệ thống tính toán lại tổng Calo thời gian thực từ các món ăn hiện tại.
+    // Điều này giúp tránh trường hợp AI tạo thực đơn nhưng quên cập nhật trường dailyTotal trong DB.
+    recalculateTotals(mealPlan);
+
+    // Lấy calories mục tiêu (mặc định 2000 nếu chưa cấu hình) và calories thực tế sau khi đã tính lại
     const targetCalories = user.targetMacros?.calories || 2000;
     const currentCalories = mealPlan.dailyTotal?.calories || 0;
 
@@ -317,20 +326,29 @@ exports.checkMealPlanDeviation = async (req, res) => {
     const diff = Math.abs(targetCalories - currentCalories);
     const maxDiffAllowed = targetCalories * thresholdPercentage;
 
-    let isDeviationHigh = false;
-    let warningMessage = null;
+    let isDeviated = false;
+    let message = "Dinh dưỡng nằm trong ngưỡng an toàn cho phép.";
 
-    // Kích hoạt trạng thái cảnh báo nếu vượt ngưỡng cho phép
+    // Kích hoạt trạng thái cảnh báo nếu vượt ngưỡng cho phép (10%)
     if (targetCalories > 0 && diff > maxDiffAllowed) {
-      isDeviationHigh = true;
+      isDeviated = true;
       const statusText = currentCalories > targetCalories ? "vượt quá" : "chưa đủ";
-      warningMessage = `Tổng Calo lịch ăn hiện tại (${currentCalories} kcal) đang ${statusText} và lệch ${Math.round(diff)} kcal so với mục tiêu (${targetCalories} kcal) của bạn.`;
+      message = `Tổng Calo lịch ăn hiện tại (${currentCalories} kcal) đang ${statusText} và lệch ${Math.round(diff)} kcal so với mục tiêu (${targetCalories} kcal) của bạn.`;
     }
 
+    // 🔥 FIX BUG 1: Trả về đồng thời cả 2 kiểu đặt tên biến (isDeviated và isDeviationHigh)
+    // để đảm bảo dù Frontend đang viết theo chuẩn nào cũng sẽ nhận được dữ liệu chính xác!
     return res.status(200).json({
       success: true,
-      isDeviationHigh, // Flag quan trọng điều khiển giao diện hiển thị nút "Sửa bằng AI" ở Frontend
-      warningMessage,  // Đoạn text thông báo hiển thị trực tiếp lên UI
+      
+      // Cặp biến kiểu 1 (Khuyên dùng cho Frontend của bạn)
+      isDeviated: isDeviated, 
+      message: isDeviated ? message : "Dinh dưỡng đạt tiêu chuẩn!",
+
+      // Cặp biến kiểu 2 (Giữ lại để không làm lỗi các logic cũ nếu có)
+      isDeviationHigh: isDeviated, 
+      warningMessage: isDeviated ? message : null,  
+
       analysis: {
         targetCalories,
         currentCalories,
