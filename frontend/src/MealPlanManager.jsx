@@ -5,7 +5,7 @@ import {
   Bot, Sparkles, Utensils, Target, Flame, Beef, 
   Wheat, Droplet, Clock, AlertTriangle, CheckCircle, Loader2, MessageSquareText,
   Plus, Trash2, Edit2, X, Search, BrainCircuit,
-  ArrowLeft, BookmarkPlus, Library // <-- CÁC ICON MỚI THÊM
+  ArrowLeft, BookmarkPlus, Library
 } from 'lucide-react';
 
 import MasterMealEvaluation from './MasterMealEvaluation';
@@ -45,10 +45,13 @@ export default function MealPlanManager() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isLoadingAd, setIsLoadingAd] = useState(false);
 
-  // --- STATE MỚI CHO TÍNH NĂNG KHO (LIBRARY) ---
+  // --- STATE CHO TÍNH NĂNG KHO LƯU TRỮ (LIBRARY) ---
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [libraryItems, setLibraryItems] = useState([]);
   const [isLibraryLoading, setIsLibraryLoading] = useState(false);
+
+  // --- STATE CHO TÍNH NĂNG KIỂM TRA ĐỘ LỆCH CALO/MACRO (MỚI THÊM) ---
+  const [deviationData, setDeviationData] = useState(null);
 
   const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   const getHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
@@ -58,6 +61,15 @@ export default function MealPlanManager() {
     fetchCurrentPlan(); 
     fetchFoods(); 
   }, []);
+
+  // Tự động kiểm tra độ lệch dinh dưỡng mỗi khi lịch ăn có sự thay đổi
+  useEffect(() => {
+    if (generatedPlan) {
+      fetchPlanDeviation();
+    } else {
+      setDeviationData(null);
+    }
+  }, [generatedPlan]);
 
   const fetchUserData = async () => {
     try {
@@ -95,6 +107,21 @@ export default function MealPlanManager() {
       console.error("Lỗi tải thực phẩm", error); 
     } finally { 
       setIsLoadingFoods(false); 
+    }
+  };
+
+  // Gọi API kiểm tra độ lệch Calo mục tiêu so với thực đơn hiện hành
+  const fetchPlanDeviation = async () => {
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/meal-plan/check-deviation`, getHeaders());
+      if (res.data && res.data.success) {
+        setDeviationData(res.data.data || res.data);
+      } else {
+        setDeviationData(null);
+      }
+    } catch (err) {
+      console.error("Lỗi kiểm tra độ lệch lịch ăn:", err);
+      setDeviationData(null);
     }
   };
 
@@ -137,10 +164,7 @@ export default function MealPlanManager() {
     } finally { setIsGenerating(false); }
   };
 
-  // ==========================================
-  // CÁC CHỨC NĂNG KHO (LIBRARY) & ĐIỀU HƯỚNG MỚI
-  // ==========================================
-  const handleGoHome = () => navigate('/home'); // Quay lại trang chủ
+  const handleGoHome = () => navigate('/home');
 
   const handleSaveToLibrary = async () => {
     if (!generatedPlan) return alert("Chưa có thực đơn để lưu!");
@@ -198,9 +222,6 @@ export default function MealPlanManager() {
     }
   };
 
-  // ==========================================
-  // TÍNH NĂNG: TẠO LỊCH ĂN THỦ CÔNG
-  // ==========================================
   const handleCreateManualPlan = async () => {
     setIsProcessing(true);
     setError(null);
@@ -217,9 +238,6 @@ export default function MealPlanManager() {
     }
   };
 
-  // ==========================================
-  // TÍNH NĂNG: XÓA TOÀN BỘ LỊCH ĂN
-  // ==========================================
   const handleDeleteEntirePlan = async () => {
     if (!window.confirm("Bạn có chắc muốn xóa TOÀN BỘ lịch ăn không? Hành động này không thể hoàn tác.")) return;
     
@@ -302,7 +320,6 @@ export default function MealPlanManager() {
       <header className="bg-gray-900 border-b border-gray-800 p-5 sticky top-0 z-20 shadow-md">
         <div className="w-full px-4 md:px-8 lg:px-12 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            {/* Thêm nút Back */}
             <button onClick={handleGoHome} className="p-2 bg-gray-800 text-gray-400 hover:text-white rounded-full transition-colors shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -343,7 +360,7 @@ export default function MealPlanManager() {
         </div>
       </header>
 
-      {/* THÔNG BÁO */}
+      {/* THÔNG BÁO TỔNG */}
       <div className="w-full px-4 md:px-8 lg:px-12 mt-4 space-y-3">
         {error && (
           <div className="p-3 bg-red-900/30 text-red-400 border border-red-800/50 rounded-xl text-sm flex items-center gap-2 shadow-lg animate-in fade-in duration-300">
@@ -360,7 +377,7 @@ export default function MealPlanManager() {
       <div className="w-full px-4 md:px-8 lg:px-12 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* CỘT TRÁI (THIẾT LẬP AI) */}
+          {/* CỘT TRÁI (THIẾT LẬP AI & MỤC TIÊU CHUẨN) */}
           <div className="lg:col-span-4 space-y-6">
             <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 shadow-lg">
               <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-4 flex items-center gap-2">
@@ -438,9 +455,9 @@ export default function MealPlanManager() {
             </div>
           </div>
 
-          {/* CỘT PHẢI (KẾT QUẢ RENDER) */}
+          {/* CỘT PHẢI (KẾT QUẢ HIỂN THỊ KÈM CẢNH BÁO ĐỘ LỆCH THỦ CÔNG) */}
           <div className="lg:col-span-8">
-            <div className="bg-gray-900 min-h-[500px] p-4 md:p-6 rounded-2xl border border-gray-800 shadow-lg">
+            <div className="bg-gray-900 min-h-[500px] p-4 md:p-6 rounded-2xl border border-gray-800 shadow-lg space-y-4">
               
               {isLoadingPlan && !isGenerating && (
                 <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-gray-400 space-y-3">
@@ -463,11 +480,11 @@ export default function MealPlanManager() {
 
               {/* TRẠNG THÁI TRỐNG: NÚT TẠO THỦ CÔNG & CHỌN TỪ KHO */}
               {!isLoadingPlan && !isGenerating && !generatedPlan && (
-                <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center border-2 border-dashed border-gray-800 rounded-xl bg-gray-900/50">
+                <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-center border-2 border-dashed border-gray-800 rounded-xl bg-gray-900/50 py-10">
                   <div className="p-4 bg-gray-800 rounded-full mb-3"><Utensils className="w-8 h-8 text-gray-500" /></div>
                   <h3 className="text-gray-300 font-bold text-lg">Chưa có lịch ăn nào</h3>
                   <p className="text-sm text-gray-500 mt-2 max-w-sm mb-4">
-                    Tạo khung lịch ăn trống theo số bữa bạn đã chọn ở bên trái, sau đó tự do thêm món ăn nhé, hoặc chọn từ kho.
+                    Tạo khung lịch ăn trống theo số bữa bạn đã chọn ở bên trái, sau đó tự do thêm món ăn nhé, hoặc chọn từ kho thực đơn.
                   </p>
                   
                   <div className="flex flex-col sm:flex-row justify-center mt-2 gap-3">
@@ -493,11 +510,11 @@ export default function MealPlanManager() {
 
               {/* TRẠNG THÁI CÓ LỊCH ĂN */}
               {!isLoadingPlan && !isGenerating && generatedPlan && (
-                <div className={`space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
+                <div className={`space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}>
                   
-                  {/* HEADER TỔNG KẾT BỮA ĂN (TÍCH HỢP NÚT LƯU KHO/CHỌN KHO) */}
+                  {/* HEADER TỔNG KẾT BỮA ĂN (TÍCH HỢP NÚT KHO & TỔNG MACRO) */}
                   <div className="bg-gray-950 p-4 rounded-xl border border-emerald-900/50 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-                    <div>
+                    <div> 
                       <h3 className="text-emerald-400 font-bold flex items-center gap-2 text-lg">
                         <CheckCircle className="w-5 h-5"/> Lịch ăn của bạn
                       </h3>
@@ -505,7 +522,6 @@ export default function MealPlanManager() {
                     </div>
                     
                     <div className="flex flex-col md:flex-row gap-3 items-center">
-                      {/* Thêm 2 nút Lưu Kho và Chọn Kho */}
                       <div className="flex items-center gap-2 md:mr-2">
                         <button onClick={handleSaveToLibrary} disabled={!generatedPlan || isProcessing} className="flex items-center gap-2 px-3 py-2 bg-gray-900 text-yellow-400 border border-yellow-500/30 rounded-lg hover:bg-gray-800 transition-colors text-sm font-semibold">
                           <BookmarkPlus className="w-4 h-4" /> Lưu vào kho
@@ -515,7 +531,6 @@ export default function MealPlanManager() {
                         </button>
                       </div>
 
-                      {/* Hiển thị Tổng Calo và Macro */}
                       <div className="flex gap-4 items-center bg-gray-900 p-3 rounded-xl border border-gray-800 w-full md:w-auto justify-center">
                         <div className="text-center px-3 border-r border-gray-700">
                           <span className="block text-[10px] text-gray-500 uppercase font-bold tracking-wider">Tổng Calo</span>
@@ -530,12 +545,27 @@ export default function MealPlanManager() {
                     </div>
                   </div>
 
+                  {/* BANNER HIỂN THỊ ĐỘ LỆCH DINH DƯỠNG THỜI GIAN THỰC (MỚI THÊM) */}
+                  {deviationData && (
+                    <div className={`p-4 rounded-xl border text-sm flex items-start gap-3 shadow-md transition-all ${
+                      deviationData.isDeviated 
+                        ? 'bg-amber-950/40 border-amber-500/40 text-amber-300' 
+                        : 'bg-emerald-950/30 border-emerald-500/30 text-emerald-400'
+                    }`}>
+                      <AlertTriangle className={`w-5 h-5 shrink-0 mt-0.5 ${deviationData.isDeviated ? 'text-amber-400' : 'text-emerald-400'}`} />
+                      <div>
+                        <h4 className="font-bold mb-0.5">{deviationData.isDeviated ? "Cảnh báo chênh lệch dinh dưỡng thủ công!" : "Lịch ăn đạt tiêu chuẩn dinh dưỡng!"}</h4>
+                        <p className="text-gray-400 text-xs sm:text-sm">{deviationData.message}</p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* TIMELINE DANH SÁCH BỮA ĂN */}
                   <div className="relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-700 before:to-transparent pt-4 pb-4">
                     {generatedPlan?.meals?.map((meal, index) => (
                       <div key={index} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group mb-8 last:mb-0">
                         <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-gray-900 bg-gray-800 text-gray-400 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
-                           <Clock className="w-4 h-4" />
+                          <Clock className="w-4 h-4" />
                         </div>
                         
                         <div className="w-[calc(100%-3rem)] md:w-[calc(50%-2.5rem)] p-4 rounded-2xl bg-gray-950 border border-gray-800 shadow-md">
@@ -620,7 +650,7 @@ export default function MealPlanManager() {
         </div>
       </div>
 
-      {/* NÚT AI ĐÁNH GIÁ */}
+      {/* NÚT AI ĐÁNH GIÁ TỔNG QUAN */}
       {!isLoadingPlan && generatedPlan && (
         <div className="w-full px-4 md:px-8 lg:px-12 pb-10 mt-6">
           <button onClick={handleEvaluatePlanClick} className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-500 rounded-2xl text-white font-bold flex justify-center items-center gap-2 shadow-lg hover:scale-[1.02] transition-transform">
@@ -760,7 +790,7 @@ export default function MealPlanManager() {
         </div>
       )}
 
-      {/* MODAL 5: XEM CHI TIẾT MÓN ĂN VÀ ẢNH */}
+      {/* MODAL 4: XEM CHI TIẾT MÓN ĂN VÀ ẢNH */}
       {selectedFoodDetail && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in zoom-in duration-200">
           <div className="bg-gray-900 w-full max-w-sm rounded-3xl border border-gray-800 shadow-2xl overflow-hidden relative">
@@ -826,7 +856,7 @@ export default function MealPlanManager() {
         </div>
       )}
 
-      {/* MODAL 6: KHO LƯU TRỮ (LIBRARY) THÊM MỚI */}
+      {/* MODAL 5: KHO LƯU TRỮ (LIBRARY) THÊM MỚI */}
       {showLibraryModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowLibraryModal(false)}>
           <div className="bg-gray-900 border border-gray-700 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
@@ -857,7 +887,7 @@ export default function MealPlanManager() {
         </div>
       )}
 
-      {/* 🌟 MODAL 7 ĐÁNH GIÁ THỰC ĐƠN */}
+      {/* 🌟 MODAL 6: ĐÁNH GIÁ THỰC ĐƠN BẰNG AI */}
       {showEvaluation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="bg-gray-900 w-full max-w-3xl rounded-3xl border border-gray-800 shadow-2xl overflow-hidden h-[85vh] flex flex-col relative">
@@ -880,7 +910,7 @@ export default function MealPlanManager() {
         </div>
       )}
 
-      {/* 🌟 BỔ SUNG: MODAL YÊU CẦU PREMIUM / VÉ AI */}
+      {/* 🌟 MODAL 7: YÊU CẦU PREMIUM / VÉ AI */}
       <PremiumRequireModal 
         isOpen={showPremiumModal}
         onClose={() => setShowPremiumModal(false)}
