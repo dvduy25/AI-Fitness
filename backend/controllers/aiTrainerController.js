@@ -520,7 +520,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
     return res.status(200).json({ 
       success: true,
       message: "AI đã cân bằng lại định lượng thực đơn thành công!", 
-      aiTicketsLeft: user.aiTickets,
       targetMacros: target, 
       masterMealPlan: updatedMealPlan 
     });
