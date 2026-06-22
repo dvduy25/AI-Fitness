@@ -50,7 +50,7 @@ exports.generatePTWorkoutPlan = async (req, res) => {
     
     let availableExercises = await Exercise.find(exerciseQuery).select("_id name muscleGroup");
     
-    // [ĐÃ SỬA LỖI SỐ 1] Fallback: Nếu lọc quá gắt không ra bài nào, tự động lấy 50 bài tập bất kỳ
+    // Fallback: Nếu lọc quá gắt không ra bài nào, tự động lấy 50 bài tập bất kỳ
     if (availableExercises.length === 0) {
       console.log("⚠️ Cảnh báo: Không tìm thấy bài tập khớp điều kiện, đang lấy dữ liệu mặc định...");
       availableExercises = await Exercise.find({}).limit(50).select("_id name muscleGroup");
@@ -121,12 +121,11 @@ exports.generatePTWorkoutPlan = async (req, res) => {
         let validExercises = [];
         
         if (!dailyWorkout.isRestDay && dailyWorkout.exercises) {
-          // [ĐÃ SỬA LỖI SỐ 2] Cắt bỏ khoảng trắng 2 đầu của ID do AI tự thêm vào
           validExercises = dailyWorkout.exercises.filter(ex => {
             if (!ex.exerciseId) return false;
-            const cleanId = String(ex.exerciseId).trim(); // Dọn dẹp khoảng trắng
-            ex.exerciseId = cleanId; // Ghi đè lại ID sạch
-            return cleanId.length === 24; // Kiểm tra chuẩn 24 ký tự
+            const cleanId = String(ex.exerciseId).trim();
+            ex.exerciseId = cleanId;
+            return cleanId.length === 24;
           }); 
         }
 
@@ -166,10 +165,7 @@ exports.generatePTMealPlan = async (req, res) => {
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
     
-    // Trích xuất bệnh lý trực tiếp từ user
-    const medicalInfo = user.medicalConditions && user.medicalConditions.length > 0 
-      ? user.medicalConditions.join(", ") 
-      : "Không có";
+    const medicalInfo = user.medicalConditions && user.medicalConditions.length > 0 ? user.medicalConditions.join(", ") : "Không có";
 
     const target = {
         calories: user.targetMacros?.calories || 2000, 
@@ -333,5 +329,186 @@ exports.generatePTMealPlan = async (req, res) => {
   } catch (error) {
     console.error("Lỗi Controller Meal:", error);
     res.status(500).json({ message: "Lỗi tạo PT Meal Plan", error: error.message });
+  }
+};
+
+// =========================================================================
+// 3. API ĐIỀU CHỈNH LỊCH ĂN BẰNG AI (GIỮ NGUYÊN MÓN ĂN - CHỈ ĐỔI ĐỊNH LƯỢNG)
+// =========================================================================
+exports.adjustMealPlanByAI = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // 1. Kiểm tra tài khoản & Vé AI
+    const user = await User.findById(userId);
+    if (!user) return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
+
+    if (!user.isPremium && user.aiTickets <= 0) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Bạn đã dùng hết vé AI ngày hôm nay. Hãy xem quảng cáo để nhận thêm lượt nhé!" 
+      });
+    }
+
+    // 2. Kiểm tra lịch ăn hiện tại
+    const mealPlan = await MealPlan.findOne({ userId });
+    if (!mealPlan || mealPlan.meals.length === 0) {
+      return res.status(404).json({ message: "Bạn chưa có lịch ăn cố định nào để điều chỉnh!" });
+    }
+
+    // 3. Lấy thông tin dinh dưỡng gốc của các món ăn hiện có để gửi cho AI
+    const foodIdsInPlan = [];
+    mealPlan.meals.forEach(m => m.items.forEach(i => foodIdsInPlan.push(i.foodId)));
+    
+    const availableFoods = await Food.find({ _id: { $in: foodIdsInPlan } })
+      .select("_id name caloriesPer100g proteinPer100g carbsPer100g fatPer100g");
+
+    // Tóm tắt cấu trúc thực đơn hiện tại gửi lên AI kèm chỉ số dinh dưỡng gốc / 100g
+    const currentMealsContext = mealPlan.meals.map(meal => ({
+      mealType: meal.mealType,
+      scheduledTime: meal.scheduledTime,
+      items: meal.items.map(item => {
+        const baseFood = availableFoods.find(f => f._id.toString() === item.foodId.toString());
+        return {
+          foodId: item.foodId.toString(),
+          foodName: item.foodName,
+          currentQuantityGrams: item.quantityInGrams,
+          caloriesPer100g: baseFood ? baseFood.caloriesPer100g : 0,
+          proteinPer100g: baseFood ? baseFood.proteinPer100g : 0,
+          carbsPer100g: baseFood ? baseFood.carbsPer100g : 0,
+          fatPer100g: baseFood ? baseFood.fatPer100g : 0
+        };
+      })
+    }));
+
+    const target = {
+      calories: user.targetMacros?.calories || 2000,
+      protein: user.targetMacros?.protein || 150,
+      carbs: user.targetMacros?.carbs || 200,
+      fat: user.targetMacros?.fat || 50
+    };
+
+    // 4. Xây dựng Prompt ép luật nghiêm ngặt (Cấm đổi món)
+    const prompt = `
+      Bạn là một chuyên gia phân tích dữ liệu dinh dưỡng. Học viên này đang có một thực đơn bị lệch Calo so với mục tiêu.
+      Hãy giúp họ ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) của các món ăn hiện tại để đạt gần mục tiêu nhất có thể.
+
+      MỤC TIÊU DINH DƯỠNG CỦA CẢ NGÀY:
+      - Calories: ~${target.calories} kcal
+      - Protein: ~${target.protein}g
+      - Carbs: ~${target.carbs}g
+      - Fat: ~${target.fat}g
+
+      DANH SÁCH THỰC ĐƠN HIỆN TẠI:
+      ${JSON.stringify(currentMealsContext)}
+
+      QUY TẮC THÉP BẮT BUỘC (NẾU VI PHẠM HỆ THỐNG SẼ LỖI):
+      1. TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI MÓN ĂN. Không thêm món mới, không xóa món cũ, không thay đổi "foodName" hay "foodId".
+      2. BẠN CHỈ ĐƯỢC PHÉP thay đổi giá trị "quantityInGrams" của từng món ăn hiện có. Số gram mới phải là số nguyên dương hợp lý (thường từ 20g đến 500g tùy loại món).
+      3. Hãy tính toán phân phối lượng Gram thông minh giữa các bữa (Sáng, Trưa, Tối, Nhẹ) sao cho tổng Calories, P, C, F cả ngày tiệm cận mục tiêu nhất.
+
+      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG ĐƯỢC CHỨA VĂN BẢN GIẢI THÍCH):
+      {
+        "meals": [
+          {
+            "mealType": "Tên Bữa Ăn",
+            "scheduledTime": "HH:mm",
+            "items": [
+              { "foodId": "MÃ_ID_GỐC_KHÔNG_ĐỔI", "quantityInGrams": 150 }
+            ]
+          }
+        ]
+      }
+    `;
+
+    // 5. Gọi AI sinh dữ liệu JSON
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+    const result = await model.generateContent(prompt);
+    const parsedData = JSON.parse(result.response.text().replace(/```json/g, "").replace(/```/g, "").trim());
+
+    // 6. Xử lý hậu kỳ tại Backend để đảm bảo chính xác thuật toán toán học (Không tin tưởng 100% phép toán của AI)
+    let dailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+    const processedMeals = [];
+
+    for (const meal of parsedData.meals) {
+      let mealTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+      const processedItems = [];
+
+      for (const item of meal.items) {
+        const foodData = availableFoods.find(f => f._id.toString() === item.foodId.trim());
+        if (foodData) {
+          let finalGrams = Math.round(Number(item.quantityInGrams) || 10);
+          if (finalGrams < 10) finalGrams = 10; // Đảm bảo không bị gram âm hoặc bằng 0
+
+          const ratio = finalGrams / 100;
+          const calcItem = {
+            foodId: foodData._id, 
+            foodName: foodData.name, 
+            quantityInGrams: finalGrams, 
+            calories: Math.round(foodData.caloriesPer100g * ratio),
+            protein: Math.round((foodData.proteinPer100g * ratio) * 10) / 10,
+            carbs: Math.round((foodData.carbsPer100g * ratio) * 10) / 10,
+            fat: Math.round((foodData.fatPer100g * ratio) * 10) / 10,
+          };
+          
+          mealTotal.calories += calcItem.calories; 
+          mealTotal.protein += calcItem.protein; 
+          mealTotal.carbs += calcItem.carbs; 
+          mealTotal.fat += calcItem.fat;
+          
+          processedItems.push(calcItem);
+        }
+      }
+
+      // Làm tròn chỉ số tổng của từng bữa ăn
+      mealTotal.protein = Math.round(mealTotal.protein * 10) / 10;
+      mealTotal.carbs = Math.round(mealTotal.carbs * 10) / 10;
+      mealTotal.fat = Math.round(mealTotal.fat * 10) / 10;
+      
+      dailyTotal.calories += mealTotal.calories; 
+      dailyTotal.protein += mealTotal.protein; 
+      dailyTotal.carbs += mealTotal.carbs; 
+      dailyTotal.fat += mealTotal.fat;
+
+      if (processedItems.length > 0) {
+        processedMeals.push({ 
+          mealType: meal.mealType, 
+          scheduledTime: meal.scheduledTime || "07:00", 
+          items: processedItems, 
+          mealTotal 
+        });
+      }
+    }
+
+    // Làm tròn chỉ số tổng của cả ngày
+    dailyTotal.protein = Math.round(dailyTotal.protein * 10) / 10;
+    dailyTotal.carbs = Math.round(dailyTotal.carbs * 10) / 10;
+    dailyTotal.fat = Math.round(dailyTotal.fat * 10) / 10;
+
+    // 7. Cập nhật vào Cơ sở dữ liệu
+    let updatedMealPlan = await MealPlan.findOneAndUpdate(
+      { userId: userId }, 
+      { $set: { dailyTotal: dailyTotal, meals: processedMeals } }, 
+      { new: true } 
+    );
+
+    // 8. Trừ vé AI của người dùng nếu họ không phải là tài khoản Premium
+    if (!user.isPremium) {
+      user.aiTickets = Math.max(0, user.aiTickets - 1);
+      await user.save();
+    }
+
+    // 9. Trả kết quả về Frontend hiển thị thành công
+    res.status(200).json({ 
+      success: true,
+      message: `AI đã cân bằng lại định lượng thực đơn thành công!`, 
+      aiTicketsLeft: user.aiTickets,
+      targetMacros: target, 
+      masterMealPlan: updatedMealPlan 
+    });
+
+  } catch (error) {
+    console.error("Lỗi khi dùng AI sửa thực đơn:", error);
+    res.status(500).json({ message: "Lỗi trong quá trình AI xử lý cân bằng thực đơn", error: error.message });
   }
 };

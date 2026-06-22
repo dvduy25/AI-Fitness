@@ -1,5 +1,6 @@
 const MealPlan = require("../models/MealPlan");
 const Food = require("../models/Food");
+const User = require("../models/User"); // <-- Đã thêm để lấy thông tin targetMacros.calories của User
 
 // Tiện ích làm tròn (Calo và Gram thường lấy số nguyên, Macros có thể lấy 1 số thập phân hoặc nguyên tùy bạn)
 const formatCal = (val) => Math.round(Number(val)) || 0;
@@ -279,5 +280,67 @@ exports.deleteEntireMealPlan = async (req, res) => {
     res.status(200).json({ message: "Đã xóa toàn bộ lịch ăn thành công!" });
   } catch (error) {
     res.status(500).json({ message: "Lỗi xóa lịch ăn", error: error.message });
+  }
+};
+
+// ==========================================
+// KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN GỐC
+// ==========================================
+// [GET] /api/ai/check-meal-plan (Hoặc mapping tương ứng trong file route của bạn)
+exports.checkMealPlanDeviation = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Lấy thông tin mục tiêu calo của người dùng và lịch ăn hiện tại
+    const user = await User.findById(userId);
+    const mealPlan = await MealPlan.findOne({ userId });
+
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
+    }
+    
+    // Nếu chưa tạo thực đơn thì chưa có gì để tính toán độ lệch
+    if (!mealPlan) {
+      return res.status(200).json({
+        success: true,
+        isDeviationHigh: false,
+        message: "Người dùng chưa khởi tạo lịch ăn cố định."
+      });
+    }
+
+    // Lấy calories mục tiêu (mặc định 2000 nếu chưa cấu hình) và calories thực tế trong plan hiện tại
+    const targetCalories = user.targetMacros?.calories || 2000;
+    const currentCalories = mealPlan.dailyTotal?.calories || 0;
+
+    // Định nghĩa ngưỡng lệch cho phép: Vượt quá hoặc thiếu hụt 10% mục tiêu calo ngày
+    const thresholdPercentage = 0.10; 
+    const diff = Math.abs(targetCalories - currentCalories);
+    const maxDiffAllowed = targetCalories * thresholdPercentage;
+
+    let isDeviationHigh = false;
+    let warningMessage = null;
+
+    // Kích hoạt trạng thái cảnh báo nếu vượt ngưỡng cho phép
+    if (targetCalories > 0 && diff > maxDiffAllowed) {
+      isDeviationHigh = true;
+      const statusText = currentCalories > targetCalories ? "vượt quá" : "chưa đủ";
+      warningMessage = `Tổng Calo lịch ăn hiện tại (${currentCalories} kcal) đang ${statusText} và lệch ${Math.round(diff)} kcal so với mục tiêu (${targetCalories} kcal) của bạn.`;
+    }
+
+    return res.status(200).json({
+      success: true,
+      isDeviationHigh, // Flag quan trọng điều khiển giao diện hiển thị nút "Sửa bằng AI" ở Frontend
+      warningMessage,  // Đoạn text thông báo hiển thị trực tiếp lên UI
+      analysis: {
+        targetCalories,
+        currentCalories,
+        difference: Math.round(diff),
+        deviationPercentage: ((diff / targetCalories) * 100).toFixed(1) + "%"
+      }
+    });
+
+  } catch (error) {
+    console.error("Lỗi kiểm tra độ lệch calo thực đơn:", error);
+    res.status(500).json({ message: "Lỗi hệ thống khi kiểm tra thực đơn", error: error.message });
   }
 };
