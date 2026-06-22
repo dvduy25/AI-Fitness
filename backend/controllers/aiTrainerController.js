@@ -335,35 +335,33 @@ exports.generatePTMealPlan = async (req, res) => {
 // =========================================================================
 // 3. API ĐIỀU CHỈNH LỊCH ĂN BẰNG AI (GIỮ NGUYÊN MÓN ĂN - CHỈ ĐỔI ĐỊNH LƯỢNG)
 // =========================================================================
+// Đảm bảo bạn đã khai báo genAI ở đầu file
+// const { GoogleGenerativeAI } = require("@google/generative-ai");
+// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
 exports.adjustMealPlanByAI = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Kiểm tra tài khoản & Vé AI
+    // 1. Kiểm tra tài khoản (Bỏ qua check vé vì Middleware verifyPremiumOrTicket ở Route đã lo việc này)
     const user = await User.findById(userId);
-    if (!user) return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
-
-    if (!user.isPremium && user.aiTickets <= 0) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "Bạn đã dùng hết vé AI ngày hôm nay. Hãy xem quảng cáo để nhận thêm lượt nhé!" 
-      });
+    if (!user) {
+      return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
     }
 
     // 2. Kiểm tra lịch ăn hiện tại
     const mealPlan = await MealPlan.findOne({ userId });
-    if (!mealPlan || mealPlan.meals.length === 0) {
+    if (!mealPlan || !mealPlan.meals || mealPlan.meals.length === 0) {
       return res.status(404).json({ message: "Bạn chưa có lịch ăn cố định nào để điều chỉnh!" });
     }
 
-    // 3. Lấy thông tin dinh dưỡng gốc của các món ăn hiện có để gửi cho AI
+    // 3. Lấy thông tin dinh dưỡng gốc của các món ăn hiện có
     const foodIdsInPlan = [];
     mealPlan.meals.forEach(m => m.items.forEach(i => foodIdsInPlan.push(i.foodId)));
     
     const availableFoods = await Food.find({ _id: { $in: foodIdsInPlan } })
       .select("_id name caloriesPer100g proteinPer100g carbsPer100g fatPer100g");
 
-    // Tóm tắt cấu trúc thực đơn hiện tại gửi lên AI kèm chỉ số dinh dưỡng gốc / 100g
     const currentMealsContext = mealPlan.meals.map(meal => ({
       mealType: meal.mealType,
       scheduledTime: meal.scheduledTime,
@@ -388,10 +386,10 @@ exports.adjustMealPlanByAI = async (req, res) => {
       fat: user.targetMacros?.fat || 50
     };
 
-    // 4. Xây dựng Prompt ép luật nghiêm ngặt (Cấm đổi món)
+    // 4. Xây dựng Prompt
     const prompt = `
-      Bạn là một chuyên gia phân tích dữ liệu dinh dưỡng. Học viên này đang có một thực đơn bị lệch Calo so với mục tiêu.
-      Hãy giúp họ ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) của các món ăn hiện tại để đạt gần mục tiêu nhất có thể.
+      Bạn là chuyên gia phân tích dữ liệu dinh dưỡng. Thực đơn sau đang bị lệch Calo so với mục tiêu.
+      Hãy ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) của các món ăn để đạt gần mục tiêu nhất.
 
       MỤC TIÊU DINH DƯỠNG CỦA CẢ NGÀY:
       - Calories: ~${target.calories} kcal
@@ -402,12 +400,12 @@ exports.adjustMealPlanByAI = async (req, res) => {
       DANH SÁCH THỰC ĐƠN HIỆN TẠI:
       ${JSON.stringify(currentMealsContext)}
 
-      QUY TẮC THÉP BẮT BUỘC (NẾU VI PHẠM HỆ THỐNG SẼ LỖI):
-      1. TUYỆT ĐỐI KHÔNG ĐƯỢC THAY ĐỔI MÓN ĂN. Không thêm món mới, không xóa món cũ, không thay đổi "foodName" hay "foodId".
-      2. BẠN CHỈ ĐƯỢC PHÉP thay đổi giá trị "quantityInGrams" của từng món ăn hiện có. Số gram mới phải là số nguyên dương hợp lý (thường từ 20g đến 500g tùy loại món).
-      3. Hãy tính toán phân phối lượng Gram thông minh giữa các bữa (Sáng, Trưa, Tối, Nhẹ) sao cho tổng Calories, P, C, F cả ngày tiệm cận mục tiêu nhất.
+      QUY TẮC THÉP (NẾU VI PHẠM HỆ THỐNG SẼ LỖI):
+      1. TUYỆT ĐỐI KHÔNG thay đổi món ăn (không thêm/xóa món, không đổi foodName hay foodId).
+      2. CHỈ thay đổi giá trị "quantityInGrams". Số gram mới phải là số nguyên dương hợp lý (20g - 500g).
+      3. Phân bổ lượng Gram thông minh giữa các bữa sao cho tổng Calories, P, C, F cả ngày tiệm cận mục tiêu.
 
-      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG ĐƯỢC CHỨA VĂN BẢN GIẢI THÍCH):
+      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG CHỨA VĂN BẢN KHÁC):
       {
         "meals": [
           {
@@ -421,24 +419,47 @@ exports.adjustMealPlanByAI = async (req, res) => {
       }
     `;
 
-    // 5. Gọi AI sinh dữ liệu JSON
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+    // 5. Gọi AI và Parse JSON an toàn
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash", 
+      generationConfig: { responseMimeType: "application/json" } 
+    });
+    
     const result = await model.generateContent(prompt);
-    const parsedData = JSON.parse(result.response.text().replace(/```json/g, "").replace(/```/g, "").trim());
+    let parsedData;
 
-    // 6. Xử lý hậu kỳ tại Backend để đảm bảo chính xác thuật toán toán học (Không tin tưởng 100% phép toán của AI)
+    try {
+      // Dùng regex bao quát hơn để dọn dẹp markdown code block
+      const rawText = result.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
+      parsedData = JSON.parse(rawText);
+    } catch (parseError) {
+      console.error("Lỗi parse JSON từ AI:", result.response.text());
+      return res.status(500).json({ message: "Dữ liệu AI trả về không hợp lệ, vui lòng thử lại!" });
+    }
+
+    // Kiểm tra cấu trúc mảng meals
+    if (!parsedData || !Array.isArray(parsedData.meals)) {
+      return res.status(500).json({ message: "AI phản hồi sai cấu trúc dữ liệu yêu cầu!" });
+    }
+
+    // 6. Xử lý hậu kỳ tại Backend
     let dailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     const processedMeals = [];
 
     for (const meal of parsedData.meals) {
+      // Bỏ qua nếu bữa ăn không có items
+      if (!Array.isArray(meal.items)) continue; 
+
       let mealTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
       const processedItems = [];
 
       for (const item of meal.items) {
-        const foodData = availableFoods.find(f => f._id.toString() === item.foodId.trim());
+        if (!item.foodId) continue;
+        
+        const foodData = availableFoods.find(f => f._id.toString() === item.foodId.toString().trim());
         if (foodData) {
           let finalGrams = Math.round(Number(item.quantityInGrams) || 10);
-          if (finalGrams < 10) finalGrams = 10; // Đảm bảo không bị gram âm hoặc bằng 0
+          if (finalGrams < 10) finalGrams = 10;
 
           const ratio = finalGrams / 100;
           const calcItem = {
@@ -460,7 +481,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
         }
       }
 
-      // Làm tròn chỉ số tổng của từng bữa ăn
       mealTotal.protein = Math.round(mealTotal.protein * 10) / 10;
       mealTotal.carbs = Math.round(mealTotal.carbs * 10) / 10;
       mealTotal.fat = Math.round(mealTotal.fat * 10) / 10;
@@ -480,28 +500,27 @@ exports.adjustMealPlanByAI = async (req, res) => {
       }
     }
 
-    // Làm tròn chỉ số tổng của cả ngày
     dailyTotal.protein = Math.round(dailyTotal.protein * 10) / 10;
     dailyTotal.carbs = Math.round(dailyTotal.carbs * 10) / 10;
     dailyTotal.fat = Math.round(dailyTotal.fat * 10) / 10;
 
-    // 7. Cập nhật vào Cơ sở dữ liệu
-    let updatedMealPlan = await MealPlan.findOneAndUpdate(
+    // 7. Cập nhật vào Database
+    const updatedMealPlan = await MealPlan.findOneAndUpdate(
       { userId: userId }, 
       { $set: { dailyTotal: dailyTotal, meals: processedMeals } }, 
       { new: true } 
     );
 
-    // 8. Trừ vé AI của người dùng nếu họ không phải là tài khoản Premium
+    // 8. Trừ vé AI (Lưu ý: Nếu middleware verifyPremiumOrTicket đã trừ vé thì hãy BỎ đoạn này để tránh trừ 2 lần)
     if (!user.isPremium) {
       user.aiTickets = Math.max(0, user.aiTickets - 1);
       await user.save();
     }
 
-    // 9. Trả kết quả về Frontend hiển thị thành công
-    res.status(200).json({ 
+    // 9. Trả kết quả
+    return res.status(200).json({ 
       success: true,
-      message: `AI đã cân bằng lại định lượng thực đơn thành công!`, 
+      message: "AI đã cân bằng lại định lượng thực đơn thành công!", 
       aiTicketsLeft: user.aiTickets,
       targetMacros: target, 
       masterMealPlan: updatedMealPlan 
@@ -509,6 +528,10 @@ exports.adjustMealPlanByAI = async (req, res) => {
 
   } catch (error) {
     console.error("Lỗi khi dùng AI sửa thực đơn:", error);
-    res.status(500).json({ message: "Lỗi trong quá trình AI xử lý cân bằng thực đơn", error: error.message });
+    return res.status(500).json({ 
+        success: false, 
+        message: "Lỗi trong quá trình AI xử lý cân bằng thực đơn", 
+        error: error.message 
+    });
   }
 };
