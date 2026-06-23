@@ -108,6 +108,23 @@ exports.getProfile = async (req, res) => {
     res.status(500).json({ message: "Lỗi lấy thông tin", error: error.message });
   }
 };
+exports.getUserProfileById = async (req, res) => {
+  try {
+    // 🌟 Chú ý: Ở đây dùng req.params.id thay vì req.user.id
+    const user = await User.findById(req.params.id)
+      .select("-password") 
+      .lean(); 
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
+    }
+
+    res.status(200).json({ success: true, user });
+  } catch (error) {
+    console.error("Lỗi khi lấy Profile theo ID:", error);
+    res.status(500).json({ success: false, message: "Lỗi Server!" });
+  }
+};
 
 exports.updateProfile = async (req, res) => {
   try {

@@ -9,7 +9,7 @@ const {
     // 🌟 THÊM CÁC HÀM MỚI TỪ CONTROLLER VÀO ĐÂY:
     toggleFollow,
     getFollowing,
-    getFollowers
+    getFollowers,getUserProfileById
 } = require("../controllers/userController");
 
 // ==========================================
@@ -17,7 +17,7 @@ const {
 // ==========================================
 router.post("/register", register);
 router.post("/login", login);
-
+router.get("/:id/profile", verifyToken, getUserProfileById);
 // ==========================================
 // THÔNG TIN CÁ NHÂN (PROFILE)
 // ==========================================
