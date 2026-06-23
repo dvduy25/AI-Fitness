@@ -6,7 +6,7 @@ const MasterWorkoutPlan = require("../models/WorkoutPlan");
 const MealPlan = require("../models/MealPlan");
 const SavedLibrary = require("../models/SavedLibrary");
 const Comment = require("../models/Comment");
-const Notification = require("../models/Notification"); // 🌟 ĐÃ THÊM: Import Model Thông Báo
+const Notification = require("../models/Notification");
 
 const mongoose = require("mongoose");
 
@@ -72,13 +72,14 @@ exports.createPost = async (req, res) => {
 
     await newPost.save();
 
-    // 🌟 TÍNH NĂNG MỚI: Bắn thông báo cho những người đang Follow khi có bài mới
+    // Bắn thông báo cho những người đang Follow khi có bài mới
     const usersFollowingMe = await User.find({ following: userId });
     const notifications = usersFollowingMe.map(u => ({
       userId: u._id,
       senderId: userId,
       type: 'new_post',
-      postId: newPost._id
+      postId: newPost._id,
+      isRead: false
     }));
     
     if (notifications.length > 0) {
@@ -284,9 +285,9 @@ exports.toggleLike = async (req, res) => {
       post.likes.pull(userId);
     } else {
       post.likes.push(userId);
-      // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Like
+      // Bắn thông báo Like
       if (post.userId.toString() !== userId.toString()) {
-        await Notification.create({ userId: post.userId, senderId: userId, type: 'like', postId: post._id });
+        await Notification.create({ userId: post.userId, senderId: userId, type: 'like', postId: post._id, isRead: false });
       }
     }
 
@@ -313,9 +314,9 @@ exports.addComment = async (req, res) => {
     post.commentsCount += 1;
     await post.save();
 
-    // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Comment
+    // Bắn thông báo Comment
     if (post.userId.toString() !== req.user.id.toString()) {
-      await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'comment', postId: post._id });
+      await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'comment', postId: post._id, isRead: false });
     }
 
     const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar");
@@ -342,9 +343,9 @@ exports.cloneSnapshot = async (req, res) => {
       post.savesCount = (post.savesCount || 0) + 1;
       await post.save();
 
-      // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Lưu lịch
+      // Bắn thông báo Lưu lịch
       if (post.userId.toString() !== req.user.id.toString()) {
-        await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id });
+        await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id, isRead: false });
       }
 
       return res.status(201).json({ success: true, message: "Đã lưu lịch tập vào nhật ký hôm nay!" });
@@ -357,9 +358,9 @@ exports.cloneSnapshot = async (req, res) => {
       post.savesCount = (post.savesCount || 0) + 1;
       await post.save();
 
-      // 🌟 TÍNH NĂNG MỚI: Bắn thông báo Lưu lịch
+      // Bắn thông báo Lưu lịch
       if (post.userId.toString() !== req.user.id.toString()) {
-        await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id });
+        await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id, isRead: false });
       }
 
       return res.status(201).json({ success: true, message: "Đã lưu thực đơn vào nhật ký hôm nay!" });
@@ -558,16 +559,79 @@ exports.getLatestPosts = async (req, res) => {
 };
 
 // ==========================================
-// 12. LẤY DANH SÁCH THÔNG BÁO CỦA TÔI
+// 12. QUẢN LÝ THÔNG BÁO (LẤY, CHẤM XANH, XÓA)
 // ==========================================
+
+// 12.1. Lấy danh sách thông báo
 exports.getNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id || req.user._id })
       .populate('senderId', 'name avatar isVerified')
       .sort({ createdAt: -1 })
-      .limit(30); // Lấy 30 thông báo gần nhất
+      .limit(30); 
       
     res.status(200).json({ success: true, notifications });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 🌟 ĐÃ THÊM: 12.2. Đếm số lượng thông báo chưa đọc (Dùng để hiện chấm xanh ở UI)
+exports.getUnreadNotificationCount = async (req, res) => {
+  try {
+    const unreadCount = await Notification.countDocuments({ 
+      userId: req.user.id || req.user._id, 
+      isRead: false 
+    });
+    
+    res.status(200).json({ success: true, unreadCount });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 🌟 ĐÃ THÊM: 12.3. Đánh dấu 1 thông báo là đã đọc (Khi user click vào thông báo)
+exports.markNotificationAsRead = async (req, res) => {
+  try {
+    const notification = await Notification.findOneAndUpdate(
+      { _id: req.params.notiId, userId: req.user.id || req.user._id },
+      { isRead: true },
+      { new: true }
+    );
+    
+    if (!notification) return res.status(404).json({ message: "Không tìm thấy thông báo" });
+    
+    res.status(200).json({ success: true, notification });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 🌟 ĐÃ THÊM: 12.4. Đánh dấu TẤT CẢ thông báo là đã đọc (Nút "Mark all as read")
+exports.markAllNotificationsAsRead = async (req, res) => {
+  try {
+    await Notification.updateMany(
+      { userId: req.user.id || req.user._id, isRead: false },
+      { isRead: true }
+    );
+    
+    res.status(200).json({ success: true, message: "Đã đánh dấu tất cả là đã đọc" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// 12.5. Xóa thông báo thủ công
+exports.deleteNotification = async (req, res) => {
+  try {
+    const deleted = await Notification.findOneAndDelete({ 
+      _id: req.params.notiId, 
+      userId: req.user.id || req.user._id // Bảo mật: Chỉ xóa được thông báo của chính mình
+    });
+
+    if (!deleted) return res.status(404).json({ message: "Thông báo không tồn tại hoặc không có quyền xóa" });
+
+    res.status(200).json({ success: true, message: "Đã xóa thông báo" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -584,22 +648,11 @@ exports.sharePostToUser = async (req, res) => {
       userId: targetUserId,
       senderId: req.user.id || req.user._id,
       type: 'share_post',
-      postId: req.params.postId
+      postId: req.params.postId,
+      isRead: false
     });
 
     res.status(200).json({ success: true, message: "Đã gửi bài viết tới người dùng!" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ==========================================
-// 14. XÓA THÔNG BÁO
-// ==========================================
-exports.deleteNotification = async (req, res) => {
-  try {
-    await Notification.findByIdAndDelete(req.params.notiId);
-    res.status(200).json({ success: true, message: "Đã xóa thông báo" });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

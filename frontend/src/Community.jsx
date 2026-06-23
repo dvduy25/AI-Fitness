@@ -43,10 +43,8 @@ export default function Community() {
 
   const [followingList, setFollowingList] = useState([]);
   
-  const notifications = [
-    { id: 1, text: "AI Fitness vừa ra mắt tính năng Mạng Xã Hội mới! Khám phá ngay.", time: "1 giờ trước", icon: <Flame className="w-5 h-5 text-orange-500" /> },
-    { id: 2, text: "Bạn đã đạt mục tiêu Calo ngày hôm qua. Tiếp tục phát huy nhé!", time: "Hôm qua", icon: <BadgeCheck className="w-5 h-5 text-emerald-500" /> }
-  ];
+  // 🌟 STATE MỚI: Quản lý danh sách thông báo từ Server
+  const [realNotifications, setRealNotifications] = useState([]);
 
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
@@ -86,10 +84,20 @@ export default function Community() {
     } catch (error) { console.error("Lỗi tải danh sách theo dõi", error); }
   };
 
+  // 🌟 HÀM MỚI: Lấy danh sách thông báo
+  const fetchNotifications = async () => {
+    if (!token) return;
+    try {
+      const res = await axios.get(`${API_BASE_URL}/api/posts/notifications`, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.success) setRealNotifications(res.data.notifications);
+    } catch (error) { console.error("Lỗi tải danh sách thông báo", error); }
+  };
+
   // Lắng nghe sự thay đổi của activeTab, bấm qua tab khác tự fetch lại
   useEffect(() => { 
     fetchPosts(activeTab); 
     fetchFollowing();
+    fetchNotifications(); // Cập nhật thông báo mỗi khi đổi tab
   }, [activeTab]);
 
   // XEM VÀ ĐÓNG PROFILE CHI TIẾT
@@ -125,7 +133,6 @@ export default function Community() {
       const res = await axios.post(`${API_BASE_URL}/api/users/${userId}/follow`, {}, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         fetchFollowing(); 
-        // Cập nhật mượt mà số người theo dõi nếu đang xem profile
         if (selectedUserFilter && selectedUserFilter.id === userId) {
           setSelectedUserFilter(prev => ({
             ...prev,
@@ -246,6 +253,34 @@ export default function Community() {
         setPosts(posts.map(p => p._id === post._id ? res.data.post : p));
       }
     } catch (error) { console.error(error); }
+  };
+
+  // 🌟 HÀM MỚI: Xử lý khi click vào Thông báo
+  const handleNotificationClick = async (noti) => {
+    if (noti.type === 'follow') {
+      if (noti.senderId) {
+        handleViewProfile(noti.senderId._id, { 
+          name: noti.senderId.name, 
+          isVerified: noti.senderId.isVerified, 
+          avatar: noti.senderId.avatar 
+        });
+      }
+      return;
+    }
+
+    if (noti.postId) {
+      try {
+        const res = await axios.get(`${API_BASE_URL}/api/posts/${noti.postId}`, { headers: { Authorization: `Bearer ${token}` } });
+        if (res.data.success) {
+          setViewingPostDetails(res.data.post);
+        } else {
+          alert("Bài viết này không còn tồn tại hoặc đã bị xóa.");
+        }
+      } catch (error) {
+        console.error("Lỗi tải chi tiết bài viết từ thông báo:", error);
+        alert("Không thể tải bài viết lúc này.");
+      }
+    }
   };
 
   const filteredPosts = posts.filter(post => {
@@ -604,19 +639,56 @@ export default function Community() {
           <h3 className="text-white text-lg font-bold mb-5 flex items-center gap-2 border-b border-gray-700/50 pb-4">
             <Bell className="w-5 h-5 text-yellow-400" /> Thông báo mới
           </h3>
-          <div className="space-y-4">
-            {notifications.map(noti => (
-              <div key={noti.id} className="flex items-start gap-3 p-4 bg-gray-900/60 rounded-2xl border border-gray-700/40 cursor-pointer hover:bg-gray-800 hover:border-gray-600 transition-all shadow-sm">
-                <div className="mt-0.5 bg-gray-800 p-2 rounded-full shrink-0 shadow-inner">{noti.icon}</div>
-                <div>
-                  <p className="text-sm text-gray-200 leading-snug">{noti.text}</p>
-                  <p className="text-[11px] text-gray-500 mt-1.5 font-medium">{noti.time}</p>
-                </div>
+          <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+            
+            {realNotifications.length > 0 ? (
+              realNotifications.map(noti => {
+                let icon = <Bell className="w-4 h-4 text-gray-400" />;
+                let text = "đã gửi thông báo cho bạn.";
+                
+                switch (noti.type) {
+                  case 'like':
+                    icon = <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />; text = "đã thích bài viết của bạn."; break;
+                  case 'comment':
+                    icon = <MessageCircle className="w-4 h-4 text-blue-400" />; text = "đã bình luận về bài viết của bạn."; break;
+                  case 'share_post':
+                    icon = <Share2 className="w-4 h-4 text-emerald-400" />; text = "đã chia sẻ một bài viết với bạn."; break;
+                  case 'save_plan':
+                    icon = <Bookmark className="w-4 h-4 text-yellow-400 fill-yellow-400" />; text = "đã lưu lịch của bạn về kho."; break;
+                  case 'new_post':
+                    icon = <Activity className="w-4 h-4 text-purple-400" />; text = "vừa đăng một bài viết mới."; break;
+                  case 'follow':
+                    icon = <UserPlus className="w-4 h-4 text-blue-500" />; text = "đã bắt đầu theo dõi bạn."; break;
+                  default: break;
+                }
+
+                return (
+                  <div 
+                    key={noti._id} 
+                    onClick={() => handleNotificationClick(noti)}
+                    className="flex items-start gap-3 p-4 bg-gray-900/60 rounded-2xl border border-gray-700/40 cursor-pointer hover:bg-gray-800 hover:border-gray-600 transition-all shadow-sm"
+                  >
+                    <div className="mt-0.5 bg-gray-800 p-2 rounded-full shrink-0 shadow-inner">
+                      {icon}
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-200 leading-snug">
+                        <span className="font-bold text-emerald-400">{noti.senderId?.name || "Người dùng ẩn danh"}</span> {text}
+                      </p>
+                      <p className="text-[11px] text-gray-500 mt-1.5 font-medium">
+                        {new Date(noti.createdAt).toLocaleString('vi-VN')}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="text-center py-6">
+                <Bell className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">Chưa có thông báo nào.</p>
               </div>
-            ))}
-          </div>
-          <div className="mt-6 pt-4 border-t border-gray-700/50 text-center">
-            <span className="text-[11px] uppercase font-bold tracking-widest text-emerald-500/50 bg-emerald-900/20 px-3 py-1 rounded-full">Tính năng đang phát triển</span>
+            )}
+
           </div>
         </div>
       </div>
