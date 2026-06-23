@@ -4,11 +4,13 @@ const router = express.Router();
 // 1. Import Middleware phân quyền
 const { verifyToken, authorizeRoles } = require("../middleware/authMiddleware");
 
+// ĐÃ THÊM: Import hàm suggestFood từ controller
 const { 
   getAllFoods, 
   createFood, 
   updateFood, 
-  deleteFood 
+  deleteFood,
+  suggestFood 
 } = require("../controllers/foodController");
 
 // ==========================================
@@ -16,6 +18,9 @@ const {
 // ==========================================
 // Lấy danh sách (User đã đăng nhập mới xem được)
 router.get("/", verifyToken, getAllFoods);
+
+// Khai báo route cho gợi ý món ăn khi đang gõ
+router.get("/suggest-food", verifyToken, suggestFood);
 
 // ==========================================
 // ADMIN ROUTES (BẢO MẬT KÉP)

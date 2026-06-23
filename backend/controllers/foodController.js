@@ -70,3 +70,40 @@ exports.deleteFood = async (req, res) => {
     res.status(500).json({ message: "Lỗi xóa món ăn", error: error.message });
   }
 };
+// Hàm phụ trợ chống lỗi Regex (nếu bạn chưa khai báo ở trên)
+const escapeRegex = (string) => {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+// API GỢI Ý MÓN ĂN KHI ĐANG GÕ (Chỉ tìm trong DB, cực nhanh)
+exports.suggestFood = async (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    // Nếu người dùng chưa gõ gì hoặc gõ chuỗi rỗng thì trả về mảng rỗng
+    if (!query || !query.trim()) {
+      return res.status(200).json({ success: true, data: [] });
+    }
+
+    const cleanQuery = query.trim();
+    const safeRegex = new RegExp(escapeRegex(cleanQuery), 'i'); // 'i' để không phân biệt hoa thường
+
+    // Tìm trong Database: Chỉ lấy tối đa 5 kết quả, và chỉ lấy trường name + caloriesPer100g
+    const suggestions = await Food.find({ name: safeRegex })
+                                  .limit(5)
+                                  .select('name caloriesPer100g');
+
+    return res.status(200).json({
+      success: true,
+      data: suggestions
+    });
+
+  } catch (error) {
+    console.error("Lỗi khi tải gợi ý món ăn:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Đã xảy ra lỗi khi tải gợi ý", 
+      error: error.message 
+    });
+  }
+};

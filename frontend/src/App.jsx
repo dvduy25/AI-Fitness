@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-// ĐÃ THÊM icon Menu và X cho nút 3 gạch
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X } from 'lucide-react'; 
+// ĐÃ THÊM: icon Calculator cho nút Tính Calo
+import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator } from 'lucide-react'; 
 
 // Import các trang (Components)
 import AuthPage from "./AuthPage"; 
@@ -16,12 +16,14 @@ import Community from "./Community";
 import PostDetail from "./PostDetail"; 
 import MyLibrary from "./MyLibrary";
 import FloatingBot from "./FloatingBot"; 
+// ĐÃ THÊM: Import trang Tính Calo
+import CalorieCalculator from "./CalorieCalculator";
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   
-  // ĐÃ THÊM: State quản lý việc đóng/mở Menu 3 gạch
+  // State quản lý việc đóng/mở Menu 3 gạch
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -48,10 +50,11 @@ const App = () => {
     );
   }
 
-  // ĐÃ SỬA: Lược bỏ bớt để Navbar gọn gàng (Chỉ giữ lại 4 nút chính)
+  // ĐÃ SỬA: Thêm nút Tính Calo vào Navbar chính
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
     { path: "/community", icon: <Globe className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Cộng Đồng" },
+    { path: "/calorie-calculator", icon: <Calculator className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Tính Calo" },
     { path: "/diet-history", icon: <History className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Lịch Sử" },
     { path: "/profile", icon: <User className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hồ Sơ" },
   ];
@@ -87,7 +90,6 @@ const App = () => {
             ))}
           </div>
 
-          {/* ĐÃ SỬA: Thay các nút VIP, Đăng xuất bằng Nút 3 gạch */}
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsMenuOpen(true)}
@@ -107,7 +109,6 @@ const App = () => {
             <span>AI Fitness</span>
           </div>
           
-          {/* ĐÃ SỬA: Nút 3 gạch trên Mobile */}
           <div className="flex items-center gap-2">
             <button 
               onClick={() => setIsMenuOpen(true)}
@@ -183,6 +184,10 @@ const App = () => {
             <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
             <Route path="/workout-tracker" element={<WorkoutTracker />} />
             <Route path="/premium" element={<PremiumUpgrade />} />
+            
+            {/* ĐÃ THÊM: Route trang Tính Calo */}
+            <Route path="/calorie-calculator" element={<CalorieCalculator />} />
+
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
