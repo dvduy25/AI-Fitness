@@ -70,28 +70,44 @@ exports.deleteFood = async (req, res) => {
     res.status(500).json({ message: "Lỗi xóa món ăn", error: error.message });
   }
 };
-// Hàm phụ trợ chống lỗi Regex (nếu bạn chưa khai báo ở trên)
 const escapeRegex = (string) => {
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
-// API GỢI Ý MÓN ĂN KHI ĐANG GÕ (Chỉ tìm trong DB, cực nhanh)
+// API GỢI Ý MÓN ĂN NÂNG CẤP (Tìm kiếm bao quát, đa hướng)
 exports.suggestFood = async (req, res) => {
   try {
     const { query } = req.query;
     
-    // Nếu người dùng chưa gõ gì hoặc gõ chuỗi rỗng thì trả về mảng rỗng
     if (!query || !query.trim()) {
       return res.status(200).json({ success: true, data: [] });
     }
 
     const cleanQuery = query.trim();
-    const safeRegex = new RegExp(escapeRegex(cleanQuery), 'i'); // 'i' để không phân biệt hoa thường
+    
+    // 1. CẢI TIẾN 1: Bẻ nhỏ cụm từ thành các từ đơn lẻ
+    // Ví dụ: "Cơm ức gà" -> ["Cơm", "ức", "gà"]
+    const words = cleanQuery.split(/\s+/).filter(word => word.length > 0);
+    
+    // 2. TẠO TOÁN TỬ LOOKAHEAD TRONG REGEX
+    // Tạo chuỗi dạng: (?=.*Cơm)(?=.*ức)(?=.*gà) -> Ép DB tìm các món chứa đủ cả 3 từ này, không quan trọng thứ tự trước sau
+    const regexPattern = words.map(word => `(?=.*${escapeRegex(word)})`).join('');
+    const advancedRegex = new RegExp(regexPattern, 'i'); 
 
-    // Tìm trong Database: Chỉ lấy tối đa 5 kết quả, và chỉ lấy trường name + caloriesPer100g
-    const suggestions = await Food.find({ name: safeRegex })
+    // 3. CẢI TIẾN 2: Tìm kiếm đa trường với toán tử $or
+    // Quét cả tên món ăn lẫn các trường liên quan (nếu Model của bạn có trường category hoặc tags)
+    const searchQuery = {
+      $or: [
+        { name: advancedRegex },
+        { category: advancedRegex }, // Tìm theo danh mục (Ví dụ: "Hải sản", "Đồ chay")
+        { tags: advancedRegex }      // Tìm theo thẻ phụ (Ví dụ: "Bữa sáng", "Ít béo")
+      ]
+    };
+
+    // Tìm kiếm trong DB và chỉ lôi ra tối đa 5 vị khách danh dự khớp nhất
+    const suggestions = await Food.find(searchQuery)
                                   .limit(5)
-                                  .select('name caloriesPer100g');
+                                  .select('name caloriesPer105g category'); // Lấy thêm category nếu cần hiển thị
 
     return res.status(200).json({
       success: true,
@@ -99,10 +115,10 @@ exports.suggestFood = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("Lỗi khi tải gợi ý món ăn:", error);
+    console.error("Lỗi khi tải gợi ý món ăn nâng cấp:", error);
     res.status(500).json({ 
       success: false, 
-      message: "Đã xảy ra lỗi khi tải gợi ý", 
+      message: "Đã xảy ra lỗi khi xử lý gợi ý", 
       error: error.message 
     });
   }
