@@ -99,3 +99,82 @@ exports.getDietByDate = async (req, res) => {
     return res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu ngày" });
   }
 };
+// ==========================================
+// CẬP NHẬT BỮA ĂN HÔM NAY (THÊM HOẶC GHI ĐÈ)
+// ==========================================
+exports.logMeal = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { mealType, mode, items, mealTotal } = req.body; // mode: 'add' hoặc 'replace'
+
+    if (!mealType || !items || items.length === 0) {
+      return res.status(400).json({ message: "Thiếu thông tin bữa ăn hoặc danh sách món!" });
+    }
+
+    // 1. Định vị khoảng thời gian ngày hôm nay (00:00:00 -> 23:59:59)
+    const startOfDay = new Date();
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date();
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // 2. Tìm log ăn uống của ngày hôm nay
+    let log = await DailyDietLog.findOne({
+      userId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
+
+    // Nếu hôm nay chưa ăn gì (chưa có bản ghi), tạo mới một bản ghi rỗng
+    if (!log) {
+      log = new DailyDietLog({
+        userId,
+        date: new Date(),
+        consumedMeals: [],
+        actualDailyTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 }
+      });
+    }
+
+    // 3. Xử lý Logic: GHI ĐÈ hoặc THÊM MỚI
+    const newMealRecord = {
+      mealType,
+      loggedAt: new Date(),
+      isExactlyAsPlanned: false,
+      items,
+      mealTotal
+    };
+
+    if (mode === 'replace') {
+      // Xóa tất cả các bữa ăn cũ cùng loại (Ví dụ: Xóa sạch bữa 'Sáng' cũ để thay bằng bữa 'Sáng' mới)
+      log.consumedMeals = log.consumedMeals.filter(meal => meal.mealType !== mealType);
+    }
+    
+    // Đẩy bữa ăn mới vào mảng lịch sử ăn trong ngày
+    log.consumedMeals.push(newMealRecord);
+
+    // 4. TỰ ĐỘNG TÍNH LẠI TỔNG CALO & MACROS TRONG NGÀY
+    log.actualDailyTotal = log.consumedMeals.reduce((acc, meal) => {
+      return {
+        calories: acc.calories + (meal.mealTotal?.calories || 0),
+        protein: acc.protein + (meal.mealTotal?.protein || 0),
+        carbs: acc.carbs + (meal.mealTotal?.carbs || 0),
+        fat: acc.fat + (meal.mealTotal?.fat || 0)
+      };
+    }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+    // Bo tròn số liệu cho đẹp trước khi lưu
+    log.actualDailyTotal.calories = Math.round(log.actualDailyTotal.calories);
+    log.actualDailyTotal.protein = Number(log.actualDailyTotal.protein.toFixed(1));
+    log.actualDailyTotal.carbs = Number(log.actualDailyTotal.carbs.toFixed(1));
+    log.actualDailyTotal.fat = Number(log.actualDailyTotal.fat.toFixed(1));
+
+    await log.save();
+
+    return res.status(200).json({ 
+      message: mode === 'replace' ? "Thay thế bữa ăn thành công!" : "Thêm bữa ăn thành công!", 
+      data: log 
+    });
+
+  } catch (error) {
+    console.error("Lỗi khi lưu bữa ăn:", error);
+    return res.status(500).json({ message: "Lỗi hệ thống khi lưu bữa ăn!" });
+  }
+};
