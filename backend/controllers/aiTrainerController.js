@@ -335,10 +335,6 @@ exports.generatePTMealPlan = async (req, res) => {
 // =========================================================================
 // 3. API ĐIỀU CHỈNH LỊCH ĂN BẰNG AI (GIỮ NGUYÊN MÓN ĂN - CHỈ ĐỔI ĐỊNH LƯỢNG)
 // =========================================================================
-// Đảm bảo bạn đã khai báo genAI ở đầu file
-// const { GoogleGenerativeAI } = require("@google/generative-ai");
-// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 exports.adjustMealPlanByAI = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -526,6 +522,82 @@ exports.adjustMealPlanByAI = async (req, res) => {
         success: false, 
         message: "Lỗi trong quá trình AI xử lý cân bằng thực đơn", 
         error: error.message 
+    });
+  }
+};
+
+
+// =========================================================================
+// 4. API TÌM KIẾM VÀ ƯỚC LƯỢNG MÓN ĂN BẰNG AI
+// =========================================================================
+exports.searchOrEstimateFood = async (req, res) => {
+  try {
+    const { query } = req.query; // Nhận tên món ăn từ người dùng
+    if (!query) return res.status(400).json({ message: "Vui lòng nhập tên món ăn." });
+
+    // 1. Tìm trong Database trước (Sử dụng Regex không phân biệt hoa thường)
+    let food = await Food.findOne({ name: { $regex: new RegExp(`^${query}$`, 'i') } });
+
+    // Nếu tìm thấy trong CSDL, trả về luôn để tiết kiệm lượt gọi API AI
+    if (food) {
+      return res.status(200).json({
+        success: true,
+        source: 'database',
+        data: food
+      });
+    }
+
+    // 2. Nếu KHÔNG có trong DB -> Gọi Gemini để phân tích dinh dưỡng
+    const prompt = `
+      Bạn là một chuyên gia dinh dưỡng. Hãy ước lượng thành phần dinh dưỡng trung bình cho 100g của món ăn: "${query}".
+      Trả về MỘT chuỗi JSON hợp lệ, KHÔNG chứa định dạng Markdown, KHÔNG kèm giải thích.
+      
+      Định dạng bắt buộc:
+      {
+        "caloriesPer100g": số nguyên,
+        "proteinPer100g": số thực (1 chữ số thập phân),
+        "carbsPer100g": số thực (1 chữ số thập phân),
+        "fatPer100g": số thực (1 chữ số thập phân)
+      }
+    `;
+
+    const model = genAI.getGenerativeModel({ 
+      model: "gemini-2.5-flash", 
+      generationConfig: { responseMimeType: "application/json" } 
+    });
+    
+    const result = await model.generateContent(prompt);
+    
+    // Parse JSON từ text AI trả về một cách an toàn
+    const rawText = result.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
+    const estimatedData = JSON.parse(rawText);
+
+    // 3. Lưu kết quả AI phân tích vào Database để người sau tìm sẽ có ngay (không cần gọi AI nữa)
+    food = new Food({
+      name: query, 
+      baseUnit: "100g",
+      caloriesPer100g: estimatedData.caloriesPer100g || 0,
+      proteinPer100g: estimatedData.proteinPer100g || 0,
+      carbsPer100g: estimatedData.carbsPer100g || 0,
+      fatPer100g: estimatedData.fatPer100g || 0
+    });
+
+    await food.save();
+
+    // 4. Trả về cho Frontend
+    return res.status(200).json({
+      success: true,
+      source: 'ai_estimated',
+      message: "Món ăn chưa có trong thư viện. Đã dùng AI để phân tích và lưu mới.",
+      data: food
+    });
+
+  } catch (error) {
+    console.error("Lỗi khi tìm/ước lượng món ăn bằng AI:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Đã xảy ra lỗi khi tìm/ước lượng món ăn", 
+      error: error.message 
     });
   }
 };

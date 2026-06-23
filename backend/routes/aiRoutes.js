@@ -16,7 +16,8 @@ const {
 const { 
   generatePTWorkoutPlan, 
   generatePTMealPlan,
-  adjustMealPlanByAI // <-- Đã thêm hàm điều chỉnh định lượng thực đơn
+  adjustMealPlanByAI, 
+  searchOrEstimateFood // <-- ĐÃ THÊM: Import hàm tìm kiếm và ước lượng món ăn
 } = require("../controllers/aiTrainerController"); 
 
 // AI Correction (Quản lý nhật ký & Chữa cháy/Điều chỉnh calo)
@@ -54,6 +55,9 @@ router.post("/adjust-meal-plan-by-ai", verifyToken, verifyPremiumOrTicket, adjus
 
 // [GET] /api/ai/diet-evaluation - AI phân tích sâu thực đơn ăn uống hiện tại với Gemini
 router.get("/diet-evaluation", verifyToken, verifyPremiumOrTicket, evaluateDietWithGemini);
+
+// [GET] /api/ai/search-food - Tìm kiếm hoặc dùng AI ước lượng món ăn (Chỉ yêu cầu đăng nhập)
+router.get("/search-food", verifyToken, searchOrEstimateFood);
 
 
 // --- NHÓM 2: NHẬT KÝ ĂN UỐNG & ĐIỀU CHỈNH HÀNG NGÀY ---
