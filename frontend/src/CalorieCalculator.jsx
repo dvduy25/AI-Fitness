@@ -413,10 +413,10 @@ const CalorieCalculator = () => {
                     onChange={(e) => setSelectedMealType(e.target.value)}
                     className="w-full bg-gray-800 border border-gray-700 text-gray-200 rounded-lg p-2 text-sm focus:outline-none focus:border-blue-500"
                   >
-                    <option value="Sáng">🌅 Bữa Sáng</option>
-                    <option value="Trưa">☀️ Bữa Trưa</option>
-                    <option value="Tối">🌙 Bữa Tối</option>
-                    <option value="Phụ">🍇 Bữa Phụ</option>
+                    <option value="Bữa Sáng">🌅 Bữa Sáng</option>
+                    <option value="Bữa Trưa">☀️ Bữa Trưa</option>
+                    <option value="Bữa Tối">🌙 Bữa Tối</option>
+                    <option value="Bữa Phụ">🍇 Bữa Phụ</option>
                   </select>
                 </div>
 
