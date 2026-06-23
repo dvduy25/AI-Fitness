@@ -317,15 +317,14 @@ exports.checkMealPlanDeviation = async (req, res) => {
     const targetCalories = user.targetMacros?.calories || 2000;
     const currentCalories = mealPlan.dailyTotal?.calories || 0;
 
-    // Định nghĩa ngưỡng lệch cho phép: Vượt quá hoặc thiếu hụt 10% mục tiêu calo ngày
-    const thresholdPercentage = 0.10; 
+    // Định nghĩa ngưỡng lệch cho phép: Chỉ cho phép sai số cố định tối đa 100 calo
+    const maxDiffAllowed = 100; 
     const diff = Math.abs(targetCalories - currentCalories);
-    const maxDiffAllowed = targetCalories * thresholdPercentage;
 
     let isDeviated = false;
     let message = "Dinh dưỡng nằm trong ngưỡng an toàn cho phép.";
 
-    // Kích hoạt trạng thái cảnh báo nếu vượt ngưỡng cho phép (10%)
+    // Kích hoạt trạng thái cảnh báo nếu vượt ngưỡng cho phép (100 calo)
     if (targetCalories > 0 && diff > maxDiffAllowed) {
       isDeviated = true;
       const statusText = currentCalories > targetCalories ? "vượt quá" : "chưa đủ";
@@ -349,6 +348,7 @@ exports.checkMealPlanDeviation = async (req, res) => {
         targetCalories,
         currentCalories,
         difference: Math.round(diff),
+        allowedDeviation: maxDiffAllowed,
         deviationPercentage: ((diff / targetCalories) * 100).toFixed(1) + "%"
       }
     });

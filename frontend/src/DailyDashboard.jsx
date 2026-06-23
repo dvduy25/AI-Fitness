@@ -313,6 +313,11 @@ export default function DailyDashboard() {
   const hasOffPlanMeals = dashboardData.diet.consumed.some(m => m.isExactlyAsPlanned === false);
   const isAllMealsCompleted = dashboardData.diet.upcoming.length === 0 && dashboardData.diet.consumed.length > 0;
 
+  // LƯU Ý: Biến kiểm tra chênh lệch lượng calo (>100 calo thì báo cảnh báo)
+  const targetCal = dashboardData.macros.calories.target;
+  const plannedCal = dashboardData.macros.calories.planned;
+  const isCalorieMismatched = targetCal > 0 && plannedCal > 0 && Math.abs(targetCal - plannedCal) > 100;
+
   return (
     <div className="bg-gray-950 min-h-screen text-gray-200">
       
@@ -340,6 +345,31 @@ export default function DailyDashboard() {
           <div className="bg-emerald-900/20 border border-emerald-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-emerald-900/10">
             <div className="flex items-start gap-3"><div className="p-2 bg-emerald-500/20 rounded-full shrink-0"><BellRing className="w-6 h-6 text-emerald-400 animate-pulse" /></div><div><h3 className="font-bold text-emerald-400">Tới lịch cập nhật cân nặng!</h3><p className="text-sm text-emerald-100/70 mt-0.5">Bạn chưa nhập cân nặng trong tuần này. AI cần số liệu mới nhất để tính toán thực đơn và bài tập chính xác hơn.</p></div></div>
             <button onClick={() => setShowWeightPrompt(true)} className="shrink-0 w-full sm:w-auto px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-xl transition-colors shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"><TrendingUp className="w-4 h-4" /> Nhập cân nặng</button>
+          </div>
+        </div>
+      )}
+
+      {/* THÔNG BÁO CHÊNH LỆCH CALO - CHUYỂN HƯỚNG QUẢN LÝ LỊCH ĂN */}
+      {isCalorieMismatched && (
+        <div className="w-full px-4 md:px-8 lg:px-12 mt-4">
+          <div className="bg-orange-900/20 border border-orange-500/30 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-orange-900/10">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-orange-500/20 rounded-full shrink-0">
+                <AlertTriangle className="w-6 h-6 text-orange-400" />
+              </div>
+              <div>
+                <h3 className="font-bold text-orange-400">Lịch ăn đang lệch mục tiêu!</h3>
+                <p className="text-sm text-orange-100/70 mt-0.5">
+                  Tổng calo lịch ăn hiện tại là <strong className="text-orange-300">{plannedCal} kcal</strong>, lệch so với mục tiêu đề xuất của bạn là <strong className="text-orange-300">{targetCal} kcal</strong>. Bạn có thể vào Quản lý Lịch ăn để điều chỉnh lại nhé.
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => navigate('/meal-plan')} 
+              className="shrink-0 w-full sm:w-auto px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white text-sm font-bold rounded-xl transition-colors shadow-lg shadow-orange-500/20 flex items-center justify-center gap-2"
+            >
+              <Utensils className="w-4 h-4" /> Quản lý Lịch ăn
+            </button>
           </div>
         </div>
       )}
@@ -500,7 +530,7 @@ export default function DailyDashboard() {
                   <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} /> {isSyncing ? 'Đang đồng bộ...' : 'Đồng bộ AI'}
                 </button>
               </div>
-              
+
               {dashboardData.diet.consumed.length === 0 && dashboardData.diet.upcoming.length === 0 && <p className="text-gray-500 text-sm text-center py-6 bg-gray-800/30 rounded-xl border border-gray-800">Chưa có lịch trình bữa ăn.</p>}
 
               <div className="space-y-3 mb-5">
