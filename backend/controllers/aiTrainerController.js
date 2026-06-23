@@ -339,10 +339,6 @@ exports.generatePTMealPlan = async (req, res) => {
 // const { GoogleGenerativeAI } = require("@google/generative-ai");
 // const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Đảm bảo bạn đã khai báo genAI ở đầu file
-// const { GoogleGenerativeAI } = require("@google/generative-ai");
-// const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
 exports.adjustMealPlanByAI = async (req, res) => {
   try {
     const userId = req.user.id;

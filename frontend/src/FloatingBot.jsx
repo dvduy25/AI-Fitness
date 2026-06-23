@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Activity, Star } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Activity, Star, CheckCircle } from 'lucide-react';
 import axios from 'axios';
 
 export default function FloatingBot() {
@@ -7,6 +7,11 @@ export default function FloatingBot() {
   const [stats, setStats] = useState(null);
   const [periodStats, setPeriodStats] = useState(null); 
   const [loading, setLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
+  
+  // Quản lý tọa độ kéo thả bằng chuột/tay
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const draggingRef = useRef(false);
 
   const fetchGamificationStats = async () => {
     setLoading(true);
@@ -23,13 +28,27 @@ export default function FloatingBot() {
         setPeriodStats(response.data.periodStats); 
       }
     } catch (error) {
-      if (error.response && error.response.status === 401) {
-         console.warn("Bot: Chưa đăng nhập hoặc phiên đã hết hạn.");
-      } else {
-         console.error("Lỗi khi lấy dữ liệu Bot:", error);
-      }
+      console.error("Lỗi khi lấy dữ liệu Bot:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Hàm kích hoạt Chốt sổ ngay lập tức
+  const handleManualClose = async () => {
+    if (!window.confirm("Bạn có chắc chắn muốn chốt sổ ngày hôm nay ngay bây giờ không? Trạng thái tập luyện và ăn uống sẽ được cố định.")) return;
+    setClosing(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await axios.post('https://ai-fitness-w6fd.onrender.com/api/gamification/manual-close', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      alert(response.data.message);
+      fetchGamificationStats(); // Tải lại số liệu mới sau khi chốt
+    } catch (error) {
+      alert(error.response?.data?.message || "Không thể chốt sổ lúc này.");
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -38,12 +57,71 @@ export default function FloatingBot() {
   }, []);
 
   const toggleBot = () => {
+    if (draggingRef.current) return; // Nếu đang kéo chuột di chuyển thì không mở bảng
     const willOpen = !isOpen;
     setIsOpen(willOpen);
     if (willOpen) fetchGamificationStats();
   };
 
-  // Dữ liệu mặc định
+  // --- LOGIC DI CHUYỂN CHUỘT (DESKTOP) ---
+  const handleMouseDown = (e) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX - position.x;
+    const startY = e.clientY - position.y;
+    let hasMoved = false;
+
+    const handleMouseMove = (moveEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+      if (Math.abs(dx - position.x) > 4 || Math.abs(dy - position.y) > 4) {
+        hasMoved = true;
+        draggingRef.current = true;
+      }
+      setPosition({ x: dx, y: dy });
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      if (hasMoved) {
+        setTimeout(() => { draggingRef.current = false; }, 50);
+      } else {
+        draggingRef.current = false;
+      }
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  // --- LOGIC DI CHUYỂN CẢM ỨNG (MOBILE) ---
+  const handleTouchStart = (e) => {
+    const touch = e.touches[0];
+    const startX = touch.clientX - position.x;
+    const startY = touch.clientY - position.y;
+    let hasMoved = false;
+
+    const handleTouchMove = (moveEvent) => {
+      const t = moveEvent.touches[0];
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      hasMoved = true;
+      draggingRef.current = true;
+      setPosition({ x: dx, y: dy });
+    };
+
+    const handleTouchEnd = () => {
+      document.removeEventListener('touchmove', handleTouchMove);
+      document.removeEventListener('touchend', handleTouchEnd);
+      if (hasMoved) {
+        setTimeout(() => { draggingRef.current = false; }, 50);
+      } else {
+        draggingRef.current = false;
+      }
+    };
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd);
+  };
+
   const displayStats = stats || {
     rankPoints: 0, streak: 0, totalWorkoutSessions: 0,
     currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 }
@@ -51,18 +129,20 @@ export default function FloatingBot() {
   const { totalWorkoutSessions } = displayStats;
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers;
 
-  // Dữ liệu Tuần/Tháng mặc định
-  const displayPeriod = periodStats || {
-    workoutsThisWeek: 0, workoutsThisMonth: 0,
-    dietThisWeek: 0, dietThisMonth: 0
-  };
+  const displayPeriod = periodStats || { workoutsThisWeek: 0, workoutsThisMonth: 0, dietThisWeek: 0, dietThisMonth: 0 };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-      
+    <div 
+      className="fixed bottom-6 right-6 z-50 flex flex-col items-end touch-none select-none"
+      style={{
+        transform: `translate(${position.x}px, ${position.y}px)`,
+        transition: draggingRef.current ? 'none' : 'transform 0.15s ease-out'
+      }}
+    >
       {isOpen && (
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl p-4 mb-4 w-[320px] animate-in slide-in-from-bottom-5">
-          <div className="flex justify-between items-center border-b border-gray-800 pb-2 mb-3">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl mb-4 w-[320px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+          {/* Header */}
+          <div className="flex justify-between items-center border-b border-gray-800 p-4 bg-gray-950/50">
             <h3 className="text-emerald-400 font-bold flex items-center gap-2">
               <Bot className="w-5 h-5" /> Trợ lý Kỷ Luật
             </h3>
@@ -76,8 +156,8 @@ export default function FloatingBot() {
             </div>
           </div>
 
-          <div className="space-y-3">
-            {/* 1. Điểm & Chuỗi */}
+          {/* Body */}
+          <div className="p-4 space-y-3 text-sm">
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 flex flex-col items-center">
                 <Trophy className="w-5 h-5 text-yellow-400 mb-1" />
@@ -91,91 +171,70 @@ export default function FloatingBot() {
               </div>
             </div>
 
-            {/* 2. Bảng Thành Tích */}
-            <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-800 space-y-2">
-               {/* Trọn đời: CHỈ HIỂN THỊ BUỔI TẬP */}
-               <div className="flex justify-between items-center text-xs pb-2 border-b border-gray-700/50">
+            {/* Thống kê hiệu suất */}
+            <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-800 space-y-2 text-xs">
+               <div className="flex justify-between items-center pb-2 border-b border-gray-700/50">
                   <span className="text-emerald-400 font-semibold">Tập trọn đời:</span>
-                  <div className="flex gap-4">
-                     <span title="Buổi tập" className="flex items-center gap-1">
-                        <Activity className="w-3.5 h-3.5 text-blue-400"/>
-                        <strong className="text-gray-200">{loading ? '-' : totalWorkoutSessions} buổi</strong>
-                     </span>
-                  </div>
+                  <span className="text-gray-200 font-bold">{loading ? '-' : totalWorkoutSessions} buổi</span>
                </div>
-               
-               {/* Tuần */}
-               <div className="flex justify-between items-center text-xs">
+               <div className="flex justify-between items-center">
                   <span className="text-gray-400 font-semibold">Tuần này:</span>
-                  <div className="flex gap-4">
-                     <span title="Buổi tập" className="flex items-center gap-1">
-                        <Activity className="w-3.5 h-3.5 text-blue-400"/>
-                        <strong className="text-gray-200">{loading ? '-' : displayPeriod.workoutsThisWeek}</strong>
-                     </span>
-                     <span title="Ăn chuẩn" className="flex items-center gap-1">
-                        <Star className="w-3.5 h-3.5 text-purple-400"/>
-                        <strong className="text-gray-200">{loading ? '-' : displayPeriod.dietThisWeek}</strong>
-                     </span>
+                  <div className="flex gap-3">
+                     <span className="flex items-center gap-0.5 text-blue-400"><Activity className="w-3 h-3"/> {displayPeriod.workoutsThisWeek}</span>
+                     <span className="flex items-center gap-0.5 text-purple-400"><Star className="w-3 h-3"/> {displayPeriod.dietThisWeek}</span>
                   </div>
                </div>
-               
-               {/* Tháng */}
-               <div className="flex justify-between items-center text-xs pt-2 border-t border-gray-700/50">
+               <div className="flex justify-between items-center pt-2 border-t border-gray-700/50">
                   <span className="text-gray-400 font-semibold">Tháng này:</span>
-                  <div className="flex gap-4">
-                     <span title="Buổi tập" className="flex items-center gap-1">
-                        <Activity className="w-3.5 h-3.5 text-blue-400"/>
-                        <strong className="text-gray-200">{loading ? '-' : displayPeriod.workoutsThisMonth}</strong>
-                     </span>
-                     <span title="Ăn chuẩn" className="flex items-center gap-1">
-                        <Star className="w-3.5 h-3.5 text-purple-400"/>
-                        <strong className="text-gray-200">{loading ? '-' : displayPeriod.dietThisMonth}</strong>
-                     </span>
+                  <div className="flex gap-3">
+                     <span className="flex items-center gap-0.5 text-blue-400"><Activity className="w-3 h-3"/> {displayPeriod.workoutsThisMonth}</span>
+                     <span className="flex items-center gap-0.5 text-purple-400"><Star className="w-3 h-3"/> {displayPeriod.dietThisMonth}</span>
                   </div>
                </div>
             </div>
 
-            {/* 3. Cảnh báo vi phạm tuần */}
-            <div className="mt-2 bg-gray-950 p-3 rounded-xl border border-red-500/20">
-              <p className="font-bold text-red-400 text-xs mb-2 flex items-center gap-1 uppercase tracking-wider">
-                <AlertTriangle className="w-4 h-4" /> Hạn mức tuần này
+            {/* Hạn mức vi phạm */}
+            <div className="bg-gray-950 p-3 rounded-xl border border-red-500/20 text-xs">
+              <p className="font-bold text-red-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider text-[11px]">
+                <AlertTriangle className="w-3.5 h-3.5" /> Hạn mức tuần này
               </p>
-              <div className="space-y-2 text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300">Ăn sai:</span>
-                  <span className={`font-bold ${eatWrong > 1 ? "text-red-500" : "text-emerald-400"}`}>{eatWrong} / 1 ngày</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-gray-300">Không tập:</span>
-                  <span className={`font-bold ${noWorkout > 3 ? "text-red-500" : "text-emerald-400"}`}>{noWorkout} / 3 ngày</span>
-                </div>
-                <div className="flex justify-between items-center pt-1 border-t border-gray-800">
-                  <span className="text-gray-300">Lười cả ăn & tập:</span>
-                  <span className={`font-bold ${bothFail > 1 ? "text-red-500" : "text-emerald-400"}`}>{bothFail} / 1 ngày</span>
-                </div>
+              <div className="space-y-1.5">
+                <div className="flex justify-between"><span className="text-gray-400">Ăn sai:</span><span className={eatWrong > 1 ? "text-red-500 font-bold" : "text-emerald-400"}>{eatWrong} / 1 ngày</span></div>
+                <div className="flex justify-between"><span className="text-gray-400">Không tập:</span><span className={noWorkout > 3 ? "text-red-500 font-bold" : "text-emerald-400"}>{noWorkout} / 3 ngày</span></div>
+                <div className="flex justify-between pt-1 border-t border-gray-800"><span className="text-gray-400">Lười cả ăn & tập:</span><span className={bothFail > 1 ? "text-red-500 font-bold" : "text-emerald-400"}>{bothFail} / 1 ngày</span></div>
               </div>
-              <p className="text-[10px] text-gray-500 mt-3 text-center italic">
-                *Quá hạn mức sẽ bị trừ 50-100 điểm Rank và mất chuỗi.
-              </p>
             </div>
+
+            {/* NÚT CHỐT SỔ NGAY TRONG NGÀY */}
+            <button 
+              onClick={handleManualClose}
+              disabled={closing || (stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0)))}
+              className="w-full mt-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-lg active:scale-95 duration-150"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {closing ? "Đang xử lý..." : (stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0))) ? "Hôm nay đã chốt sổ" : "Chốt Sổ Ngày Hôm Nay"}
+            </button>
           </div>
         </div>
       )}
 
-      {/* NÚT BẤM */}
-      <button 
+      {/* ICON TRÒN ĐỂ DI CHUYỂN */}
+      <div 
         onClick={toggleBot}
-        className="relative flex items-center justify-center w-14 h-14 bg-gray-900 border-2 border-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-110 transition-transform duration-300 z-50"
+        onMouseDown={handleMouseDown}
+        onTouchStart={handleTouchStart}
+        role="button"
+        tabIndex={0}
+        className="relative flex items-center justify-center w-14 h-14 bg-gray-900 border-2 border-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-105 transition-transform duration-200 z-50 cursor-grab active:cursor-grabbing"
       >
-        {isOpen ? <ChevronUp className="w-6 h-6 text-emerald-400" /> : <Bot className="w-7 h-7 text-emerald-400" />}
+        {isOpen ? <ChevronUp className="w-6 h-6 text-emerald-400 pointer-events-none" /> : <Bot className="w-7 h-7 text-emerald-400 pointer-events-none" />}
         {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0) && (
-          <span className="absolute top-0 right-0 flex h-3 w-3">
+          <span className="absolute top-0 right-0 flex h-3 w-3 pointer-events-none">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-gray-900"></span>
           </span>
         )}
-      </button>
-
+      </div>
     </div>
   );
 }
