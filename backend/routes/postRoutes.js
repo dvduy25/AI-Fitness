@@ -27,15 +27,18 @@ router.post("/share-library", verifyToken, mediaUpload, postController.shareFrom
 
 // ==========================================
 // 2. CÁC TÍNH NĂNG LẤY BẢNG TIN (FEED) & THÔNG BÁO
-// ⚠️ LƯU Ý: CÁC ROUTE CỐ ĐỊNH PHẢI ĐỨNG TRÊN ROUTE /:postId
+// ⚠️ LƯU Ý: CÁC ROUTE CỐ ĐỊNH PHẢI ĐỨNG TRÊN ROUTE BIẾN ĐỘNG /:postId
 // ==========================================
 router.get("/feed", verifyToken, postController.getFeed);
 router.get("/latest", verifyToken, postController.getLatestPosts);
 router.get("/following", verifyToken, postController.getFollowingPosts);
 router.get("/liked", verifyToken, postController.getLikedPosts);
 
-// 🌟 ROUTE MỚI: Quản lý thông báo (Lấy danh sách & Xóa)
+// 🌟 ĐÃ BỔ SUNG: Các Route quản lý thông báo (đặt trên /:postId để tránh trùng lặp)
 router.get("/notifications", verifyToken, postController.getNotifications);
+router.get("/notifications/unread-count", verifyToken, postController.getUnreadNotificationCount);
+router.patch("/notifications/read-all", verifyToken, postController.markAllNotificationsAsRead);
+router.patch("/notifications/:notiId/read", verifyToken, postController.markNotificationAsRead);
 router.delete("/notifications/:notiId", verifyToken, postController.deleteNotification);
 
 // Lấy chi tiết 1 bài viết (Route động /:postId phải nằm DƯỚI CÙNG của các lệnh GET)
@@ -53,7 +56,7 @@ router.delete("/:postId", verifyToken, postController.deletePost);
 router.post("/:postId/like", verifyToken, postController.toggleLike);
 router.post("/:postId/share", verifyToken, postController.incrementShare);
 
-// 🌟 ROUTE MỚI: Gửi bài viết trực tiếp cho người đang Follow
+// Gửi bài viết trực tiếp cho người đang Follow
 router.post("/:postId/share-to-user", verifyToken, postController.sharePostToUser);
 
 // Bình luận

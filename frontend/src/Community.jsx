@@ -5,7 +5,7 @@ import {
   Heart, MessageCircle, Send, Activity, Utensils, 
   Trash2, Image as ImageIcon, Film, X, 
   Dumbbell, Apple, Bookmark, Flame, Search, User,
-  Eye, Share2, Bell, BadgeCheck, UserPlus, UserMinus, Info
+  Eye, Share2, Bell, BadgeCheck, UserPlus, UserMinus, Info, Link
 } from 'lucide-react';
 
 // IMPORT CÁC COMPONENT CON
@@ -21,7 +21,7 @@ export default function Community() {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   
-  // Quản lý xem user đang ở Tab nào (Bảng tin chung, Mới nhất, Theo dõi, Đã thích)
+  // Quản lý xem user đang ở Tab nào
   const [activeTab, setActiveTab] = useState('feed'); 
   
   const [searchTerm, setSearchTerm] = useState("");
@@ -43,8 +43,12 @@ export default function Community() {
 
   const [followingList, setFollowingList] = useState([]);
   
-  // 🌟 STATE MỚI: Quản lý danh sách thông báo từ Server
+  // Quản lý danh sách thông báo
   const [realNotifications, setRealNotifications] = useState([]);
+
+  // 🌟 STATE MỚI: Quản lý Modal Chia sẻ
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [sharingPostId, setSharingPostId] = useState(null);
 
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
@@ -56,11 +60,11 @@ export default function Community() {
   };
   const currentUserId = getCurrentUserId();
 
-  // TẢI BẢNG TIN THEO TAB ĐƯỢC CHỌN
+  // TẢI BẢNG TIN THEO TAB
   const fetchPosts = async (type = activeTab) => {
     setLoading(true);
     try {
-      let endpoint = `${API_BASE_URL}/api/posts/feed`; // Mặc định: Dành cho bạn
+      let endpoint = `${API_BASE_URL}/api/posts/feed`;
       
       if (type === 'latest') endpoint = `${API_BASE_URL}/api/posts/latest`;
       else if (type === 'following') endpoint = `${API_BASE_URL}/api/posts/following`;
@@ -84,7 +88,6 @@ export default function Community() {
     } catch (error) { console.error("Lỗi tải danh sách theo dõi", error); }
   };
 
-  // 🌟 HÀM MỚI: Lấy danh sách thông báo
   const fetchNotifications = async () => {
     if (!token) return;
     try {
@@ -93,11 +96,10 @@ export default function Community() {
     } catch (error) { console.error("Lỗi tải danh sách thông báo", error); }
   };
 
-  // Lắng nghe sự thay đổi của activeTab, bấm qua tab khác tự fetch lại
   useEffect(() => { 
     fetchPosts(activeTab); 
     fetchFollowing();
-    fetchNotifications(); // Cập nhật thông báo mỗi khi đổi tab
+    fetchNotifications(); 
   }, [activeTab]);
 
   // XEM VÀ ĐÓNG PROFILE CHI TIẾT
@@ -141,18 +143,6 @@ export default function Community() {
               : Math.max(0, (prev.followersCount || 0) - 1)
           }));
         }
-      }
-    } catch (error) { console.error(error); }
-  };
-
-  const handleShare = async (postId) => {
-    try {
-      const res = await axios.post(`${API_BASE_URL}/api/posts/${postId}/share`, {}, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.data.success) {
-        setPosts(posts.map(p => p._id === postId ? { ...p, sharesCount: res.data.sharesCount } : p));
-        if (viewingPostDetails?._id === postId) setViewingPostDetails(prev => ({ ...prev, sharesCount: res.data.sharesCount }));
-        navigator.clipboard.writeText(`${window.location.origin}/post/${postId}`);
-        alert("Đã sao chép liên kết bài viết!");
       }
     } catch (error) { console.error(error); }
   };
@@ -202,7 +192,7 @@ export default function Community() {
         setNewPostContent(""); setSelectedImages([]); setSelectedVideo(null); setAttachPlan(null);
         if (imageInputRef.current) imageInputRef.current.value = "";
         if (videoInputRef.current) videoInputRef.current.value = "";
-        fetchPosts(activeTab); // Tải lại tab hiện tại
+        fetchPosts(activeTab); 
       }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi đăng bài!"); }
   };
@@ -255,8 +245,49 @@ export default function Community() {
     } catch (error) { console.error(error); }
   };
 
-  // 🌟 HÀM MỚI: Xử lý khi click vào Thông báo
+  // 🌟 MỞ MODAL CHIA SẺ VÀ XỬ LÝ CHIA SẺ
+  const openShareModal = (postId) => {
+    setSharingPostId(postId);
+    setShowShareModal(true);
+  };
+
+  const handleCopyLink = async () => {
+    try {
+      const res = await axios.post(`${API_BASE_URL}/api/posts/${sharingPostId}/share`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.success) {
+        setPosts(posts.map(p => p._id === sharingPostId ? { ...p, sharesCount: res.data.sharesCount } : p));
+        if (viewingPostDetails?._id === sharingPostId) setViewingPostDetails(prev => ({ ...prev, sharesCount: res.data.sharesCount }));
+      }
+    } catch (error) { console.error(error); }
+    
+    navigator.clipboard.writeText(`${window.location.origin}/post/${sharingPostId}`);
+    alert("Đã sao chép liên kết bài viết!");
+    setShowShareModal(false);
+  };
+
+  const handleSendToUser = async (targetUserId) => {
+    try {
+      // Yêu cầu Backend cần có endpoint này để tạo thông báo cho user được chọn
+      const res = await axios.post(`${API_BASE_URL}/api/posts/${sharingPostId}/share-to-user`, { targetUserId }, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.success) {
+        alert("Đã gửi bài viết thành công!");
+        setShowShareModal(false);
+      }
+    } catch (error) {
+      alert("Lỗi khi gửi bài viết. Vui lòng thử lại.");
+    }
+  };
+
+  // 🌟 XỬ LÝ KHI CLICK VÀO THÔNG BÁO (GỠ CHẤM XANH)
   const handleNotificationClick = async (noti) => {
+    // Đánh dấu đã đọc trên Frontend
+    setRealNotifications(prev => prev.map(n => n._id === noti._id ? { ...n, isRead: true } : n));
+    
+    // Gọi API đánh dấu đã đọc (Backend cần hỗ trợ)
+    try {
+      await axios.patch(`${API_BASE_URL}/api/notifications/${noti._id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } });
+    } catch (e) { console.error("Lỗi mark as read", e); }
+
     if (noti.type === 'follow') {
       if (noti.senderId) {
         handleViewProfile(noti.senderId._id, { 
@@ -501,7 +532,7 @@ export default function Community() {
               onClick={() => setActiveTab('latest')}
               className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'latest' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
             >
-               Mới nhất
+                Mới nhất
             </button>
             <button
               onClick={() => setActiveTab('following')}
@@ -614,7 +645,7 @@ export default function Community() {
                         </div>
                       )}
 
-                      <button onClick={(e) => { e.stopPropagation(); handleShare(post._id); }} className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors" title="Chia sẻ">
+                      <button onClick={(e) => { e.stopPropagation(); openShareModal(post._id); }} className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors" title="Chia sẻ">
                         <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span className="text-sm font-semibold hidden sm:inline">Chia sẻ</span>
                       </button>
@@ -666,19 +697,27 @@ export default function Community() {
                   <div 
                     key={noti._id} 
                     onClick={() => handleNotificationClick(noti)}
-                    className="flex items-start gap-3 p-4 bg-gray-900/60 rounded-2xl border border-gray-700/40 cursor-pointer hover:bg-gray-800 hover:border-gray-600 transition-all shadow-sm"
+                    className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all shadow-sm ${
+                      !noti.isRead 
+                      ? 'bg-gray-800 border-gray-600 hover:bg-gray-700' 
+                      : 'bg-gray-900/60 border-gray-700/40 hover:bg-gray-800'
+                    }`}
                   >
                     <div className="mt-0.5 bg-gray-800 p-2 rounded-full shrink-0 shadow-inner">
                       {icon}
                     </div>
-                    <div>
-                      <p className="text-sm text-gray-200 leading-snug">
+                    <div className="flex-1 pr-4">
+                      <p className={`text-sm leading-snug ${!noti.isRead ? 'text-white' : 'text-gray-300'}`}>
                         <span className="font-bold text-emerald-400">{noti.senderId?.name || "Người dùng ẩn danh"}</span> {text}
                       </p>
                       <p className="text-[11px] text-gray-500 mt-1.5 font-medium">
                         {new Date(noti.createdAt).toLocaleString('vi-VN')}
                       </p>
                     </div>
+                    {/* CHẤM XANH HIỂN THỊ CHƯA ĐỌC */}
+                    {!noti.isRead && (
+                      <div className="absolute top-1/2 -translate-y-1/2 right-4 w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
+                    )}
                   </div>
                 );
               })
@@ -694,6 +733,8 @@ export default function Community() {
       </div>
 
       {/* ================= CÁC MODAL ẨN ================= */}
+      
+      {/* 1. Modal Chi Tiết Bài Viết */}
       {viewingPostDetails && (
         <PostDetailsModal 
           post={viewingPostDetails} 
@@ -701,15 +742,17 @@ export default function Community() {
           currentUserId={currentUserId}
           token={token}
           onToggleLike={handleToggleLike}
-          handleShare={handleShare}
+          handleShare={() => openShareModal(viewingPostDetails._id)} // Truyền hàm gọi Modal Share
           handleSaveToLibrary={handleSaveToLibrary}
           setViewingPlan={setViewingPlan}
           setSelectedUserFilter={setSelectedUserFilter}
         />
       )}
 
+      {/* 2. Modal Chi Tiết Lịch Tập/Ăn */}
       <PlanDetailsModal plan={viewingPlan} onClose={() => setViewingPlan(null)} />
 
+      {/* 3. Modal Đính Kèm Từ Kho Lưu Trữ */}
       {showArchiveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setShowArchiveModal(false)}>
           <div className="bg-gray-900 border border-gray-700 w-full max-w-sm rounded-3xl shadow-2xl p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
@@ -742,6 +785,47 @@ export default function Community() {
               )}
             </div>
             <button onClick={() => setShowArchiveModal(false)} className="w-full mt-5 p-3 text-sm font-bold text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-xl transition-colors">Hủy bỏ</button>
+          </div>
+        </div>
+      )}
+
+      {/* 4. MODAL CHIA SẺ (MỚI) */}
+      {showShareModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm" onClick={() => setShowShareModal(false)}>
+          <div className="bg-gray-900 border border-gray-700 w-full max-w-sm rounded-3xl shadow-2xl p-6 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-5 border-b border-gray-700/50 pb-4">
+              <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                <Share2 className="w-5 h-5 text-emerald-400" /> Chia sẻ bài viết
+              </h3>
+              <button onClick={() => setShowShareModal(false)} className="text-gray-400 hover:text-white hover:bg-gray-800 p-1.5 rounded-full transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <button onClick={handleCopyLink} className="w-full flex items-center justify-center gap-2 p-3.5 bg-gray-800 hover:bg-gray-700 border border-gray-600 rounded-xl text-white font-semibold transition-all mb-4">
+              <Link className="w-5 h-5 text-blue-400" /> Sao chép liên kết
+            </button>
+
+            <div>
+              <p className="text-sm font-semibold text-gray-400 mb-3">Gửi trực tiếp cho người bạn theo dõi:</p>
+              <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar pr-2">
+                {followingList.length > 0 ? followingList.map(user => (
+                  <div key={user._id} className="flex justify-between items-center bg-gray-800/50 border border-gray-700/50 p-2.5 rounded-xl">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img src={user.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-9 h-9 rounded-full object-cover border border-gray-600" />
+                      <p className="text-sm font-bold text-gray-200 truncate">{user.name}</p>
+                    </div>
+                    <button onClick={() => handleSendToUser(user._id)} className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors shadow-lg">
+                      Gửi
+                    </button>
+                  </div>
+                )) : (
+                  <div className="text-center py-4 bg-gray-800/30 rounded-xl border border-gray-700/30">
+                    <p className="text-sm text-gray-500">Bạn chưa theo dõi ai để gửi.</p>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
