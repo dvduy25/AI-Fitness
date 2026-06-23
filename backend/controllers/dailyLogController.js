@@ -102,28 +102,28 @@ exports.getDietByDate = async (req, res) => {
 // ==========================================
 // CẬP NHẬT BỮA ĂN HÔM NAY (THÊM HOẶC GHI ĐÈ)
 // ==========================================
+// ==========================================
+// CẬP NHẬT BỮA ĂN HÔM NAY (THÊM HOẶC GHI ĐÈ)
+// ==========================================
 exports.logMeal = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { mealType, mode, items, mealTotal } = req.body; // mode: 'add' hoặc 'replace'
+    const { mealType, mode, items, mealTotal } = req.body; 
 
     if (!mealType || !items || items.length === 0) {
       return res.status(400).json({ message: "Thiếu thông tin bữa ăn hoặc danh sách món!" });
     }
 
-    // 1. Định vị khoảng thời gian ngày hôm nay (00:00:00 -> 23:59:59)
     const startOfDay = new Date();
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date();
     endOfDay.setHours(23, 59, 59, 999);
 
-    // 2. Tìm log ăn uống của ngày hôm nay
     let log = await DailyDietLog.findOne({
       userId,
       date: { $gte: startOfDay, $lte: endOfDay }
     });
 
-    // Nếu hôm nay chưa ăn gì (chưa có bản ghi), tạo mới một bản ghi rỗng
     if (!log) {
       log = new DailyDietLog({
         userId,
@@ -133,7 +133,6 @@ exports.logMeal = async (req, res) => {
       });
     }
 
-    // 3. Xử lý Logic: GHI ĐÈ hoặc THÊM MỚI
     const newMealRecord = {
       mealType,
       loggedAt: new Date(),
@@ -142,15 +141,26 @@ exports.logMeal = async (req, res) => {
       mealTotal
     };
 
+    // ==========================================
+    // ĐOẠN FIX LỖI GHI ĐÈ Ở ĐÂY
+    // ==========================================
     if (mode === 'replace') {
-      // Xóa tất cả các bữa ăn cũ cùng loại (Ví dụ: Xóa sạch bữa 'Sáng' cũ để thay bằng bữa 'Sáng' mới)
-      log.consumedMeals = log.consumedMeals.filter(meal => meal.mealType !== mealType);
+      // 1. Dùng filter để giữ lại các bữa KHÁC loại bữa hiện tại
+      const filteredMeals = log.consumedMeals.filter(meal => meal.mealType !== mealType);
+      
+      // 2. Clear mảng cũ đi và thay bằng mảng đã lọc
+      log.consumedMeals = [];
+      log.consumedMeals.push(...filteredMeals);
     }
     
-    // Đẩy bữa ăn mới vào mảng lịch sử ăn trong ngày
+    // Đẩy bữa ăn mới vào
     log.consumedMeals.push(newMealRecord);
 
-    // 4. TỰ ĐỘNG TÍNH LẠI TỔNG CALO & MACROS TRONG NGÀY
+    // 3. ÉP BUỘC Mongoose ghi nhận mảng này đã bị thay đổi để nó Update Database
+    log.markModified('consumedMeals');
+    // ==========================================
+
+    // TÍNH LẠI TỔNG CALO & MACROS TRONG NGÀY
     log.actualDailyTotal = log.consumedMeals.reduce((acc, meal) => {
       return {
         calories: acc.calories + (meal.mealTotal?.calories || 0),
@@ -160,7 +170,6 @@ exports.logMeal = async (req, res) => {
       };
     }, { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
-    // Bo tròn số liệu cho đẹp trước khi lưu
     log.actualDailyTotal.calories = Math.round(log.actualDailyTotal.calories);
     log.actualDailyTotal.protein = Number(log.actualDailyTotal.protein.toFixed(1));
     log.actualDailyTotal.carbs = Number(log.actualDailyTotal.carbs.toFixed(1));
