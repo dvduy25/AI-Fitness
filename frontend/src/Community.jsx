@@ -63,7 +63,7 @@ export default function Community() {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return {
         id: payload.id || payload._id,
-        name: payload.name || payload.fullName || payload.username 
+        name: payload.name || payload.fullName || payload.username ||"tôi"
       }; 
     } catch (e) { return null; }
   };
@@ -125,8 +125,14 @@ export default function Community() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.success) {
-        setSelectedUserFilter({ id: userId, ...res.data.user, isLoading: false });
-      }
+        setSelectedUserFilter({ 
+        id: userId, 
+        ...res.data.user, 
+        followersCount: res.data.user.followers?.length || 0, // Đếm số phần tử trong mảng followers
+        followingCount: res.data.user.following?.length || 0, // Đếm số phần tử trong mảng following
+        isLoading: false 
+      });
+    }
     } catch (error) {
       console.error("Lỗi tải thông tin user", error);
       setSelectedUserFilter(prev => ({
