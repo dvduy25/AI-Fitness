@@ -1,7 +1,7 @@
 const Gamification = require('../models/Gamification');
 const WorkoutLog = require('../models/WorkoutLog');
 const DailyDietLog = require('../models/DailyDietLog');
-const { closeDayForUser } = require('../services/cronService');
+const { closeDayForUser } = require('../services/cronJob');
 
 // API: GET /api/gamification/stats
 const getUserStats = async (req, res) => {
@@ -11,15 +11,19 @@ const getUserStats = async (req, res) => {
     if (!stats) stats = new Gamification({ userId });
 
     const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
     const dayOfWeek = now.getDay() || 7; 
     const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1, 0, 0, 0);
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
 
-    // Đếm trực tiếp từ Log thực tế (Nguồn sự thật duy nhất)
+    // Chạy song song kiểm tra đếm trọn đời/tuần/tháng + Lấy trạng thái CỦA RIÊNG NGÀY HÔM NAY
     const [
       realWorkouts, realDietDays,
       workoutsThisWeek, workoutsThisMonth,
-      dietThisWeek, dietThisMonth
+      dietThisWeek, dietThisMonth,
+      todayWorkout, todayDiet
     ] = await Promise.all([
       WorkoutLog.countDocuments({ userId, isCompleted: true }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true }), 
@@ -28,10 +32,13 @@ const getUserStats = async (req, res) => {
       WorkoutLog.countDocuments({ userId, isCompleted: true, date: { $gte: startOfMonth } }), 
       
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }), 
-      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }) 
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }),
+
+      // Kiểm tra xem hôm nay có log tập và log ăn hoàn thành chưa
+      WorkoutLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay }, isCompleted: true }),
+      DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay }, isDayCompleted: true })
     ]);
 
-    // Ép kiểu sang Object thuần để gán đè dữ liệu realtime trả về client mà không cần lưu vào DB
     const responseStats = stats.toObject();
     responseStats.totalWorkoutSessions = realWorkouts;
     responseStats.totalPerfectDietDays = realDietDays;
@@ -39,7 +46,12 @@ const getUserStats = async (req, res) => {
     res.status(200).json({ 
       success: true, 
       stats: responseStats, 
-      periodStats: { workoutsThisWeek, workoutsThisMonth, dietThisWeek, dietThisMonth }
+      periodStats: { workoutsThisWeek, workoutsThisMonth, dietThisWeek, dietThisMonth },
+      // Trả thêm object này về để Frontend biết hôm nay làm bài tập chưa
+      todayStatus: {
+        didWorkout: !!todayWorkout,
+        didEatRight: !!todayDiet
+      }
     });
 
   } catch (error) {
@@ -48,7 +60,7 @@ const getUserStats = async (req, res) => {
   }
 };
 
-// API: POST /api/gamification/manual-close (Chốt sổ sớm ngay trong ngày)
+// API: POST /api/gamification/manual-close
 const manualCloseDay = async (req, res) => {
   try {
     const userId = req.user.id;

@@ -6,10 +6,10 @@ export default function FloatingBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [periodStats, setPeriodStats] = useState(null); 
+  const [todayStatus, setTodayStatus] = useState({ didWorkout: false, didEatRight: false }); // Trạng thái hôm nay
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
   
-  // Quản lý tọa độ kéo thả bằng chuột/tay
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const draggingRef = useRef(false);
 
@@ -26,6 +26,7 @@ export default function FloatingBot() {
       if (response.data.success) {
         setStats(response.data.stats);
         setPeriodStats(response.data.periodStats); 
+        setTodayStatus(response.data.todayStatus); // Lưu trạng thái hôm nay
       }
     } catch (error) {
       console.error("Lỗi khi lấy dữ liệu Bot:", error);
@@ -34,9 +35,8 @@ export default function FloatingBot() {
     }
   };
 
-  // Hàm kích hoạt Chốt sổ ngay lập tức
   const handleManualClose = async () => {
-    if (!window.confirm("Bạn có chắc chắn muốn chốt sổ ngày hôm nay ngay bây giờ không? Trạng thái tập luyện và ăn uống sẽ được cố định.")) return;
+    if (!window.confirm("Chúc mừng bạn đã hoàn thành ngày xuất sắc! Bấm xác nhận để chốt sổ nhận 10 điểm Rank và tăng chuỗi ngày nhé!")) return;
     setClosing(true);
     try {
       const token = localStorage.getItem('token');
@@ -44,7 +44,7 @@ export default function FloatingBot() {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert(response.data.message);
-      fetchGamificationStats(); // Tải lại số liệu mới sau khi chốt
+      fetchGamificationStats(); 
     } catch (error) {
       alert(error.response?.data?.message || "Không thể chốt sổ lúc này.");
     } finally {
@@ -57,19 +57,18 @@ export default function FloatingBot() {
   }, []);
 
   const toggleBot = () => {
-    if (draggingRef.current) return; // Nếu đang kéo chuột di chuyển thì không mở bảng
+    if (draggingRef.current) return;
     const willOpen = !isOpen;
     setIsOpen(willOpen);
     if (willOpen) fetchGamificationStats();
   };
 
-  // --- LOGIC DI CHUYỂN CHUỘT (DESKTOP) ---
+  // --- KÉO THẢ MÀN HÌNH ---
   const handleMouseDown = (e) => {
     if (e.button !== 0) return;
     const startX = e.clientX - position.x;
     const startY = e.clientY - position.y;
     let hasMoved = false;
-
     const handleMouseMove = (moveEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
@@ -79,57 +78,42 @@ export default function FloatingBot() {
       }
       setPosition({ x: dx, y: dy });
     };
-
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-      if (hasMoved) {
-        setTimeout(() => { draggingRef.current = false; }, 50);
-      } else {
-        draggingRef.current = false;
-      }
+      if (hasMoved) { setTimeout(() => { draggingRef.current = false; }, 50); } 
+      else { draggingRef.current = false; }
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // --- LOGIC DI CHUYỂN CẢM ỨNG (MOBILE) ---
   const handleTouchStart = (e) => {
     const touch = e.touches[0];
     const startX = touch.clientX - position.x;
     const startY = touch.clientY - position.y;
-    let hasMoved = false;
-
     const handleTouchMove = (moveEvent) => {
       const t = moveEvent.touches[0];
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      hasMoved = true;
+      setPosition({ x: t.clientX - startX, y: t.clientY - startY });
       draggingRef.current = true;
-      setPosition({ x: dx, y: dy });
     };
-
     const handleTouchEnd = () => {
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
-      if (hasMoved) {
-        setTimeout(() => { draggingRef.current = false; }, 50);
-      } else {
-        draggingRef.current = false;
-      }
+      setTimeout(() => { draggingRef.current = false; }, 50);
     };
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
   };
 
-  const displayStats = stats || {
-    rankPoints: 0, streak: 0, totalWorkoutSessions: 0,
-    currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 }
-  };
-  const { totalWorkoutSessions } = displayStats;
+  const displayStats = stats || { rankPoints: 0, streak: 0, totalWorkoutSessions: 0, currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 } };
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers;
-
   const displayPeriod = periodStats || { workoutsThisWeek: 0, workoutsThisMonth: 0, dietThisWeek: 0, dietThisMonth: 0 };
+
+  // ĐIỀU KIỆN HIỆN NÚT: Phải xong cả tập + ăn VÀ chưa từng chốt sổ trong ngày hôm nay
+  const isFullyCompleted = todayStatus.didWorkout && todayStatus.didEatRight;
+  const isAlreadyClosed = stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0));
+  const showCloseButton = isFullyCompleted && !isAlreadyClosed;
 
   return (
     <div 
@@ -171,24 +155,34 @@ export default function FloatingBot() {
               </div>
             </div>
 
+            {/* Tiến độ hôm nay (Để trực quan lý do ẩn/hiện nút) */}
+            <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 text-xs flex justify-around text-center">
+              <div>
+                <span className="text-gray-400 block mb-0.5">Tập luyện</span>
+                <span className={`font-bold ${todayStatus.didWorkout ? "text-emerald-400" : "text-gray-500"}`}>
+                  {todayStatus.didWorkout ? "✓ Đã xong" : "○ Chưa tập"}
+                </span>
+              </div>
+              <div className="border-r border-gray-800"></div>
+              <div>
+                <span className="text-gray-400 block mb-0.5">Ăn uống</span>
+                <span className={`font-bold ${todayStatus.didEatRight ? "text-emerald-400" : "text-gray-500"}`}>
+                  {todayStatus.didEatRight ? "✓ Đã xong" : "○ Chưa chốt bữa"}
+                </span>
+              </div>
+            </div>
+
             {/* Thống kê hiệu suất */}
             <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-800 space-y-2 text-xs">
                <div className="flex justify-between items-center pb-2 border-b border-gray-700/50">
                   <span className="text-emerald-400 font-semibold">Tập trọn đời:</span>
-                  <span className="text-gray-200 font-bold">{loading ? '-' : totalWorkoutSessions} buổi</span>
+                  <span className="text-gray-200 font-bold">{loading ? '-' : displayStats.totalWorkoutSessions} buổi</span>
                </div>
                <div className="flex justify-between items-center">
                   <span className="text-gray-400 font-semibold">Tuần này:</span>
                   <div className="flex gap-3">
                      <span className="flex items-center gap-0.5 text-blue-400"><Activity className="w-3 h-3"/> {displayPeriod.workoutsThisWeek}</span>
                      <span className="flex items-center gap-0.5 text-purple-400"><Star className="w-3 h-3"/> {displayPeriod.dietThisWeek}</span>
-                  </div>
-               </div>
-               <div className="flex justify-between items-center pt-2 border-t border-gray-700/50">
-                  <span className="text-gray-400 font-semibold">Tháng này:</span>
-                  <div className="flex gap-3">
-                     <span className="flex items-center gap-0.5 text-blue-400"><Activity className="w-3 h-3"/> {displayPeriod.workoutsThisMonth}</span>
-                     <span className="flex items-center gap-0.5 text-purple-400"><Star className="w-3 h-3"/> {displayPeriod.dietThisMonth}</span>
                   </div>
                </div>
             </div>
@@ -201,19 +195,27 @@ export default function FloatingBot() {
               <div className="space-y-1.5">
                 <div className="flex justify-between"><span className="text-gray-400">Ăn sai:</span><span className={eatWrong > 1 ? "text-red-500 font-bold" : "text-emerald-400"}>{eatWrong} / 1 ngày</span></div>
                 <div className="flex justify-between"><span className="text-gray-400">Không tập:</span><span className={noWorkout > 3 ? "text-red-500 font-bold" : "text-emerald-400"}>{noWorkout} / 3 ngày</span></div>
-                <div className="flex justify-between pt-1 border-t border-gray-800"><span className="text-gray-400">Lười cả ăn & tập:</span><span className={bothFail > 1 ? "text-red-500 font-bold" : "text-emerald-400"}>{bothFail} / 1 ngày</span></div>
               </div>
             </div>
 
-            {/* NÚT CHỐT SỔ NGAY TRONG NGÀY */}
-            <button 
-              onClick={handleManualClose}
-              disabled={closing || (stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0)))}
-              className="w-full mt-1 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-800 disabled:text-gray-500 text-white font-bold py-2 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-colors shadow-lg active:scale-95 duration-150"
-            >
-              <CheckCircle className="w-4 h-4" />
-              {closing ? "Đang xử lý..." : (stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0))) ? "Hôm nay đã chốt sổ" : "Chốt Sổ Ngày Hôm Nay"}
-            </button>
+            {/* NÚT CHỐT SỔ (CHỈ HIỆN KHI ĐỦ 100% KỶ LUẬT) */}
+            {showCloseButton && (
+              <button 
+                onClick={handleManualClose}
+                disabled={closing}
+                className="w-full mt-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce"
+              >
+                <CheckCircle className="w-4 h-4" />
+                {closing ? "Đang xử lý..." : "Chốt Sổ Hoàn Thành Ngày!"}
+              </button>
+            )}
+
+            {/* Trạng thái nếu đã chốt rồi */}
+            {isAlreadyClosed && (
+              <div className="text-center py-2 bg-gray-950 text-gray-500 font-semibold rounded-xl border border-gray-800 text-xs">
+                🔒 Ngày hôm nay đã được chốt sổ
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -223,17 +225,9 @@ export default function FloatingBot() {
         onClick={toggleBot}
         onMouseDown={handleMouseDown}
         onTouchStart={handleTouchStart}
-        role="button"
-        tabIndex={0}
         className="relative flex items-center justify-center w-14 h-14 bg-gray-900 border-2 border-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-105 transition-transform duration-200 z-50 cursor-grab active:cursor-grabbing"
       >
         {isOpen ? <ChevronUp className="w-6 h-6 text-emerald-400 pointer-events-none" /> : <Bot className="w-7 h-7 text-emerald-400 pointer-events-none" />}
-        {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0) && (
-          <span className="absolute top-0 right-0 flex h-3 w-3 pointer-events-none">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-gray-900"></span>
-          </span>
-        )}
       </div>
     </div>
   );
