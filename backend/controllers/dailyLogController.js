@@ -1,80 +1,46 @@
-const DailyDietLog = require("../models/DailyDietLog"); 
+const DailyDietLog = require("../models/DailyDietLog");
 
 // ==========================================
-// LẤY LỊCH SỬ DINH DƯỠNG (CALO & MACROS)
+// 1. LẤY LỊCH SỬ DINH DƯỠNG (CALO & MACROS)
 // ==========================================
 exports.getDietHistory = async (req, res) => {
   try {
     const userId = req.user.id;
     const { period } = req.query; // Nhận 'week', 'month', hoặc 'all' từ Frontend
 
-    // 1. Xác định mốc thời gian bắt đầu
+    // Xác định mốc thời gian bắt đầu
     const startDate = new Date();
-    startDate.setHours(0, 0, 0, 0); // Bắt đầu từ 0h00 sáng
+    startDate.setHours(0, 0, 0, 0); // Đưa về 00:00 đầu ngày hôm nay
 
     if (period === 'week') {
       startDate.setDate(startDate.getDate() - 7);
     } else if (period === 'month') {
       startDate.setMonth(startDate.getMonth() - 1);
     } else if (period === 'all') {
-      startDate.setFullYear(2000); // Nếu 'all', lấy từ rất lâu
+      startDate.setFullYear(2000); // Lấy toàn bộ từ trước đến nay
     } else {
-      startDate.setDate(startDate.getDate() - 7); // Mặc định là 7 ngày
+      startDate.setDate(startDate.getDate() - 7); // Mặc định hiển thị 7 ngày gần nhất
     }
 
-    // 2. Tìm TẤT CẢ các bản ghi của User này
-    const userLogs = await DailyDietLog.find({ userId });
+    // TỐI ƯU: Ép MongoDB lọc theo userId và mốc thời gian ngay tại tầng database
+    // Đồng thời sắp xếp tăng dần theo ngày (Cũ -> Mới) để Frontend vẽ chart chính xác
+    const userLogs = await DailyDietLog.find({
+      userId,
+      date: { $gte: startDate }
+    }).sort({ date: 1 });
 
-    let combinedRecords = [];
+    // Định dạng cấu trúc dữ liệu gọn nhẹ để trả ra Frontend
+    const formattedHistory = userLogs.map(log => ({
+      date: log.date,
+      calories: log.actualDailyTotal?.calories || 0,
+      protein: log.actualDailyTotal?.protein || 0,
+      carbs: log.actualDailyTotal?.carbs || 0,
+      fat: log.actualDailyTotal?.fat || 0,
+      isDayCompleted: log.isDayCompleted || false
+    }));
 
-    // 3. Quét tất cả dữ liệu (Gom từ actualDailyTotal hiện tại LẪN mảng pastRecords)
-    userLogs.forEach(log => {
-      // Bốc dữ liệu của ngày chính (nếu nằm trong khoảng thời gian đã chọn)
-      if (new Date(log.date) >= startDate) {
-        combinedRecords.push({
-          date: log.date,
-          calories: log.actualDailyTotal?.calories || 0,
-          protein: log.actualDailyTotal?.protein || 0,
-          carbs: log.actualDailyTotal?.carbs || 0,
-          fat: log.actualDailyTotal?.fat || 0,
-          isDayCompleted: log.isDayCompleted
-        });
-      }
-
-      // Bốc dữ liệu từ mảng pastRecords (nếu có)
-      if (log.pastRecords && log.pastRecords.length > 0) {
-        log.pastRecords.forEach(record => {
-          if (new Date(record.date) >= startDate) {
-            combinedRecords.push({
-              date: record.date,
-              calories: record.actualDailyTotal?.calories || 0,
-              protein: record.actualDailyTotal?.protein || 0,
-              carbs: record.actualDailyTotal?.carbs || 0,
-              fat: record.actualDailyTotal?.fat || 0,
-              isDayCompleted: record.isDayCompleted
-            });
-          }
-        });
-      }
-    });
-
-    // 4. Lọc trùng lặp (Phòng trường hợp 1 ngày bị lưu 2 lần ở 2 chỗ khác nhau)
-    const uniqueRecordsMap = new Map();
-    combinedRecords.forEach(record => {
-      // Cắt lấy đoạn YYYY-MM-DD để làm key so sánh
-      const dateStr = new Date(record.date).toISOString().split('T')[0]; 
-      
-      // Nếu ngày này chưa có, hoặc bản ghi này đã hoàn thành (isDayCompleted) thì ưu tiên ghi đè
-      if (!uniqueRecordsMap.has(dateStr) || record.isDayCompleted) {
-        uniqueRecordsMap.set(dateStr, record);
-      }
-    });
-
-    // 5. Chuyển Map thành Array và Sắp xếp theo ngày tăng dần (Cũ -> Mới) để vẽ biểu đồ cho đẹp
-    const formattedHistory = Array.from(uniqueRecordsMap.values()).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-    // 6. Trả về Frontend (Gửi cả biến data và pastRecords để Frontend trước đó đọc được)
-    res.status(200).json({ 
+    // Phản hồi dữ liệu (Giữ cả hai key 'data' và 'pastRecords' để tương thích tốt với code FE cũ)
+    return res.status(200).json({ 
       message: "Lấy lịch sử thành công",
       data: formattedHistory,        
       pastRecords: formattedHistory  
@@ -82,60 +48,54 @@ exports.getDietHistory = async (req, res) => {
 
   } catch (error) {
     console.error("Lỗi lấy lịch sử ăn uống:", error);
-    res.status(500).json({ message: "Lỗi hệ thống khi lấy lịch sử dinh dưỡng!" });
+    return res.status(500).json({ message: "Lỗi hệ thống khi lấy lịch sử dinh dưỡng!" });
   }
 };
+
 // ==========================================
-// LẤY CHI TIẾT DINH DƯỠNG THEO 1 NGÀY CỤ THỂ
+// 2. LẤY CHI TIẾT DINH DƯỠNG THEO 1 NGÀY CỤ THỂ
 // ==========================================
 exports.getDietByDate = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { date } = req.query; // Nhận YYYY-MM-DD từ Frontend
+    const { date } = req.query; // Nhận chuỗi định dạng YYYY-MM-DD từ Frontend
 
     if (!date) {
       return res.status(400).json({ message: "Vui lòng cung cấp ngày (date)!" });
     }
 
-    // Đưa ngày mục tiêu về định dạng chuẩn YYYY-MM-DD để dễ so sánh
-    const targetDateStr = new Date(date).toISOString().split('T')[0];
+    // TỐI ƯU: Tạo khoảng thời gian giới hạn trọn vẹn trong ngày cần tìm (00:00:00 -> 23:59:59)
+    const startOfDay = new Date(date);
+    startOfDay.setHours(0, 0, 0, 0);
 
-    // Lấy toàn bộ Log của User (giống logic getDietHistory của bạn)
-    const userLogs = await DailyDietLog.find({ userId });
+    const endOfDay = new Date(date);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Tìm duy nhất 1 bản ghi nằm trong khoảng thời gian của ngày đó
+    const log = await DailyDietLog.findOne({
+      userId,
+      date: { $gte: startOfDay, $lte: endOfDay }
+    });
     
-    let foundRecord = null;
-
-    // Quét tìm trong ngày chính và cả mảng pastRecords
-    for (const log of userLogs) {
-      const logDateStr = new Date(log.date).toISOString().split('T')[0];
-      
-      if (logDateStr === targetDateStr) {
-        foundRecord = {
-          calories: log.actualDailyTotal?.calories || 0,
-          protein: log.actualDailyTotal?.protein || 0,
-          carbs: log.actualDailyTotal?.carbs || 0,
-          fat: log.actualDailyTotal?.fat || 0,
-        };
-        break; // Tìm thấy thì dừng luôn
-      }
-
-      if (log.pastRecords && log.pastRecords.length > 0) {
-        const pastRecord = log.pastRecords.find(pr => new Date(pr.date).toISOString().split('T')[0] === targetDateStr);
-        if (pastRecord) {
-          foundRecord = {
-            calories: pastRecord.actualDailyTotal?.calories || 0,
-            protein: pastRecord.actualDailyTotal?.protein || 0,
-            carbs: pastRecord.actualDailyTotal?.carbs || 0,
-            fat: pastRecord.actualDailyTotal?.fat || 0,
-          };
-          break;
-        }
-      }
+    if (!log) {
+      return res.status(200).json({ 
+        data: null, 
+        message: "Không tìm thấy dữ liệu lịch ăn cho ngày này" 
+      });
     }
 
-    res.status(200).json({ data: foundRecord });
+    // Trích xuất đóng gói dữ liệu dinh dưỡng cốt lõi
+    const foundRecord = {
+      calories: log.actualDailyTotal?.calories || 0,
+      protein: log.actualDailyTotal?.protein || 0,
+      carbs: log.actualDailyTotal?.carbs || 0,
+      fat: log.actualDailyTotal?.fat || 0,
+    };
+
+    return res.status(200).json({ data: foundRecord });
+
   } catch (error) {
     console.error("Lỗi getDietByDate:", error);
-    res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu ngày" });
+    return res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu ngày" });
   }
 };
