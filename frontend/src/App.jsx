@@ -35,7 +35,7 @@ const App = () => {
     // 2. Gọi API kiểm tra trạng thái bảo trì của hệ thống từ Server
     const checkSystemStatus = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/system/maintenance");
+        const res = await fetch("https://ai-fitness-w6fd.onrender.com/api/system/maintenance");
         const data = await res.json();
         
         if (data && data.isMaintenance) {
