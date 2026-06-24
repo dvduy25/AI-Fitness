@@ -3,7 +3,7 @@ const router = express.Router();
 const adminController = require("../controllers/adminController");
 const { verifyToken, authorizeRoles } = require("../middleware/authMiddleware");
 const packageController = require('../controllers/packageController');
-
+const adminStatsController = require("../controllers/adminStatsController");
 // ==========================================
 // 1. ROUTE CHO USER (Phải đặt TRƯỚC lệnh chặn Admin)
 // ==========================================
@@ -17,6 +17,13 @@ router.get('/packages', verifyToken, packageController.getAllPackages);
 // ==========================================
 router.use(verifyToken, authorizeRoles("admin")); 
 
+// const { verifyToken, isAdmin } = require("../middlewares/authMiddleware"); // Nên dùng bảo mật nếu có
+
+// Route lấy báo cáo doanh thu Ngày / Tháng / Năm
+router.get("/revenue-report", adminStatsController.getRevenueStats);
+
+// Route kích hoạt radar quét Hacker chỉnh sửa DB hoặc API lậu
+router.get("/security-audit", adminStatsController.checkPremiumHack);
 // 1. Dashboard Stats
 router.get("/dashboard", adminController.getDashboardStats);
 

@@ -9,7 +9,7 @@ import Dashboard from './pages/Dashboard';
 import Exercises from './pages/Exercises';
 import Foods from './pages/Foods';         
 import Users from './pages/Users';         
-
+import RevenueDashboard from './pages/RevenueDashboard'; 
 // ĐÃ THÊM: Import file quản lý Premium mà bạn vừa tạo
 // (Lưu ý: Chỉnh lại đường dẫn './components/...' hay './pages/...' cho đúng với thư mục bạn lưu file nhé)
 import AdminPremiumManager from './pages/AdminPremiumManager'; 
@@ -30,6 +30,7 @@ function App() {
           
           {/* ĐÃ THÊM: Route cho trang quản lý gói Premium */}
           <Route path="premium" element={<AdminPremiumManager />} />
+          <Route path="premium-history" element={<RevenueDashboard />} />
         </Route>
       </Routes>
     </BrowserRouter>

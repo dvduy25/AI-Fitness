@@ -1,13 +1,22 @@
 // 📄 src/components/AdminLayout.jsx
 import React from 'react';
-import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-// ĐÃ THÊM: Import thêm icon ShieldCheck cho phần Premium
-import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck } from 'lucide-react';
+import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
+// ĐÃ THÊM: Import thêm icon Receipt (Hóa đơn) cho phần Lịch sử
+import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt } from 'lucide-react';
 
 const AdminLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // 1. LẤY DỮ LIỆU TỪ LOCAL STORAGE
+  const token = localStorage.getItem('adminToken');
   const adminInfo = JSON.parse(localStorage.getItem('adminInfo') || '{}');
+
+  // 2. CHỐT CHẶN BẢO MẬT KÉP
+  // Nếu không có token, lập tức điều hướng về trang Login
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
 
   const handleLogout = () => {
     localStorage.removeItem('adminToken');
@@ -15,13 +24,15 @@ const AdminLayout = () => {
     navigate('/login');
   };
 
-  // ĐÃ THÊM: Cấu hình thêm menu 'Gói Premium'
+  // 3. CẤU HÌNH MENU (Đã thêm Lịch sử mua Premium)
   const navItems = [
     { path: '/', name: 'Dashboard', icon: LayoutDashboard },
     { path: '/exercises', name: 'Quản lý Bài tập', icon: Dumbbell },
     { path: '/foods', name: 'Quản lý Thực phẩm', icon: Apple },
     { path: '/users', name: 'Quản lý Users', icon: Users },
     { path: '/premium', name: 'Gói Premium', icon: ShieldCheck },
+    // 👇 NÚT MỚI THÊM
+    { path: '/premium-history', name: 'Lịch sử mua Premium', icon: Receipt },
   ];
 
   return (
@@ -75,7 +86,7 @@ const AdminLayout = () => {
           <div className="flex items-center gap-3">
             <div className="text-right">
               <div className="text-sm font-bold text-gray-900">{adminInfo.name || 'Admin Manager'}</div>
-              <div className="text-xs text-gray-500">{adminInfo.email}</div>
+              <div className="text-xs text-gray-500">{adminInfo.email || 'admin@system.com'}</div>
             </div>
             <UserCircle size={36} className="text-gray-300" />
           </div>
