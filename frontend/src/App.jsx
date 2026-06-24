@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-// Đã bao gồm icon Settings cho màn hình bảo trì và Calculator cho trang Tính Calo
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator, Settings } from 'lucide-react'; 
+import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell } from 'lucide-react'; 
+import axios from 'axios'; // ĐÃ THÊM: Import axios
 
 // Import các trang (Components)
 import AuthPage from "./AuthPage"; 
@@ -20,32 +20,40 @@ import CalorieCalculator from "./CalorieCalculator";
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false); 
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isMaintenance, setIsMaintenance] = useState(false);
+  
+  // Lưu cấu hình hệ thống từ Database trả về
+  const [systemConfig, setSystemConfig] = useState({ isActive: false, type: "NORMAL", message: "" });
+  
+  // ĐÃ ĐỔI TÊN: isBannerClosed -> isNotificationClosed cho phù hợp với Modal
+  const [isNotificationClosed, setIsNotificationClosed] = useState(false);
 
-  // CƠ CHẾ SỬA LỖI: Kiểm tra Token trước (đồng bộ), kiểm tra Bảo trì sau (bất đồng bộ)
   useEffect(() => {
-    // 1. Kiểm tra Token đăng nhập ngay lập tức từ LocalStorage để tránh mất trạng thái khi F5
-    const token = localStorage.getItem("token");
+    // 1. Kiểm tra trạng thái đăng nhập
+    const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
+    const role = localStorage.getItem("role"); 
+    
     if (token) {
       setIsLoggedIn(true);
+      if (role === "admin" || localStorage.getItem("adminToken")) {
+        setIsAdmin(true);
+      }
     }
 
-    // 2. Gọi API kiểm tra trạng thái bảo trì của hệ thống từ Server
+    // 2. Gọi API lấy cấu hình bằng AXIOS
     const checkSystemStatus = async () => {
       try {
-        const res = await fetch("https://ai-fitness-w6fd.onrender.com/api/system/maintenance");
-        const data = await res.json();
+        const res = await axios.get("https://ai-fitness-w6fd.onrender.com/api/system/maintenance");
+        const result = res.data; // Axios tự động parse JSON vào res.data
         
-        if (data && data.isMaintenance) {
-          setIsMaintenance(true);
+        if (result && result.success && result.data) {
+          setSystemConfig(result.data);
         }
       } catch (error) {
-        // Nếu Server lỗi hoặc mất mạng, vẫn giữ nguyên để user dùng tiếp (nếu đã có token)
         console.error("Lỗi kết nối đến hệ thống kiểm tra bảo trì:", error);
       } finally {
-        // Hoàn thành kiểm tra -> tắt màn hình Loading
         setIsCheckingAuth(false);
       }
     };
@@ -53,13 +61,26 @@ const App = () => {
     checkSystemStatus();
   }, []);
 
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+    const role = localStorage.getItem("role");
+    if (role === "admin" || localStorage.getItem("adminToken")) {
+      setIsAdmin(true);
+    }
+  };
+
   const handleLogout = () => {
     localStorage.removeItem("token");
+    localStorage.removeItem("adminToken");
+    localStorage.removeItem("role");
     setIsLoggedIn(false);
+    setIsAdmin(false);
     setIsMenuOpen(false);
   };
 
-  // 1. MÀN HÌNH CHỜ TRONG LÚC QUÉT TOKEN & API BẢO TRÌ
+  // =========================================================
+  // 1. MÀN HÌNH CHỜ TRONG LÚC QUÉT HỆ THỐNG
+  // =========================================================
   if (isCheckingAuth) {
     return (
       <div className="bg-gray-950 min-h-screen flex items-center justify-center">
@@ -68,20 +89,22 @@ const App = () => {
     );
   }
 
-  // 2. MÀN HÌNH CHẶN BẢO TRÌ (Chỉ kích hoạt khi API trả về isMaintenance: true)
-  if (isMaintenance) {
+  // =========================================================
+  // 2. BẢO TRÌ (MAINTENANCE) -> KHÓA CỨNG (TRỪ ADMIN)
+  // =========================================================
+  if (systemConfig.isActive && systemConfig.type === "MAINTENANCE" && !isAdmin) {
     return (
       <div className="bg-gray-950 min-h-screen w-full flex flex-col items-center justify-center p-6 text-center select-none">
         <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl max-w-md w-full flex flex-col items-center animate-in fade-in zoom-in duration-300">
-          <div className="p-4 bg-emerald-500/10 rounded-2xl border border-emerald-500/20 mb-6">
-            <Settings className="w-12 h-12 text-emerald-500 animate-spin" style={{ animationDuration: '4s' }} />
+          <div className="p-4 bg-amber-500/10 rounded-2xl border border-amber-500/20 mb-6">
+            <Settings className="w-12 h-12 text-amber-500 animate-spin" style={{ animationDuration: '4s' }} />
           </div>
           <h1 className="text-2xl font-black text-white mb-3 tracking-tight">Hệ Thống Đang Bảo Trì</h1>
           <p className="text-gray-400 text-sm mb-6 leading-relaxed">
-            Chúng tôi đang tiến hành cập nhật và tối ưu hóa hệ thống để đem lại trải nghiệm tốt nhất cho bạn. Vui lòng quay lại sau ít phút nhé!
+            {systemConfig.message || "Chúng tôi đang tiến hành nâng cấp định kỳ để tối ưu hóa trải nghiệm. Vui lòng quay lại sau ít phút!"}
           </p>
           <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-            <div className="bg-emerald-500 h-full animate-pulse w-full"></div>
+            <div className="bg-amber-500 h-full animate-pulse w-full"></div>
           </div>
           <span className="text-gray-600 text-[11px] mt-6 font-medium">Đội ngũ AI Fitness xin lỗi vì sự bất tiện này</span>
         </div>
@@ -89,16 +112,17 @@ const App = () => {
     );
   }
 
-  // 3. MÀN HÌNH ĐĂNG NHẬP (Chỉ hiện khi không bảo trì và chưa có Token)
+  // =========================================================
+  // 3. CHƯA ĐĂNG NHẬP -> CHUYỂN VÀO TRANG LOGIN
+  // =========================================================
   if (!isLoggedIn) {
     return (
       <div className="bg-gray-950 min-h-screen w-full flex items-center justify-center overflow-hidden">
-        <AuthPage onLoginSuccess={() => setIsLoggedIn(true)} />
+        <AuthPage onLoginSuccess={handleLoginSuccess} />
       </div>
     );
   }
 
-  // Danh mục thanh Điều hướng chính (Dùng chung cho cả PC và Mobile)
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
     { path: "/community", icon: <Globe className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Cộng Đồng" },
@@ -111,8 +135,48 @@ const App = () => {
     <BrowserRouter>
       <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30">
         
+        {/* ========================================================= */}
+        {/* 4. THÔNG BÁO THƯỜNG (NORMAL) -> HIỂN THỊ DẠNG POPUP Ở GIỮA */}
+        {/* ========================================================= */}
+        {isLoggedIn && systemConfig.isActive && systemConfig.type === "NORMAL" && !isNotificationClosed && (
+          <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-300 relative">
+              <button 
+                onClick={() => setIsNotificationClosed(true)}
+                className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
+                title="Đóng thông báo"
+              >
+                <X className="w-5 h-5" />
+              </button>
+              
+              <div className="flex flex-col items-center text-center mt-2">
+                <div className="w-16 h-16 bg-emerald-500/10 text-emerald-500 rounded-full flex items-center justify-center mb-5 border border-emerald-500/20">
+                  <Bell className="w-8 h-8 animate-bounce" />
+                </div>
+                <h3 className="text-xl font-black text-white mb-3">Thông báo hệ thống</h3>
+                <p className="text-gray-300 mb-8 leading-relaxed">
+                  {systemConfig.message || "Hệ thống có thông báo mới dành cho bạn!"}
+                </p>
+                <button 
+                  onClick={() => setIsNotificationClosed(true)}
+                  className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-emerald-500/25 active:scale-95"
+                >
+                  Đã hiểu & Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TRẠNG THÁI CẢNH BÁO CHO ADMIN KHI ĐANG TEST TRONG LÚC BẢO TRÌ */}
+        {systemConfig.isActive && systemConfig.type === "MAINTENANCE" && isAdmin && (
+          <div className="bg-red-950/80 text-red-400 border-b border-red-900/50 px-4 py-1 text-center text-[11px] font-bold tracking-wider uppercase sticky top-0 z-50">
+            ⚠️ Chế độ bảo trì đang bật. Bạn đang truy cập bằng quyền Quản Trị Viên!
+          </div>
+        )}
+
         {/* ========================================== */}
-        {/* NAVBAR DESKTOP (Cho máy tính) */}
+        {/* NAVBAR DESKTOP */}
         {/* ========================================== */}
         <nav className="hidden md:flex bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 sticky top-0 z-40 w-full shadow-lg h-16 items-center px-8 justify-between">
           <div className="flex items-center gap-2 text-xl font-black text-white tracking-tight shrink-0">
@@ -149,7 +213,7 @@ const App = () => {
         </nav>
 
         {/* ========================================== */}
-        {/* HEADER MOBILE (Thanh tiêu đề cho điện thoại) */}
+        {/* HEADER MOBILE */}
         {/* ========================================== */}
         <header className="md:hidden flex items-center justify-between px-4 h-14 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 sticky top-0 z-40">
           <div className="flex items-center gap-2 text-lg font-black text-white tracking-tight">
@@ -168,7 +232,7 @@ const App = () => {
         </header>
 
         {/* ========================================== */}
-        {/* SIDEBAR MENU TRƯỢT (Khi bấm nút 3 gạch) */}
+        {/* SIDEBAR MENU TRƯỢT */}
         {/* ========================================== */}
         {isMenuOpen && (
           <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex justify-end" onClick={() => setIsMenuOpen(false)}>
@@ -216,7 +280,7 @@ const App = () => {
         )}
 
         {/* ========================================== */}
-        {/* NỘI DUNG CHÍNH (Định tuyến các trang) */}
+        {/* NỘI DUNG CHÍNH */}
         {/* ========================================== */}
         <main className="flex-1 w-full pb-20 md:pb-0 relative">
           <Routes>
@@ -230,19 +294,15 @@ const App = () => {
             <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
             <Route path="/workout-tracker" element={<WorkoutTracker />} />
             <Route path="/premium" element={<PremiumUpgrade />} />
-            
-            {/* Route trang Tính Calo đã được cấu hình chuẩn */}
             <Route path="/calorie-calculator" element={<CalorieCalculator />} />
-            
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
 
-        {/* Trợ lý ảo AI nổi trên màn hình */}
         <FloatingBot />
 
         {/* ========================================== */}
-        {/* BOTTOM NAVIGATION MOBILE (Thanh điều hướng dưới cùng điện thoại) */}
+        {/* BOTTOM NAVIGATION MOBILE */}
         {/* ========================================== */}
         <nav className="md:hidden fixed bottom-0 left-0 w-full bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 z-30 pb-safe overflow-x-auto">
           <div className="flex justify-around items-center h-16 px-2 w-full">
