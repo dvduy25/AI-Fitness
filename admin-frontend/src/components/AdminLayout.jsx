@@ -1,8 +1,8 @@
 // 📄 src/components/AdminLayout.jsx
 import React from 'react';
 import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
-// ĐÃ THÊM: Import thêm icon Receipt (Hóa đơn) cho phần Lịch sử
-import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt } from 'lucide-react';
+// 👇 ĐÃ THÊM: Import thêm icon Settings (Cài đặt)
+import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt, Settings } from 'lucide-react';
 
 const AdminLayout = () => {
   const navigate = useNavigate();
@@ -13,7 +13,6 @@ const AdminLayout = () => {
   const adminInfo = JSON.parse(localStorage.getItem('adminInfo') || '{}');
 
   // 2. CHỐT CHẶN BẢO MẬT KÉP
-  // Nếu không có token, lập tức điều hướng về trang Login
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -24,15 +23,16 @@ const AdminLayout = () => {
     navigate('/login');
   };
 
-  // 3. CẤU HÌNH MENU (Đã thêm Lịch sử mua Premium)
+  // 3. CẤU HÌNH MENU
   const navItems = [
     { path: '/', name: 'Dashboard', icon: LayoutDashboard },
     { path: '/exercises', name: 'Quản lý Bài tập', icon: Dumbbell },
     { path: '/foods', name: 'Quản lý Thực phẩm', icon: Apple },
     { path: '/users', name: 'Quản lý Users', icon: Users },
     { path: '/premium', name: 'Gói Premium', icon: ShieldCheck },
-    // 👇 NÚT MỚI THÊM
     { path: '/premium-history', name: 'Lịch sử mua Premium', icon: Receipt },
+    // 👇 NÚT MỚI THÊM: Cài đặt hệ thống
+    { path: '/system-settings', name: 'Cài đặt Hệ thống', icon: Settings },
   ];
 
   return (
@@ -92,8 +92,8 @@ const AdminLayout = () => {
           </div>
         </header>
 
-        {/* Chỗ này sẽ "đổ" nội dung các trang vào (Dashboard, Bài tập,...) */}
-        <main className="flex-1 overflow-y-auto p-8">
+        {/* Chỗ này sẽ "đổ" nội dung các trang vào */}
+        <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
           <Outlet />
         </main>
       </div>

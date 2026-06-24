@@ -10,9 +10,10 @@ import Exercises from './pages/Exercises';
 import Foods from './pages/Foods';         
 import Users from './pages/Users';         
 import RevenueDashboard from './pages/RevenueDashboard'; 
-// ĐÃ THÊM: Import file quản lý Premium mà bạn vừa tạo
-// (Lưu ý: Chỉnh lại đường dẫn './components/...' hay './pages/...' cho đúng với thư mục bạn lưu file nhé)
 import AdminPremiumManager from './pages/AdminPremiumManager'; 
+
+// 👇 ĐÃ THÊM: Import trang Quản lý Hệ thống (Bảo trì/Thông báo)
+import SystemNotificationManager from './pages/SystemNotificationManager'; 
 
 function App() {
   return (
@@ -28,9 +29,11 @@ function App() {
           <Route path="foods" element={<Foods />} />
           <Route path="users" element={<Users />} />
           
-          {/* ĐÃ THÊM: Route cho trang quản lý gói Premium */}
           <Route path="premium" element={<AdminPremiumManager />} />
           <Route path="premium-history" element={<RevenueDashboard />} />
+
+          {/* 👇 ĐÃ THÊM: Route cho trang Cài đặt hệ thống */}
+          <Route path="system-settings" element={<SystemNotificationManager />} />
         </Route>
       </Routes>
     </BrowserRouter>

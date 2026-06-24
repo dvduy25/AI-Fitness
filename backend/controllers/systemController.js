@@ -5,52 +5,52 @@ const jwt = require('jsonwebtoken');
  * Middleware kiểm tra bảo trì từ Database
  */
 exports.checkMaintenance = async (req, res, next) => {
-  // 1. Luôn cho phép các API Admin và API check trạng thái đi qua
-  if (req.originalUrl.startsWith('/api/admin') || req.originalUrl === '/api/system/maintenance') {
-    return next();
-  }
-
   try {
-    // 2. Lấy cấu hình từ Database
-    const config = await SystemSetting.findOne({ key: "system_notification" });
+    // BƯỚC 1: Ngoại lệ bắt buộc - Cho qua API kiểm tra trạng thái bảo trì
+    // Nếu không cho qua, chính trang web sẽ không biết hệ thống có bảo trì hay không để hiện màn hình bảo trì
+    if (req.originalUrl === '/api/system/maintenance') {
+      return next();
+    }
 
-    // 3. Nếu ĐANG BẬT chế độ BẢO TRÌ ➔ Chặn người dùng thường
-    if (config && config.isActive && config.type === "MAINTENANCE") {
-      let isAdmin = false;
-
-      // Kiểm tra Token xem có phải Admin không
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
-        try {
-          const decoded = jwt.verify(token, process.env.JWT_SECRET);
-          if (decoded.role === 'admin' || decoded.isAdmin === true) {
-            isAdmin = true;
-          }
-        } catch (error) {
-          // Token lỗi hoặc hết hạn ➔ Coi như user thường
+    // BƯỚC 2: KIỂM TRA ĐẶC QUYỀN ADMIN (LỤC TÚI TÌM THẺ VIP)
+    const authHeader = req.headers.authorization;
+    
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.split(' ')[1];
+      
+      try {
+        // Giải mã token bằng mã bí mật JWT_SECRET trong file .env của bạn
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        
+        // Cực kỳ quan trọng: Nếu đúng là ADMIN -> Cho qua luôn! Bất chấp bảo trì bật hay tắt
+        if (decoded && decoded.role === 'admin') {
+          req.user = decoded; // Lưu thông tin admin vào req để dùng ở các hàm sau nếu cần
+          return next();
         }
+      } catch (jwtError) {
+        // Token bị sai, giả mạo hoặc hết hạn -> Xem như user vãng lai, cho trôi xuống check bảo trì tiếp
+        console.log('Token không hợp lệ trong lúc bảo trì:', jwtError.message);
       }
+    }
 
-      // Nếu là Admin ➔ Cho phép đi "xuyên qua" để test web công cộng
-      if (isAdmin) {
-        return next();
-      }
-
-      // Không phải Admin ➔ Chặn đứng quăng lỗi 503
-      return res.status(503).json({ 
-        success: false, 
+    // BƯỚC 3: KIỂM TRA TRẠNG THÁI BẢO TRÌ TRONG DATABASE (Dành cho User thường và Khách)
+    const config = await SystemConfig.findOne(); // Lấy cấu hình hệ thống
+    
+    // Nếu trạng thái bảo trì đang bật (isActive = true) và loại cấu hình là MAINTENANCE
+    if (config && config.isActive && config.type === 'MAINTENANCE') {
+      return res.status(503).json({
+        success: false,
         isMaintenance: true,
-        type: "MAINTENANCE",
-        message: config.message || "Hệ thống đang bảo trì để nâng cấp!" 
+        message: config.message || 'Hệ thống đang bảo trì định kỳ. Vui lòng quay lại sau!'
       });
     }
 
-    // 4. Nếu là thông báo NORMAL hoặc không bật (isActive = false) ➔ Cho qua bình thường
+    // BƯỚC 4: Bình thường, không bảo trì -> Cho đi tiếp thoải mái
     next();
   } catch (error) {
-    console.error("Lỗi kiểm tra bảo trì:", error);
-    next(); // Nếu DB lỗi, cho qua để tránh sập toàn bộ hệ thống
+    console.error('Lỗi nghiêm trọng tại Middleware Bảo trì:', error);
+    // Nếu code backend lỗi, cho next() để tránh sập toàn bộ luồng app của user
+    next(); 
   }
 };
 

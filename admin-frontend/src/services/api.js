@@ -1,20 +1,39 @@
-// 📄 src/services/api.js
+// 📄 Đường dẫn file: src/services/api.js
 import axios from 'axios';
 
-// Thay đổi PORT nếu backend của bạn chạy ở port khác (ví dụ: 5000)
-const API_URL = 'http://localhost:5000/api'; 
-
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: 'http://localhost:5000/api', // ⚠️ Đổi lại đúng Port Backend của bạn nếu khác
+  timeout: 10000, // Ngắt kết nối nếu server không phản hồi sau 10 giây
 });
 
-// Tự động nhét Token vào Header trước khi gửi request
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('adminToken');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
+// Cấu hình Interceptor: Tự động chạy trước khi gửi bất kỳ request nào lên server
+api.interceptors.request.use(
+  (config) => {
+    // 1. Ưu tiên lấy adminToken trước, nếu không có thì lấy token thường
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token');
+    
+    // 2. Nếu tìm thấy token, nhét vào Header Authorization
+    if (token) {
+      config.headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  return config;
-}, (error) => Promise.reject(error));
+);
+
+// Cấu hình Interceptor xử lý lỗi phản hồi toàn cục (Tùy chọn thêm)
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    // Nếu hệ thống báo lỗi bảo trì (503) mà KHÔNG phải trang Admin đang gọi, có thể chuyển hướng user thường
+    if (error.response && error.response.status === 503) {
+      console.warn("Hệ thống hiện đang bảo trì.");
+    }
+    return Promise.reject(error);
+  }
+);
 
 export default api;
