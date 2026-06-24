@@ -2,9 +2,9 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User"); // Đưa lên đầu file để tối ưu hiệu năng
 
 // ==========================================
-// 1. KIỂM TRA ĐĂNG NHẬP (TOKEN)
+// 1. KIỂM TRA ĐĂNG NHẬP (TOKEN) & TRẠNG THÁI KHÓA
 // ==========================================
-exports.verifyToken = (req, res, next) => {
+exports.verifyToken = async (req, res, next) => {
   const authHeader = req.header("Authorization");
 
   if (!authHeader) {
@@ -16,11 +16,27 @@ exports.verifyToken = (req, res, next) => {
       ? authHeader.split(" ")[1] 
       : authHeader;
 
+    // Giải mã token
     const verified = jwt.verify(token, process.env.JWT_SECRET);
+    
+    // TRUY VẤN DB: Kiểm tra trạng thái tồn tại và khóa của tài khoản
+    const user = await User.findById(verified.id || verified._id);
+    if (!user) {
+      return res.status(401).json({ message: "Tài khoản không tồn tại trong hệ thống!" });
+    }
+
+    // 🛑 BẢO MẬT: CHẶN ĐỨNG NẾU TÀI KHOẢN ĐANG BỊ KHÓA
+    if (user.isLocked) {
+      return res.status(403).json({ 
+        success: false,
+        message: "Tài khoản của bạn đã bị khóa do vi phạm. Vui lòng liên hệ Admin!" 
+      });
+    }
+
     req.user = verified;
     next(); 
   } catch (err) {
-    res.status(401).json({ message: "Token không hợp lệ hoặc đã hết hạn!" }); // Nên dùng 401 thay vì 400
+    res.status(401).json({ message: "Token không hợp lệ hoặc đã hết hạn!" }); 
   }
 };
 
@@ -29,7 +45,7 @@ exports.verifyToken = (req, res, next) => {
 // ==========================================
 exports.verifyPremiumOrTicket = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id || req.user._id);
     if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
 
     const now = new Date();
@@ -64,7 +80,7 @@ exports.verifyPremiumOrTicket = async (req, res, next) => {
 exports.authorizeRoles = (...allowedRoles) => {
   return async (req, res, next) => {
     try {
-      const user = await User.findById(req.user.id);
+      const user = await User.findById(req.user.id || req.user._id);
 
       if (!user) {
         return res.status(404).json({ message: "Không tìm thấy người dùng!" });

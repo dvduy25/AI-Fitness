@@ -3,7 +3,7 @@ const Food = require("../models/Food");
 const Exercise = require("../models/Exercise");
 
 // ==========================================
-// 1. LẤY THỐNG KÊ TỔNG QUAN CHO TRANG CHỦ ADMIN (DASHBOARD)
+// 1. LẤY THỐNG KÊ TỔNG QUAN (DASHBOARD)
 // ==========================================
 exports.getDashboardStats = async (req, res) => {
   try {
@@ -14,12 +14,7 @@ exports.getDashboardStats = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        totalUsers,
-        premiumUsers,
-        totalFoods,
-        totalExercises
-      }
+      data: { totalUsers, premiumUsers, totalFoods, totalExercises }
     });
   } catch (error) {
     res.status(500).json({ message: "Lỗi lấy thống kê Dashboard", error: error.message });
@@ -29,8 +24,6 @@ exports.getDashboardStats = async (req, res) => {
 // ==========================================
 // 2. QUẢN LÝ NGƯỜI DÙNG (USER MANAGEMENT)
 // ==========================================
-
-// Lấy danh sách toàn bộ người dùng
 exports.getAllUsers = async (req, res) => {
   try {
     const { search, role, isPremium } = req.query;
@@ -46,7 +39,6 @@ exports.getAllUsers = async (req, res) => {
     if (role) query.role = role;
     if (isPremium !== undefined) query.isPremium = isPremium === 'true';
 
-    // Không trả về password của user
     const users = await User.find(query).select("-password").sort({ createdAt: -1 });
     res.status(200).json(users);
   } catch (error) {
@@ -54,7 +46,6 @@ exports.getAllUsers = async (req, res) => {
   }
 };
 
-// Lấy chi tiết 1 người dùng
 exports.getUserById = async (req, res) => {
   try {
     const user = await User.findById(req.params.id).select("-password");
@@ -65,12 +56,9 @@ exports.getUserById = async (req, res) => {
   }
 };
 
-// Thêm User mới từ trang Admin (Ví dụ: Cấp tài khoản PT/Trainer)
 exports.createUser = async (req, res) => {
     try {
         const newUser = new User(req.body);
-        // Lưu ý: Nhớ hash password ở đây nếu bạn muốn tạo pass cho họ, 
-        // hoặc gửi email yêu cầu họ tự đổi pass.
         await newUser.save();
         
         const { password, ...userWithoutPass } = newUser._doc;
@@ -80,7 +68,7 @@ exports.createUser = async (req, res) => {
     }
 };
 
-// Cập nhật thông tin / Phân quyền / Cộng VIP thủ công
+// CẬP NHẬT & PHÂN QUYỀN (TÍCH HỢP BẪY ADMIN & KIỂM TRA TRAINER)
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -88,6 +76,33 @@ exports.updateUser = async (req, res) => {
 
     delete updates.password; // Không đổi pass qua API này
 
+    const targetUser = await User.findById(id);
+    if (!targetUser) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+
+    // 🛑 BẢO MẬT: BẪY ADMIN THỨ 2
+    if (updates.role === 'admin') {
+      await User.findByIdAndUpdate(id, { isLocked: true });
+      return res.status(403).json({ 
+        success: false,
+        message: "Cảnh báo bảo mật: Hệ thống chỉ cho phép 1 Admin. Tài khoản mục tiêu đã bị khóa tự động!" 
+      });
+    }
+
+    // 🛑 NGHIỆP VỤ: ĐIỀU KIỆN LÊN TRAINER
+    if (updates.role === 'trainer' && targetUser.role !== 'trainer') {
+      const finalPhone = updates.phone || targetUser.phone;
+      const finalAddress = updates.address || targetUser.address;
+      const finalCccd = updates.cccd || targetUser.cccd;
+
+      if (!finalPhone || !finalAddress || !finalCccd) {
+        return res.status(400).json({ 
+          success: false,
+          message: "Phân quyền thất bại: Bắt buộc phải có Số điện thoại, Địa chỉ và CCCD để lên Trainer." 
+        });
+      }
+    }
+
+    // Xử lý gói Premium
     if (updates.premiumUntil) {
       const now = new Date();
       updates.isPremium = new Date(updates.premiumUntil) > now;
@@ -99,15 +114,39 @@ exports.updateUser = async (req, res) => {
       { new: true, runValidators: true }
     ).select("-password");
 
-    if (!updatedUser) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
-
     res.status(200).json({ message: "Cập nhật tài khoản thành công!", user: updatedUser });
   } catch (error) {
     res.status(500).json({ message: "Lỗi cập nhật người dùng", error: error.message });
   }
 };
 
-// Xóa tài khoản người dùng
+// ==========================================
+// 3. TÍNH NĂNG KHÓA / MỞ KHÓA / XÓA
+// ==========================================
+
+// Bật / Tắt trạng thái khóa tài khoản
+exports.toggleLockUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (id === req.user.id) {
+      return res.status(400).json({ message: "Bạn không thể tự khóa tài khoản Admin của chính mình!" });
+    }
+
+    const user = await User.findById(id);
+    if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+
+    user.isLocked = !user.isLocked;
+    await user.save();
+
+    const statusMessage = user.isLocked ? "Đã KHÓA tài khoản" : "Đã MỞ KHÓA tài khoản";
+    res.status(200).json({ message: `${statusMessage} thành công!`, isLocked: user.isLocked });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi xử lý khóa tài khoản", error: error.message });
+  }
+};
+
+// Xóa tài khoản
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;

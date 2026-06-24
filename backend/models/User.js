@@ -8,7 +8,7 @@ const userSchema = new mongoose.Schema({
   // === ẢNH ĐẠI DIỆN ===
   avatar: { 
     type: String, 
-    default: "https://ui-avatars.com/api/?name=User&background=random" // URL ảnh mặc định nếu user chưa upload
+    default: "https://ui-avatars.com/api/?name=User&background=random" 
   },
   
   // === CHỨC NĂNG PHÂN QUYỀN ===
@@ -18,12 +18,20 @@ const userSchema = new mongoose.Schema({
     default: "user" 
   },
 
+  // === THÔNG TIN CÁ NHÂN (Dành cho Trainer) ===
+  phone: { type: String },
+  address: { type: String },
+  cccd: { type: String },
+
+  // === TRẠNG THÁI TÀI KHOẢN ===
+  isLocked: { type: Boolean, default: false },
+
   // ==========================================
-  // 🌟 THÊM MỚI: MẠNG XÃ HỘI & TÍCH XANH
+  // 🌟 MẠNG XÃ HỘI & TÍCH XANH
   // ==========================================
-  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // Những người theo dõi tài khoản này
-  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }], // Những người mà tài khoản này đang theo dõi
-  isVerified: { type: Boolean, default: false }, // Tích xanh (Mặc định là false, Admin có thể set thành true)
+  followers: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  following: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
+  isVerified: { type: Boolean, default: false }, 
 
   age: Number, 
   gender: String, 
@@ -39,10 +47,8 @@ const userSchema = new mongoose.Schema({
   isPremium: { type: Boolean, default: false },
   premiumUntil: { type: Date, default: null },
   
-  // Số vé dùng AI kiếm được từ việc xem quảng cáo
   aiTickets: { type: Number, default: 0 },
-
-  fcmToken: String // Dùng để gửi thông báo về điện thoại sau này
+  fcmToken: String 
 }, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);
