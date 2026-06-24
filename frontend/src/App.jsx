@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-// ĐÃ THÊM: icon Calculator cho nút Tính Calo
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator } from 'lucide-react'; 
+import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator, Settings } from 'lucide-react'; 
 
 // Import các trang (Components)
 import AuthPage from "./AuthPage"; 
@@ -16,31 +15,72 @@ import Community from "./Community";
 import PostDetail from "./PostDetail"; 
 import MyLibrary from "./MyLibrary";
 import FloatingBot from "./FloatingBot"; 
-// ĐÃ THÊM: Import trang Tính Calo
 import CalorieCalculator from "./CalorieCalculator";
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
-  
-  // State quản lý việc đóng/mở Menu 3 gạch
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
+  // ĐÃ THÊM: State quản lý trạng thái bảo trì
+  const [isMaintenance, setIsMaintenance] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      setIsLoggedIn(true);
-    }
-    setIsCheckingAuth(false);
+    const checkSystemStatusAndAuth = async () => {
+      try {
+        // 1. GỌI API KIỂM TRA BẢO TRÌ TRƯỚC
+        // Thay url này bằng API thực tế của bạn
+        const res = await fetch("http://localhost:5000/api/system/maintenance");
+        const data = await res.json();
+        
+        if (data.isMaintenance) {
+          setIsMaintenance(true);
+          setIsCheckingAuth(false);
+          return; // Dừng luôn, không check token nữa
+        }
+
+        // 2. NẾU KHÔNG BẢO TRÌ, KIỂM TRA TOKEN NHƯ BÌNH THƯỜNG
+        const token = localStorage.getItem("token");
+        if (token) {
+          setIsLoggedIn(true);
+        }
+      } catch (error) {
+        console.error("Lỗi kiểm tra hệ thống:", error);
+      } finally {
+        setIsCheckingAuth(false);
+      }
+    };
+
+    checkSystemStatusAndAuth();
   }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("token");
     setIsLoggedIn(false);
-    setIsMenuOpen(false); // Đóng menu khi đăng xuất
+    setIsMenuOpen(false);
   };
 
-  if (isCheckingAuth) return <div className="bg-gray-950 min-h-screen"></div>;
+  if (isCheckingAuth) return <div className="bg-gray-950 min-h-screen flex items-center justify-center"><Activity className="w-10 h-10 text-emerald-500 animate-spin" /></div>;
+
+  // ==========================================
+  // ĐÃ THÊM: GIAO DIỆN MÀN HÌNH BẢO TRÌ
+  // ==========================================
+  if (isMaintenance) {
+    return (
+      <div className="bg-gray-950 min-h-screen w-full flex flex-col items-center justify-center p-6 text-center">
+        <div className="bg-gray-900 p-8 rounded-3xl border border-gray-800 shadow-2xl max-w-md w-full flex flex-col items-center">
+          <Settings className="w-20 h-20 text-emerald-500 mb-6 animate-spin-slow" style={{ animationDuration: '3s' }} />
+          <h1 className="text-3xl font-black text-white mb-4 tracking-tight">Hệ Thống Đang Nâng Cấp</h1>
+          <p className="text-gray-400 mb-6 leading-relaxed">
+            AI Fitness hiện đang được bảo trì để cập nhật tính năng mới và cải thiện hiệu suất. Vui lòng quay lại sau ít phút nhé!
+          </p>
+          <div className="w-full bg-gray-800 h-2 rounded-full overflow-hidden">
+            <div className="bg-emerald-500 h-full animate-pulse w-full"></div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!isLoggedIn) {
     return (
@@ -50,7 +90,6 @@ const App = () => {
     );
   }
 
-  // ĐÃ SỬA: Thêm nút Tính Calo vào Navbar chính
   const navItems = [
     { path: "/", icon: <Home className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Hôm Nay" },
     { path: "/community", icon: <Globe className="w-5 h-5 mb-1 md:mb-0 md:mr-2" />, label: "Cộng Đồng" },
@@ -61,11 +100,10 @@ const App = () => {
 
   return (
     <BrowserRouter>
-      <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30">
+       {/* Code Navbar, Sidebar, Routes của bạn giữ nguyên ở đây... */}
+       <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30">
         
-        {/* ========================================== */}
-        {/* NAVBAR DESKTOP (Top Bar) */}
-        {/* ========================================== */}
+        {/* Navbar Desktop */}
         <nav className="hidden md:flex bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 sticky top-0 z-40 w-full shadow-lg h-16 items-center px-8 justify-between">
           <div className="flex items-center gap-2 text-xl font-black text-white tracking-tight shrink-0">
             <Activity className="w-6 h-6 text-emerald-500" />
@@ -100,9 +138,7 @@ const App = () => {
           </div>
         </nav>
 
-        {/* ========================================== */}
-        {/* HEADER MOBILE (Chứa Logo và Dấu 3 gạch) */}
-        {/* ========================================== */}
+        {/* Header Mobile */}
         <header className="md:hidden flex items-center justify-between px-4 h-14 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 sticky top-0 z-40">
           <div className="flex items-center gap-2 text-lg font-black text-white tracking-tight">
             <Activity className="w-5 h-5 text-emerald-500" />
@@ -119,9 +155,7 @@ const App = () => {
           </div>
         </header>
 
-        {/* ========================================== */}
-        {/* SIDEBAR MENU (MENU 3 GẠCH TRƯỢT TỪ PHẢI SANG) */}
-        {/* ========================================== */}
+        {/* Sidebar Menu */}
         {isMenuOpen && (
           <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex justify-end" onClick={() => setIsMenuOpen(false)}>
             <div 
@@ -135,7 +169,6 @@ const App = () => {
                 </button>
               </div>
               
-              {/* Danh sách các nút bên trong Menu */}
               <div className="flex-1 p-4 space-y-2 overflow-y-auto">
                 <Link to="/workout-plan" onClick={() => setIsMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-800 border border-transparent hover:border-gray-700 text-gray-300 hover:text-blue-400 transition-all font-semibold">
                   <Dumbbell className="w-5 h-5"/> Quản lý Lịch Tập
@@ -156,7 +189,6 @@ const App = () => {
                 </Link>
               </div>
 
-              {/* Nút Đăng Xuất ở dưới cùng */}
               <div className="p-4 border-t border-gray-800 bg-gray-950">
                 <button 
                   onClick={handleLogout} 
@@ -169,9 +201,6 @@ const App = () => {
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* NỘI DUNG CHÍNH (MAIN ROUTES) */}
-        {/* ========================================== */}
         <main className="flex-1 w-full pb-20 md:pb-0 relative">
           <Routes>
             <Route path="/" element={<TodayDashboard />} />
@@ -184,19 +213,13 @@ const App = () => {
             <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
             <Route path="/workout-tracker" element={<WorkoutTracker />} />
             <Route path="/premium" element={<PremiumUpgrade />} />
-            
-            {/* ĐÃ THÊM: Route trang Tính Calo */}
             <Route path="/calorie-calculator" element={<CalorieCalculator />} />
-
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </main>
 
         <FloatingBot />
 
-        {/* ========================================== */}
-        {/* BOTTOM NAVIGATION MOBILE */}
-        {/* ========================================== */}
         <nav className="md:hidden fixed bottom-0 left-0 w-full bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 z-30 pb-safe overflow-x-auto">
           <div className="flex justify-around items-center h-16 px-2 w-full">
             {navItems.map((item) => (

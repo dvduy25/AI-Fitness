@@ -30,6 +30,8 @@ const { startDailyClosingJob } = require('./services/cronService');
 const gamificationRoutes = require('./routes/gamificationRoutes');
 const postRoutes = require('./routes/postRoutes');
 const libraryRoutes = require('./routes/libraryRoutes');
+const systemController = require("./controllers/systemController");
+const systemRoutes = require("./routes/systemRoutes");
 const app = express();
 const path = require('path'); // Nhớ import thư viện path ở trên cùng file
 
@@ -42,7 +44,11 @@ app.use(express.json()); // Bắt buộc có để đọc được req.body dạ
 connectDB();
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // Auth & Users
-// Xử lý Login, Register
+// Xử lý Login, Registe
+app.use(systemController.checkMaintenance);
+
+// Khai báo các Route hệ thống
+app.use("/api/system", systemRoutes);
 app.use("/api/users", userRoutes);    // Xử lý Cập nhật chỉ số cá nhân
 
 // Thư viện (Ai cũng xem được)
