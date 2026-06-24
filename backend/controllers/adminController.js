@@ -1,28 +1,101 @@
 const User = require("../models/User");
 const Food = require("../models/Food");
 const Exercise = require("../models/Exercise");
+const Transaction = require("../models/Transaction"); // Sử dụng model này để lấy doanh thu
 
 // ==========================================
 // 1. LẤY THỐNG KÊ TỔNG QUAN (DASHBOARD)
 // ==========================================
 exports.getDashboardStats = async (req, res) => {
   try {
-    const totalUsers = await User.countDocuments({ role: "user" });
+    // 1. Lấy thống kê con số cơ bản (Đếm tất cả user để tính tỷ lệ VIP chính xác ở FE)
+    const totalUsers = await User.countDocuments();
     const premiumUsers = await User.countDocuments({ isPremium: true });
     const totalFoods = await Food.countDocuments();
     const totalExercises = await Exercise.countDocuments();
 
-    res.status(200).json({
+    // Lấy mốc thời gian 7 ngày trước để lọc dữ liệu biểu đồ
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    // 2. Tính toán biểu đồ Tăng trưởng tài khoản (userGrowth) trong 7 ngày qua
+    const userGrowthAggr = await User.aggregate([
+      { $match: { createdAt: { $gte: sevenDaysAgo } } },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%d/%m", date: "$createdAt", timezone: "+07:00" } },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+
+    const userGrowth = userGrowthAggr.map(item => ({
+      date: item._id,
+      count: item.count
+    }));
+
+    // 3. ĐỒNG BỘ DOANH THU: Tính toán dựa trên bảng Transaction thực tế
+    // Tính tổng doanh thu toàn thời gian (Từ các đơn PREMIUM_UPGRADE thành công)
+    const totalRevenueData = await Transaction.aggregate([
+      { 
+        $match: { 
+          transactionType: "PREMIUM_UPGRADE", 
+          status: "SUCCESS" 
+        } 
+      },
+      { 
+        $group: { 
+          _id: null, 
+          total: { $sum: "$amount" } 
+        } 
+      }
+    ]);
+    const totalRevenue = totalRevenueData.length > 0 ? totalRevenueData[0].total : 0;
+
+    // Tính doanh thu biến động 7 ngày qua cho biểu đồ
+    const revenueAggr = await Transaction.aggregate([
+      { 
+        $match: { 
+          transactionType: "PREMIUM_UPGRADE", 
+          status: "SUCCESS", 
+          createdAt: { $gte: sevenDaysAgo } 
+        } 
+      },
+      {
+        $group: {
+          _id: { $dateToString: { format: "%d/%m", date: "$createdAt", timezone: "+07:00" } },
+          revenue: { $sum: "$amount" }
+        }
+      },
+      { $sort: { "_id": 1 } }
+    ]);
+
+    const revenueHistory = revenueAggr.map(item => ({
+      date: item._id,
+      revenue: item.revenue
+    }));
+
+    // 4. Gửi toàn bộ dữ liệu hợp nhất trả về Frontend
+    return res.status(200).json({
       success: true,
-      data: { totalUsers, premiumUsers, totalFoods, totalExercises }
+      data: { 
+        totalUsers, 
+        premiumUsers, 
+        totalFoods, 
+        totalExercises,
+        totalRevenue,   
+        revenueHistory, // Sóng biểu đồ doanh thu thật từ Database
+        userGrowth      
+      }
     });
   } catch (error) {
-    res.status(500).json({ message: "Lỗi lấy thống kê Dashboard", error: error.message });
+    return res.status(500).json({ message: "Lỗi lấy thống kê Dashboard", error: error.message });
   }
 };
 
 // ==========================================
-// 2. QUẢN LÝ NGƯỜI DÙNG (USER MANAGEMENT)
+// 2. QUẢN LÝ NGƯỜI DÙNG (USER MANAGEMENT) - GIỮ NGUYÊN HOÀN TOÀN LOGIC CỦA BẠN
 // ==========================================
 exports.getAllUsers = async (req, res) => {
   try {
@@ -68,18 +141,16 @@ exports.createUser = async (req, res) => {
     }
 };
 
-// CẬP NHẬT & PHÂN QUYỀN (TÍCH HỢP BẪY ADMIN & KIỂM TRA TRAINER)
 exports.updateUser = async (req, res) => {
   try {
     const { id } = req.params;
     const updates = req.body;
 
-    delete updates.password; // Không đổi pass qua API này
+    delete updates.password; 
 
     const targetUser = await User.findById(id);
     if (!targetUser) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
 
-    // 🛑 BẢO MẬT: BẪY ADMIN THỨ 2
     if (updates.role === 'admin') {
       await User.findByIdAndUpdate(id, { isLocked: true });
       return res.status(403).json({ 
@@ -88,7 +159,6 @@ exports.updateUser = async (req, res) => {
       });
     }
 
-    // 🛑 NGHIỆP VỤ: ĐIỀU KIỆN LÊN TRAINER
     if (updates.role === 'trainer' && targetUser.role !== 'trainer') {
       const finalPhone = updates.phone || targetUser.phone;
       const finalAddress = updates.address || targetUser.address;
@@ -102,7 +172,6 @@ exports.updateUser = async (req, res) => {
       }
     }
 
-    // Xử lý gói Premium
     if (updates.premiumUntil) {
       const now = new Date();
       updates.isPremium = new Date(updates.premiumUntil) > now;
@@ -120,11 +189,6 @@ exports.updateUser = async (req, res) => {
   }
 };
 
-// ==========================================
-// 3. TÍNH NĂNG KHÓA / MỞ KHÓA / XÓA
-// ==========================================
-
-// Bật / Tắt trạng thái khóa tài khoản
 exports.toggleLockUser = async (req, res) => {
   try {
     const { id } = req.params;
@@ -146,7 +210,6 @@ exports.toggleLockUser = async (req, res) => {
   }
 };
 
-// Xóa tài khoản
 exports.deleteUser = async (req, res) => {
   try {
     const { id } = req.params;

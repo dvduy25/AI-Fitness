@@ -63,20 +63,20 @@ exports.getRevenueStats = async (req, res) => {
 };
 
 // =========================================================
-// CHỨC NĂNG 2: HỆ THỐNG AN NINH TỰ ĐỘNG BIẾN ĐỔI VÀ ĐỐI SOÁT
+// CHỨC NĂNG 2: HỆ THỐNG AN NINH TỰ ĐỘNG
+// =========================================================
+// =========================================================
+// HỆ THỐNG AN NINH TỰ ĐỘNG (RADAR)
 // =========================================================
 exports.checkPremiumHack = async (req, res) => {
   try {
+    const currentAdminId = req.user?._id || req.userId || null;
+
     // ---------------------------------------------------
-    // TÁC VỤ 1: QUÈT TÌM HACKER LÁCH LUẬT LẤY VIP LẬU
+    // TÁC VỤ 1: QUÉT TÌM HACKER LÁCH LUẬT LẤY VIP LẬU
     // ---------------------------------------------------
     const hackerList = await User.aggregate([
-      { 
-        $match: { 
-          isPremium: true, 
-          role: { $ne: "admin" } 
-        } 
-      }, 
+      { $match: { isPremium: true, role: { $ne: "admin" } } }, 
       {
         $lookup: {
           from: "transactions", 
@@ -101,57 +101,67 @@ exports.checkPremiumHack = async (req, res) => {
           }
         }
       },
-      {
-        $match: {
-          $expr: { $eq: [{ $size: "$validPremiumInvoices" }, 0] }
-        }
-      },
-      {
-        $project: { password: 0, paymentHistory: 0, validPremiumInvoices: 0, __v: 0 }
-      }
+      { $match: { $expr: { $eq: [{ $size: "$validPremiumInvoices" }, 0] } } },
+      { $project: { password: 0, paymentHistory: 0, validPremiumInvoices: 0, __v: 0 } }
     ]);
 
     // ---------------------------------------------------
-    // TÁC VỤ 2: BẪY VÀ TỰ ĐỘNG KHÓA ADMIN THỨ 2 XUẤT HIỆN
+    // TÁC VỤ 2: QUÉT TÌM ADMIN LẬU (XÂM NHẬP HỆ THỐNG)
     // ---------------------------------------------------
-    // Sắp xếp theo thứ tự cũ nhất lên trước (Admin gốc tạo đầu tiên)
-    const allAdmins = await User.find({ role: "admin" }).sort({ createdAt: 1 });
-    
+    const allAdmins = await User.find({ role: "admin" }).select("-password").sort({ createdAt: 1 });
+    let adminHackers = [];
     let secondaryAdminDetected = false;
-    let lockedIntrudersCount = 0;
 
     if (allAdmins.length > 1) {
       secondaryAdminDetected = true;
-      // Trích xuất toàn bộ các tài khoản giả mạo quyền Admin từ tài khoản thứ 2 trở đi
-      const intruderAdmins = allAdmins.slice(1);
-      
-      for (let intruder of intruderAdmins) {
+      adminHackers = allAdmins.slice(1);
+      for (let intruder of adminHackers) {
+        if (currentAdminId && intruder._id.toString() === currentAdminId.toString()) continue; 
         if (!intruder.isLocked) {
-          intruder.isLocked = true; // Kích hoạt tự động khóa nghiêm ngặt
+          intruder.isLocked = true; 
           await intruder.save();
-          lockedIntrudersCount++;
         }
       }
     }
 
-    // Lấy lại danh sách Admin sau khi đã xử lý khóa tự động để hiển thị chính xác trạng thái lên UI
-    const updatedAdminList = await User.find({ role: "admin" })
-      .select("name email createdAt role isLocked")
-      .sort({ createdAt: 1 });
+    // ---------------------------------------------------
+    // TÁC VỤ 3: QUÉT TRAINER THIẾU THÔNG TIN KHẨN CẤP
+    // Khớp 100% với mongoose.model("User") của bạn
+    // ---------------------------------------------------
+    const incompleteTrainers = await User.find({
+      role: "trainer",
+      $or: [
+        { phone: { $exists: false } },
+        { phone: "" },
+        { address: { $exists: false } },
+        { address: "" },
+        { cccd: { $exists: false } },
+        { cccd: "" }
+      ]
+    }).select("name email createdAt role isLocked phone address cccd");
 
-    const isSystemSafe = hackerList.length === 0 && !secondaryAdminDetected;
+    let lockedTrainersCount = 0;
+    for (let trainer of incompleteTrainers) {
+      if (!trainer.isLocked) {
+        trainer.isLocked = true; // Kích hoạt lệnh phong tỏa tự động
+        await trainer.save();
+        lockedTrainersCount++;
+      }
+    }
+
+    // Đánh giá trạng thái an toàn tổng thể
+    const isSystemSafe = hackerList.length === 0 && adminHackers.length === 0 && incompleteTrainers.length === 0;
 
     return res.status(200).json({
       success: true,
       isSystemSafe: isSystemSafe, 
-      secondaryAdminDetected: secondaryAdminDetected,
-      lockedIntrudersCount: lockedIntrudersCount,
-      warningMessage: isSystemSafe 
-        ? "Hệ thống an toàn. Không phát hiện vi phạm bất thường." 
-        : `Hệ thống phát hiện dấu hiệu xâm nhập trái phép!`,
+      warningMessage: isSystemSafe ? "Hệ thống an toàn." : "Phát hiện tài khoản vi phạm chính sách hoặc có dấu hiệu xâm nhập!",
       hackers: hackerList,
-      totalAdmins: updatedAdminList.length,
-      admins: updatedAdminList
+      adminHackers: adminHackers,
+      incompleteTrainers: incompleteTrainers, 
+      secondaryAdminDetected: secondaryAdminDetected,
+      totalAdmins: allAdmins.length,
+      lockedTrainersCount: lockedTrainersCount
     });
 
   } catch (error) {
@@ -159,7 +169,6 @@ exports.checkPremiumHack = async (req, res) => {
     return res.status(500).json({ message: "Lỗi máy chủ khi quét lỗ hổng bảo mật!" });
   }
 };
-
 // =========================================================
 // CHỨC NĂNG 3: THỰC THI LỆNH TRỪNG PHẠT TRỰC TIẾP TỪ RADAR
 // =========================================================
@@ -192,7 +201,7 @@ exports.quickRevokePremium = async (req, res) => {
     if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
 
     user.isPremium = false;
-    user.premiumUntil = null; // Trả về trạng thái tài khoản cơ bản free
+    user.premiumUntil = null;
     await user.save();
 
     return res.status(200).json({ 
@@ -201,5 +210,55 @@ exports.quickRevokePremium = async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Lỗi thực thi tước quyền VIP." });
+  }
+};
+
+// API: Tước quyền Admin lậu về lại làm User (MỚI BỔ SUNG CHO FRONTEND)
+exports.quickRevokeAdmin = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await User.findById(id);
+    
+    if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
+    
+    // Bảo vệ không cho tự tước quyền của chính mình đang đăng nhập
+    if (req.user && req.user._id.toString() === id.toString()) {
+      return res.status(403).json({ success: false, message: "Không thể tự tước quyền của chính mình!" });
+    }
+
+    user.role = 'user'; // Hạ cấp về dân thường
+    await user.save();
+
+    return res.status(200).json({ 
+      success: true, 
+      message: "Đã tước quyền Admin của kẻ gian lận, hạ cấp về tài khoản cơ bản!" 
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Lỗi thực thi tước quyền Admin." });
+  }
+};
+exports.quickRevokeTrainer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Tìm trainer và cập nhật: Chuyển role về "user" đồng thời mở khóa (isLocked = false) 
+    // để họ có thể đăng nhập lại như một người dùng bình thường nhưng không còn quyền trainer.
+    const user = await User.findByIdAndUpdate(
+      id,
+      { role: "user", isLocked: false },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy tài khoản." });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Đã hủy tư cách Trainer của tài khoản ${user.email}. Tài khoản đã được chuyển về quyền User thường.`
+    });
+  } catch (error) {
+    console.error("Lỗi khi hủy tư cách Trainer:", error);
+    return res.status(500).json({ success: false, message: "Lỗi máy chủ khi thực thi lệnh." });
   }
 };

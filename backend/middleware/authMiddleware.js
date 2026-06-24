@@ -1,5 +1,5 @@
 const jwt = require("jsonwebtoken");
-const User = require("../models/User"); // Đưa lên đầu file để tối ưu hiệu năng
+const User = require("../models/User");
 
 // ==========================================
 // 1. KIỂM TRA ĐĂNG NHẬP (TOKEN) & TRẠNG THÁI KHÓA
@@ -8,7 +8,7 @@ exports.verifyToken = async (req, res, next) => {
   const authHeader = req.header("Authorization");
 
   if (!authHeader) {
-    return res.status(401).json({ message: "Từ chối truy cập. Không tìm thấy Token!" });
+    return res.status(401).json({ success: false, message: "Từ chối truy cập. Không tìm thấy Token!" });
   }
 
   try {
@@ -19,10 +19,10 @@ exports.verifyToken = async (req, res, next) => {
     // Giải mã token
     const verified = jwt.verify(token, process.env.JWT_SECRET);
     
-    // TRUY VẤN DB: Kiểm tra trạng thái tồn tại và khóa của tài khoản
+    // TRUY VẤN DB 1 LẦN DUY NHẤT Ở ĐÂY
     const user = await User.findById(verified.id || verified._id);
     if (!user) {
-      return res.status(401).json({ message: "Tài khoản không tồn tại trong hệ thống!" });
+      return res.status(401).json({ success: false, message: "Tài khoản không tồn tại trong hệ thống!" });
     }
 
     // 🛑 BẢO MẬT: CHẶN ĐỨNG NẾU TÀI KHOẢN ĐANG BỊ KHÓA
@@ -33,10 +33,12 @@ exports.verifyToken = async (req, res, next) => {
       });
     }
 
-    req.user = verified;
+    // 🔥 TỐI ƯU CỰC MẠNH: Gán thẳng object user từ DB vào req.user 
+    // Để các middleware phía sau KHÔNG CẦN gọi Database lại nữa!
+    req.user = user; 
     next(); 
   } catch (err) {
-    res.status(401).json({ message: "Token không hợp lệ hoặc đã hết hạn!" }); 
+    res.status(401).json({ success: false, message: "Token không hợp lệ hoặc đã hết hạn!" }); 
   }
 };
 
@@ -45,8 +47,9 @@ exports.verifyToken = async (req, res, next) => {
 // ==========================================
 exports.verifyPremiumOrTicket = async (req, res, next) => {
   try {
-    const user = await User.findById(req.user.id || req.user._id);
-    if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+    // ⚡ Lấy user trực tiếp từ req.user (đã được verifyToken xử lý)
+    const user = req.user; 
+    if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy thông tin người dùng!" });
 
     const now = new Date();
     const isPremium = user.isPremium && (!user.premiumUntil || user.premiumUntil > now);
@@ -58,19 +61,20 @@ exports.verifyPremiumOrTicket = async (req, res, next) => {
 
     // 2. NẾU LÀ FREE NHƯNG CÓ VÉ TỪ QUẢNG CÁO -> TRỪ 1 VÉ RỒI CHO QUA
     if (user.aiTickets > 0) {
-      user.aiTickets -= 1; // Xé 1 vé
-      await user.save();
+      user.aiTickets -= 1; 
+      await user.save(); // Lúc này mới cần tương tác với DB để trừ vé
       return next();
     }
 
-    // 3. NẾU KHÔNG CÓ VIP CŨNG KHÔNG CÓ VÉ -> BÁO LỖI KÈM MÃ ĐỂ FRONTEND BẬT QUẢNG CÁO
+    // 3. NẾU KHÔNG CÓ VIP CŨNG KHÔNG CÓ VÉ -> BÁO LỖI KÈM MÃ
     return res.status(403).json({ 
+      success: false,
       message: "Bạn cần nâng cấp Premium hoặc xem quảng cáo để sử dụng AI!",
-      requiresAd: true // Dấu hiệu nhận biết cho React Frontend
+      requiresAd: true 
     });
 
   } catch (error) {
-    res.status(500).json({ message: "Lỗi xác thực quyền lợi", error: error.message });
+    res.status(500).json({ success: false, message: "Lỗi xác thực quyền lợi", error: error.message });
   }
 };
 
@@ -78,23 +82,25 @@ exports.verifyPremiumOrTicket = async (req, res, next) => {
 // 3. KIỂM TRA QUYỀN TRUY CẬP (PHÂN QUYỀN ADMIN/USER)
 // ==========================================
 exports.authorizeRoles = (...allowedRoles) => {
-  return async (req, res, next) => {
+  return (req, res, next) => { // ⚡ Bỏ async đi vì không cần gọi DB nữa
     try {
-      const user = await User.findById(req.user.id || req.user._id);
+      // ⚡ Sử dụng ngay user đã lưu trong req
+      const user = req.user;
 
       if (!user) {
-        return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+        return res.status(404).json({ success: false, message: "Không tìm thấy thông tin người dùng!" });
       }
 
       if (!allowedRoles.includes(user.role)) {
         return res.status(403).json({ 
+          success: false,
           message: `Từ chối truy cập! Quyền của bạn (${user.role}) không được phép thực hiện hành động này.` 
         });
       }
 
       next();
     } catch (error) {
-      res.status(500).json({ message: "Lỗi kiểm tra quyền truy cập", error: error.message });
+      res.status(500).json({ success: false, message: "Lỗi kiểm tra quyền truy cập", error: error.message });
     }
   };
 };
