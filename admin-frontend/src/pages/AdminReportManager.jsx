@@ -1,33 +1,31 @@
 // 📄 src/pages/AdminReportManager.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { AlertTriangle, Check, Trash2, Eye, ShieldAlert, Clock, MessageSquare, Heart, Mail, User } from 'lucide-react';
+import { 
+  AlertTriangle, Check, Trash2, Eye, ShieldAlert, 
+  Clock, MessageSquare, Heart, Mail, User, Ban 
+} from 'lucide-react';
 
 const AdminReportManager = () => {
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   
-  // Tab 'queue' sẽ lấy cả pending_review và hidden_by_system (mặc định của Backend)
-  // Tab 'approved' sẽ lấy danh sách các bài viết đã an toàn
   const [activeTab, setActiveTab] = useState('queue'); 
   const [selectedReports, setSelectedReports] = useState(null);
 
-  // Cấu hình Base URL của API (Thay đổi map với cổng backend của bạn, ví dụ: http://localhost:5000)
   const API_BASE_URL = 'http://localhost:5000/api/admin'; 
 
-  // Hàm lấy token từ LocalStorage để đưa vào Header Authorization
   const getAuthHeader = () => {
     const token = localStorage.getItem('adminToken');
     return { headers: { Authorization: `Bearer ${token}` } };
   };
 
-  // 1. FETCH DỮ LIỆU THỰC TỪ BACKEND
+  // 1. FETCH DỮ LIỆU
   const fetchReportedPosts = async () => {
     setLoading(true);
     setError(null);
     try {
-      // Nếu tab là 'queue', không truyền status để backend tự lấy ['pending_review', 'hidden_by_system']
       const url = activeTab === 'queue' 
         ? `${API_BASE_URL}/posts/queue` 
         : `${API_BASE_URL}/posts/queue?status=${activeTab}`;
@@ -53,7 +51,7 @@ const AdminReportManager = () => {
   // 2. XỬ LÝ PHÁN QUYẾT: CHO PHÉP HIỂN THỊ LẠI (ALLOW)
   const handleAllowPost = async (postId) => {
     const note = prompt("Nhập ghi chú phê duyệt (Không bắt buộc):", "Đã kiểm tra. Bài viết hợp lệ.");
-    if (note === null) return; // Bấm hủy bỏ
+    if (note === null) return; 
 
     try {
       const response = await axios.patch(
@@ -63,8 +61,7 @@ const AdminReportManager = () => {
       );
 
       if (response.data.success) {
-        alert(response.data.message);
-        // Cập nhật lại UI lập tức bằng cách lọc bỏ bài viết vừa xử lý khỏi danh sách hiển thị
+        alert(response.data.message || "Đã phê duyệt bài viết.");
         setPosts(prev => prev.filter(post => post._id !== postId));
       }
     } catch (err) {
@@ -73,9 +70,9 @@ const AdminReportManager = () => {
   };
 
 
-  // 3. XỬ LÝ PHÁN QUYẾT: XÓA VĨNH VIỄN (DELETE)
+  // 3. XỬ LÝ PHÁN QUYẾT: XÓA VĨNH VIỄN BÀI VIẾT (DELETE)
   const handleDeletePost = async (postId) => {
-    if (!window.confirm("CẢNH BÁO: Hành động này sẽ XÓA VĨNH VIỄN bài viết và toàn bộ dữ liệu đi kèm khỏi hệ thống! Bạn có chắc chắn không?")) {
+    if (!window.confirm("CẢNH BÁO: Hành động này sẽ XÓA VĨNH VIỄN bài viết khỏi hệ thống! Bạn có chắc chắn không?")) {
       return;
     }
 
@@ -87,11 +84,41 @@ const AdminReportManager = () => {
       );
 
       if (response.data.success) {
-        alert(response.data.message);
+        alert(response.data.message || "Đã xóa bài viết.");
         setPosts(prev => prev.filter(post => post._id !== postId));
       }
     } catch (err) {
       alert(err.response?.data?.message || "Thao tác thất bại.");
+    }
+  };
+
+  // 4. KHÓA TÀI KHOẢN NGƯỜI DÙNG (Dùng Route có sẵn của bạn)
+  const handleLockAccount = async (userId) => {
+    if (!userId) {
+      alert("Lỗi: Không tìm thấy ID người dùng.");
+      return;
+    }
+
+    if (!window.confirm("⛔ CẢNH BÁO: Bạn sắp KHÓA tài khoản của người dùng này. Họ sẽ không thể đăng nhập. Tiếp tục?")) {
+      return;
+    }
+
+    const reason = prompt("Nhập lý do khóa tài khoản (Hiển thị cho user):", "Vi phạm tiêu chuẩn cộng đồng nhiều lần.");
+    if (reason === null) return;
+
+    try {
+      // 💡 Đã cập nhật thành method PUT và gọi đúng endpoint toggle-lock
+      const response = await axios.put(
+        `${API_BASE_URL}/users/${userId}/toggle-lock`, 
+        { reason }, 
+        getAuthHeader()
+      );
+
+      if (response.data.success) {
+        alert("🔒 Thao tác khóa tài khoản thành công!");
+      }
+    } catch (err) {
+      alert(err.response?.data?.message || "Lỗi khi khóa tài khoản.");
     }
   };
 
@@ -147,22 +174,24 @@ const AdminReportManager = () => {
           Tuyệt vời! Không có bài viết nào cần xử lý trong mục này.
         </div>
       ) : (
-        /* Danh sách bài viết đổ từ MongoDB */
+        /* Danh sách bài viết */
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           {posts.map((post) => (
             <div key={post._id} className="bg-white rounded-2xl border border-gray-100 shadow-sm flex flex-col overflow-hidden">
               
-              {/* Thẻ hiển thị số lượng report xấu */}
+              {/* Thẻ hiển thị số lượng report */}
               <div className={`px-6 py-2.5 border-b flex items-center justify-between ${
-                post.status === 'hidden_by_system' ? 'bg-red-50 border-red-100' : 'bg-amber-50 border-amber-100'
+                post.status === 'hidden_by_system' ? 'bg-red-50 border-red-100' : 
+                activeTab === 'approved' ? 'bg-green-50 border-green-100' : 'bg-amber-50 border-amber-100'
               }`}>
                 <span className={`text-xs font-bold flex items-center gap-1.5 ${
-                  post.status === 'hidden_by_system' ? 'text-red-800' : 'text-amber-800'
+                  post.status === 'hidden_by_system' ? 'text-red-800' : 
+                  activeTab === 'approved' ? 'text-green-800' : 'text-amber-800'
                 }`}>
                   <AlertTriangle size={14} />
-                  {post.status === 'hidden_by_system' 
-                    ? "Hệ thống AI tự động ẩn ngầm bài viết này!" 
-                    : `Bị cộng đồng báo cáo xấu: ${post.reportsCount} lượt!`
+                  {activeTab === 'approved' ? "Bài viết đang hiển thị bình thường" : 
+                   post.status === 'hidden_by_system' ? "Hệ thống tự động ẩn ngầm!" : 
+                   `Bị cộng đồng báo cáo xấu: ${post.reportsCount} lượt!`
                   }
                 </span>
                 
@@ -171,14 +200,13 @@ const AdminReportManager = () => {
                     onClick={() => setSelectedReports(post.reports)}
                     className="text-xs text-blue-600 hover:underline font-semibold flex items-center gap-1"
                   >
-                    <Eye size={12} /> Xem lý do chi tiết ({post.reports.length})
+                    <Eye size={12} /> Xem lý do ({post.reports.length})
                   </button>
                 )}
               </div>
 
-              {/* Chi tiết nội dung bài viết */}
+              {/* Chi tiết nội dung */}
               <div className="p-6 flex items-start gap-4 flex-1">
-                {/* Fallback Avatar bằng Icon vì backend chỉ populate name và email */}
                 <div className="bg-gray-100 text-gray-500 p-3 rounded-full border flex-shrink-0">
                   <User size={20} />
                 </div>
@@ -198,14 +226,12 @@ const AdminReportManager = () => {
                     </div>
                   </div>
 
-                  {/* Nội dung text bài viết */}
                   {post.content ? (
                     <p className="text-gray-700 text-sm leading-relaxed whitespace-pre-wrap break-words">{post.content}</p>
                   ) : (
                     <p className="text-gray-400 text-xs italic">Bài viết không có nội dung văn bản</p>
                   )}
 
-                  {/* Hình ảnh đính kèm thực tế */}
                   {post.images && post.images.length > 0 && (
                     <div className="grid grid-cols-3 gap-2 pt-1">
                       {post.images.map((img, i) => (
@@ -216,44 +242,51 @@ const AdminReportManager = () => {
                     </div>
                   )}
 
-                  {/* Video đính kèm thực tế */}
                   {post.video && (
                     <div className="pt-1">
                       <video src={post.video} controls className="rounded-xl max-h-48 w-full bg-black" />
                     </div>
                   )}
-
-                  {/* Thống kê tương tác sơ bộ */}
-                  <div className="flex items-center gap-4 text-xs text-gray-400 font-medium pt-2">
-                    <span className="flex items-center gap-1"><Heart size={14} /> {post.likes?.length || 0} Thích</span>
-                    <span className="flex items-center gap-1"><MessageSquare size={14} /> {post.commentsCount || 0} Bình luận</span>
-                  </div>
                 </div>
               </div>
 
-              {/* Thanh phán quyết hành động (Chỉ hiện ở tab hàng đợi xử lý) */}
-              {activeTab === 'queue' && (
-                <div className="p-4 bg-gray-50 border-t border-gray-100 flex gap-3">
+              {/* THANH QUYỀN LỰC (Hiển thị cả 2 tab) */}
+              <div className="p-4 bg-gray-50 border-t border-gray-100 flex flex-wrap sm:flex-nowrap gap-3">
+                
+                {/* Nút Giữ bài (Chỉ hiện ở hàng đợi) */}
+                {activeTab === 'queue' && (
                   <button
                     onClick={() => handleAllowPost(post._id)}
-                    className="flex-1 bg-white hover:bg-green-50 border border-gray-200 hover:border-green-200 text-gray-700 hover:text-green-700 px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
+                    className="flex-1 bg-white hover:bg-green-50 border border-gray-200 hover:border-green-200 text-gray-700 hover:text-green-700 px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
                   >
-                    <Check size={14} /> Phê duyệt (Giữ bài)
+                    <Check size={14} /> Giữ bài
                   </button>
-                  <button
-                    onClick={() => handleDeletePost(post._id)}
-                    className="flex-1 bg-red-600 hover:bg-red-700 text-white px-4 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm shadow-red-100"
-                  >
-                    <Trash2 size={14} /> Xóa vĩnh viễn khỏi DB
-                  </button>
-                </div>
-              )}
+                )}
+
+                {/* Nút Xóa bài (Hiện ở cả 2 tab) */}
+                <button
+                  onClick={() => handleDeletePost(post._id)}
+                  className="flex-1 bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 size={14} /> Xóa bài
+                </button>
+
+                {/* Nút Khóa Tài Khoản (Hiện ở cả 2 tab) */}
+                <button
+                  onClick={() => handleLockAccount(post.userId?._id)}
+                  disabled={!post.userId?._id}
+                  className="flex-1 bg-gray-900 hover:bg-black text-white px-3 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Ban size={14} /> Khóa TK
+                </button>
+
+              </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Modal Popup hiển thị chi tiết mảng các lý do báo cáo từ người dùng */}
+      {/* Modal Lịch sử báo cáo */}
       {selectedReports && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl w-full max-w-lg shadow-xl overflow-hidden max-h-[80vh] flex flex-col">
@@ -274,7 +307,6 @@ const AdminReportManager = () => {
               {selectedReports.map((rep, idx) => (
                 <div key={idx} className="bg-gray-50 p-4 rounded-xl border border-gray-100 space-y-1">
                   <div className="flex items-center justify-between text-xs">
-                    {/* reporterId là ObjectId chưa populate tên nên ta để Tạm tính ẩn danh hoặc ID gốc */}
                     <span className="font-bold text-gray-700">User ID: {rep.reporterId || "Ẩn danh"}</span>
                     <span className="text-gray-400">{new Date(rep.createdAt).toLocaleString('vi-VN')}</span>
                   </div>

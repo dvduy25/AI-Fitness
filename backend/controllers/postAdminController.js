@@ -14,14 +14,23 @@ const getAdminReportedPosts = async (req, res) => {
       ? { status } 
       : { status: { $in: ['pending_review', 'hidden_by_system'] } };
 
+    // BƯỚC 1: Tìm bài viết và CHỈ kết nối với những User KHÔNG bị khóa
     const posts = await Post.find(filter)
-      .populate("userId", "name email")
-      .sort({ reportsCount: -1, createdAt: -1 }); // Bài bị report nhiều nhất xếp lên đầu
+      .populate({
+        path: "userId",
+        select: "name email isLocked",
+        match: { isLocked: { $ne: true } } // 💡 Kỹ thuật cốt lõi: Chỉ lấy user có isLocked khác true
+      })
+      .sort({ reportsCount: -1, createdAt: -1 });
+
+    // BƯỚC 2: Lọc bỏ các bài viết mà userId trả về null 
+    // (nghĩa là user đó đã bị khóa, nên Mongoose không populate được)
+    const validPosts = posts.filter(post => post.userId !== null);
 
     return res.status(200).json({ 
       success: true, 
-      count: posts.length,
-      data: posts 
+      count: validPosts.length,
+      data: validPosts // Trả về danh sách đã được lọc sạch
     });
   } catch (error) {
     return res.status(500).json({ 
@@ -40,7 +49,7 @@ const getAdminReportedPosts = async (req, res) => {
 const resolveModeration = async (req, res) => {
   try {
     const { id } = req.params;
-    const { action, note } = req.body; // action: 'allow' hoặc 'delete'
+    const { action, note } = req.body; 
 
     if (!['allow', 'delete'].includes(action)) {
       return res.status(400).json({ success: false, message: "Hành động xử lý không hợp lệ. Chỉ nhận 'allow' hoặc 'delete'." });
@@ -55,7 +64,7 @@ const resolveModeration = async (req, res) => {
     // TRƯỜNG HỢP 1: ADMIN PHẠT XÓA BÀI VIẾT (DELETE)
     // -------------------------------------------------------------
     if (action === 'delete') {
-      await post.deleteOne(); // Xóa sạch dấu vết bài viết trong Database
+      await post.deleteOne(); 
       
       return res.status(200).json({ 
         success: true, 
@@ -70,7 +79,6 @@ const resolveModeration = async (req, res) => {
     post.moderatedBy = req.user.id; 
     post.moderationNote = note || "Được phê duyệt bởi Ban Quản Trị. Thao tác: Khôi phục bài viết";
     
-    // Xóa bỏ toàn bộ lịch sử các lượt báo cáo xấu trước đó
     post.reports = [];
     post.reportsCount = 0;
 
