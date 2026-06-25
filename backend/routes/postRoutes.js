@@ -15,7 +15,6 @@ const mediaUpload = uploadMedia.fields([
 // ==========================================
 // 1. QUẢN LÝ BÀI VIẾT (POSTS)
 // ==========================================
-
 // Tạo bài viết từ nhật ký hàng ngày (WorkoutLog/DietLog)
 router.post("/", verifyToken, mediaUpload, postController.createPost);
 
@@ -27,14 +26,13 @@ router.post("/share-library", verifyToken, mediaUpload, postController.shareFrom
 
 // ==========================================
 // 2. CÁC TÍNH NĂNG LẤY BẢNG TIN (FEED) & THÔNG BÁO
-// ⚠️ LƯU Ý: CÁC ROUTE CỐ ĐỊNH PHẢI ĐỨNG TRÊN ROUTE BIẾN ĐỘNG /:postId
 // ==========================================
 router.get("/feed", verifyToken, postController.getFeed);
 router.get("/latest", verifyToken, postController.getLatestPosts);
 router.get("/following", verifyToken, postController.getFollowingPosts);
 router.get("/liked", verifyToken, postController.getLikedPosts);
 
-// 🌟 ĐÃ BỔ SUNG: Các Route quản lý thông báo (đặt trên /:postId để tránh trùng lặp)
+// Quản lý thông báo
 router.get("/notifications", verifyToken, postController.getNotifications);
 router.get("/notifications/unread-count", verifyToken, postController.getUnreadNotificationCount);
 router.patch("/notifications/read-all", verifyToken, postController.markAllNotificationsAsRead);
@@ -49,16 +47,18 @@ router.put("/:postId", verifyToken, postController.updatePost);
 router.delete("/:postId", verifyToken, postController.deletePost);
 
 // ==========================================
-// 3. TƯƠNG TÁC (LIKE, COMMENT & SHARE)
+// 3. TƯƠNG TÁC (LIKE, COMMENT, SHARE & REPORT)
 // ==========================================
-
-// Thả tim & Chia sẻ (Share công khai)
+// Thả tim & Chia sẻ
 router.post("/:postId/like", verifyToken, postController.toggleLike);
 router.post("/:postId/share", verifyToken, postController.incrementShare);
 
 // Gửi bài viết trực tiếp cho người đang Follow
 router.post("/:postId/share-to-user", verifyToken, postController.sharePostToUser);
 
+// 🚨 BỔ SUNG: Nút Báo cáo bài viết vi phạm cho User
+router.post("/:postId/report", verifyToken, postController.reportPost);
+router.delete('/reports/:reportId', verifyToken, postController.deleteReport);
 // Bình luận
 router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/comments", verifyToken, postController.addComment);
@@ -68,7 +68,6 @@ router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
 // ==========================================
 // 4. TÍNH NĂNG CLONE (SAO CHÉP)
 // ==========================================
-
 // Lưu lịch từ bài đăng của người khác về nhật ký của mình
 router.post("/clone", verifyToken, postController.cloneSnapshot);
 

@@ -1,9 +1,14 @@
 const express = require("express");
 const router = express.Router();
+
 const adminController = require("../controllers/adminController");
-const { verifyToken, authorizeRoles } = require("../middleware/authMiddleware");
 const packageController = require('../controllers/packageController');
 const adminStatsController = require("../controllers/adminStatsController");
+
+// 🌟 Import thêm Controller chuyên xử lý Post cho Admin
+const postAdminController = require("../controllers/postAdminController");
+
+const { verifyToken, authorizeRoles } = require("../middleware/authMiddleware");
 
 // ==========================================
 // 1. ROUTE CHO USER (Phải đặt TRƯỚC lệnh chặn Admin)
@@ -11,10 +16,20 @@ const adminStatsController = require("../controllers/adminStatsController");
 router.get('/packages', verifyToken, packageController.getAllPackages);
 
 // ==========================================
-// 2. BỨC TƯỜNG LỬA (Chặn Admin)
-// TẤT CẢ các route bên dưới dòng này tự động bắt buộc quyền Admin
+// 2. BỨC TƯỜNG LỬA (Chặn Admin/Moderator)
+// TẤT CẢ các route bên dưới dòng này tự động bắt buộc quyền Admin (hoặc Moderator)
 // ==========================================
-router.use(verifyToken, authorizeRoles("admin")); 
+// Lưu ý: Đã cấp thêm quyền 'moderator' nếu sau này bạn có nhân viên duyệt bài riêng
+router.use(verifyToken, authorizeRoles("admin", "moderator")); 
+
+// =========================================================
+// 🛡️ HỆ THỐNG KIỂM DUYỆT BÀI VIẾT (MODERATION)
+// =========================================================
+// Lấy danh sách hàng đợi các bài viết bị lỗi AI chặn / bị cộng đồng report
+router.get("/posts/queue", postAdminController.getAdminReportedPosts);
+
+// Xử lý phán quyết cuối cùng cho một bài viết (Khôi phục hoặc Khóa vĩnh viễn)
+router.patch("/posts/:id/resolve", postAdminController.resolveModeration);
 
 // =========================================================
 // 🚀 BÁO CÁO & RADAR AN NINH TỰ ĐỘNG
@@ -27,11 +42,9 @@ router.get("/security-audit", adminStatsController.checkPremiumHack);
 // =========================================================
 router.put("/security/lock/:id", adminStatsController.quickLockUser);
 router.put("/security/revoke-vip/:id", adminStatsController.quickRevokePremium); 
-
-// 🔥 Đã xóa bỏ 'verifyAdmin' gây lỗi. Luồng request đi tới đây đã được bảo vệ bởi bức tường lửa.
 router.put('/security/revoke-admin/:id', adminStatsController.quickRevokeAdmin); 
-// Hủy tư cách Trainer khẩn cấp (Hạ cấp về user thường và mở khóa lại tài khoản)
 router.put("/security/revoke-trainer/:id", adminStatsController.quickRevokeTrainer);
+
 // =========================================================
 // 📊 DASHBOARD & QUẢN LÝ NGƯỜI DÙNG GỐC
 // =========================================================
