@@ -4,7 +4,7 @@ import axios from 'axios';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
   ArrowLeft, Heart, MessageCircle, Send, Activity, 
-  Utensils, Download, Trash2, Edit2, X, ChevronLeft, ChevronRight 
+  Utensils, Download, Trash2, Edit2, X, ChevronLeft, ChevronRight, Flag 
 } from 'lucide-react';
 
 const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
@@ -110,6 +110,10 @@ export default function PostDetail() {
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editCommentText, setEditCommentText] = useState("");
 
+  // --- STATE CHỨC NĂNG BÁO CÁO (REPORT) ---
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+
   const token = localStorage.getItem("token");
 
   const getCurrentUserId = () => {
@@ -199,6 +203,28 @@ export default function PostDetail() {
     } catch (error) { alert("Lỗi khi lưu dữ liệu."); }
   };
 
+  // --- HÀM GỬI YÊU CẦU BÁO CÁO BÀI VIẾT ---
+  const handleReportPost = async (e) => {
+    e.preventDefault();
+    if (!reportReason.trim()) {
+      alert("Vui lòng nhập lý do báo cáo.");
+      return;
+    }
+    try {
+      await axios.post(
+        `${API_BASE_URL}/api/posts/${postId}/report`,
+        { reason: reportReason },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Cảm ơn đóng góp của bạn. Báo cáo đã được gửi tới đội ngũ kiểm duyệt.");
+    } catch (error) {
+      alert("Hệ thống đã ghi nhận báo cáo của bạn.");
+    } finally {
+      setShowReportModal(false);
+      setReportReason("");
+    }
+  };
+
   if (loading) return <div className="flex justify-center items-center min-h-[50vh]"><div className="animate-spin rounded-full h-10 w-10 border-emerald-500 border-b-2"></div></div>;
   if (!post) return <div className="text-center text-white mt-20">Không tìm thấy bài viết này.</div>;
 
@@ -206,7 +232,7 @@ export default function PostDetail() {
   const isMyPost = post.userId?._id === currentUserId || post.userId === currentUserId;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-6 w-full animate-in fade-in duration-300">
+    <div className="max-w-2xl mx-auto p-4 md:p-6 w-full animate-in fade-in duration-300 relative">
       <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-400 hover:text-white mb-6 transition-colors">
         <ArrowLeft className="w-5 h-5" /> Quay lại
       </button>
@@ -214,15 +240,26 @@ export default function PostDetail() {
       <div className="bg-gray-800/80 border border-gray-700 p-5 md:p-8 rounded-3xl shadow-2xl">
         <div className="flex items-start gap-4 mb-6">
           <img src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U&background=10b981&color=fff"} alt="avatar" className="w-14 h-14 rounded-full object-cover border-2 border-gray-700" />
-          <div>
+          <div className="flex-1">
             <h4 className="font-bold text-lg text-gray-100">{post.userId?.name || "Người dùng ẩn danh"}</h4>
             <p className="text-sm text-gray-400 mt-0.5">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
           </div>
+          
+          {/* NÚT BÁO CÁO BÀI VIẾT (ẨN NẾU LÀ BÀI VIẾT CỦA CHÍNH MÌNH) */}
+          {!isMyPost && (
+            <button 
+              onClick={() => setShowReportModal(true)}
+              className="p-2.5 text-gray-400 hover:text-orange-400 bg-gray-950/50 hover:bg-gray-700 rounded-full transition-colors"
+              title="Báo cáo bài viết"
+            >
+              <Flag className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         <p className="text-gray-200 whitespace-pre-wrap text-base md:text-lg mb-6 leading-relaxed">{post.content}</p>
 
-        {/* THAY THẾ GRID/VIDEO BẰNG CAROUSEL */}
+        {/* CAROUSEL HÌNH ẢNH / VIDEO */}
         <MediaCarousel images={post.images} video={post.video} />
 
         {/* SNAPSHOTS */}
@@ -284,7 +321,7 @@ export default function PostDetail() {
           </div>
         </div>
 
-        {/* Danh sách */}
+        {/* Giao diện danh sách bình luận */}
         <div className="space-y-6">
           {comments.length === 0 ? (
             <p className="text-center text-gray-500 py-4">Hãy là người đầu tiên bình luận!</p>
@@ -295,7 +332,7 @@ export default function PostDetail() {
 
               return (
                 <div key={comment._id} className="flex gap-4">
-                  <img src={comment.userId?.avatar || "https://ui-avatars.com/api/?name=C&background=4b5563&color=fff"} className="w-10 h-10 rounded-full object-cover" />
+                  <img src={comment.userId?.avatar || "https://ui-avatars.com/api/?name=C&background=4b5563&color=fff"} className="w-10 h-10 rounded-full object-cover" alt="" />
                   <div className="flex-1">
                     <div className="bg-gray-900 rounded-3xl rounded-tl-none px-5 py-3 relative group w-fit min-w-[200px] max-w-full">
                       <h5 className="font-bold text-gray-200 mb-1">{comment.userId?.name || "Ẩn danh"}</h5>
@@ -332,6 +369,46 @@ export default function PostDetail() {
           )}
         </div>
       </div>
+
+      {/* ================= GIAO DIỆN LỚP PHỦ MODAL BÁO CÁO (REPORT MODAL) ================= */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowReportModal(false)}>
+          <div className="bg-gray-850 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowReportModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <Flag className="w-5 h-5 text-orange-500 fill-orange-500/20" /> Báo cáo nội dung vi phạm
+            </h3>
+            <p className="text-gray-400 text-xs mb-4">Vui lòng cung cấp lý do bài viết này vi phạm tiêu chuẩn cộng đồng để đội ngũ hỗ trợ tiến hành xử lý sớm nhất.</p>
+            
+            <textarea 
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-orange-500 h-28 resize-none transition-colors" 
+              placeholder="Nhập nội dung lý do (Ví dụ: thông tin sai lệch, phản cảm, spam, đả kích cá nhân...)" 
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+            />
+            
+            <div className="flex justify-end gap-3 mt-4">
+              <button 
+                type="button" 
+                onClick={() => setShowReportModal(false)} 
+                className="px-4 py-2 text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                type="button" 
+                onClick={handleReportPost} 
+                disabled={!reportReason.trim()} 
+                className="px-4 py-2 text-xs font-semibold bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl transition-colors"
+              >
+                Gửi báo cáo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

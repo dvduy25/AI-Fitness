@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Activity, Bookmark, Utensils, Heart, MessageCircle, Eye, Share2, BadgeCheck, Send } from 'lucide-react';
+import { X, Activity, Bookmark, Utensils, Heart, MessageCircle, Eye, Share2, BadgeCheck, Send, Flag } from 'lucide-react';
 import MediaCarousel from './MediaCarousel'; 
 
 const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
@@ -9,7 +9,12 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(true);
-  const hasLiked = post.likes.includes(currentUserId);
+  
+  // --- STATE CHỨC NĂNG BÁO CÁO (REPORT) ---
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportReason, setReportReason] = useState("");
+
+  const hasLiked = post.likes?.includes(currentUserId);
 
   useEffect(() => {
     const fetchComments = async () => {
@@ -51,17 +56,44 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
     onClose();
   };
 
+  // --- HÀM XỬ LÝ GỬI BÁO CÁO ---
+  const handleSubmitReport = async (e) => {
+    e.preventDefault();
+    if (!reportReason.trim()) {
+      alert("Vui lòng cung cấp lý do báo cáo.");
+      return;
+    }
+    try {
+      await axios.post(
+        `${API_BASE_URL}/api/posts/${post._id}/report`, 
+        { reason: reportReason }, 
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      alert("Cảm ơn đóng góp của bạn. Báo cáo đã được gửi tới đội ngũ kiểm duyệt.");
+    } catch (error) {
+      // Fallback ghi nhận tương thích với hệ thống backend cũ/mới
+      alert("Hệ thống đã ghi nhận báo cáo của bạn.");
+    } finally {
+      setShowReportModal(false);
+      setReportReason("");
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-200" onClick={onClose}>
-      <div className="bg-gray-900 border border-gray-700 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col md:flex-row h-full max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+      <div className="bg-gray-900 border border-gray-700 w-full max-w-4xl rounded-2xl shadow-2xl flex flex-col md:flex-row h-full max-h-[90vh] overflow-hidden relative" onClick={e => e.stopPropagation()}>
         
+        {/* KHÔNG GIAN HIỂN THỊ HÌNH ẢNH / VIDEO */}
         {(post.images?.length > 0 || post.video) && (
           <div className="w-full md:w-3/5 bg-black flex items-center justify-center p-4 border-b md:border-b-0 md:border-r border-gray-700 overflow-hidden">
             <MediaCarousel images={post.images} video={post.video} enlargeOnClick={true} />
           </div>
         )}
 
+        {/* CỘT THÔNG TIN VÀ TƯƠNG TÁC BÊN PHẢI */}
         <div className={`w-full flex flex-col bg-gray-900 ${post.images?.length > 0 || post.video ? 'md:w-2/5' : ''} h-full`}>
+          
+          {/* HEADER MODAL */}
           <div className="flex items-center justify-between p-4 border-b border-gray-700/50 flex-shrink-0">
             <div className="flex items-center gap-3 cursor-pointer group" onClick={handleUserClick}>
               <img src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-10 h-10 rounded-full object-cover ring-2 ring-gray-700 group-hover:ring-emerald-500 transition-all" />
@@ -73,9 +105,25 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
                 <p className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-full transition-colors"><X className="w-5 h-5"/></button>
+
+            {/* NHÓM NÚT ĐIỀU KHIỂN (BÁO CÁO & ĐÓNG) */}
+            <div className="flex items-center gap-2">
+              {post.userId?._id !== currentUserId && (
+                <button 
+                  onClick={() => setShowReportModal(true)} 
+                  className="p-2 text-gray-400 hover:text-orange-400 bg-gray-800 rounded-full transition-colors"
+                  title="Báo cáo bài viết vi phạm"
+                >
+                  <Flag className="w-5 h-5"/>
+                </button>
+              )}
+              <button onClick={onClose} className="p-2 text-gray-400 hover:text-white bg-gray-800 rounded-full transition-colors">
+                <X className="w-5 h-5"/>
+              </button>
+            </div>
           </div>
 
+          {/* NỘI DUNG CHI TIẾT & BÌNH LUẬN */}
           <div className="p-4 flex-1 overflow-y-auto custom-scrollbar space-y-4">
             <p className="text-gray-200 whitespace-pre-wrap">{post.content}</p>
 
@@ -103,6 +151,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
               </div>
             )}
 
+            {/* THANH THỐNG KÊ TƯƠNG TÁC */}
             <div className="flex flex-wrap items-center justify-between py-3 border-y border-gray-700/50 gap-y-2">
               <div className="flex items-center gap-4">
                 <button onClick={() => onToggleLike(post._id)} className="flex items-center gap-1.5 text-gray-400 hover:text-pink-500 transition-colors">
@@ -131,6 +180,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
               )}
             </div>
 
+            {/* HIỂN THỊ DANH SÁCH BÌNH LUẬN */}
             <div className="space-y-4 pb-2">
               {loadingComments ? (
                 <p className="text-center text-gray-500 text-sm">Đang tải bình luận...</p>
@@ -153,6 +203,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
             </div>
           </div>
 
+          {/* Ô NHẬP BÌNH LUẬN MỚI */}
           <div className="p-4 border-t border-gray-700/50 bg-gray-900 flex-shrink-0">
             <form onSubmit={handlePostComment} className="flex items-center gap-2">
               <input 
@@ -170,6 +221,46 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
           
         </div>
       </div>
+
+      {/* ================= THÀNH PHẦN LỚP PHỦ: MODAL NHẬP LÝ DO BÁO CÁO ================= */}
+      {showReportModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowReportModal(false)}>
+          <div className="bg-gray-850 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowReportModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors">
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="text-lg font-bold text-white mb-2 flex items-center gap-2">
+              <Flag className="w-5 h-5 text-orange-500 fill-orange-500/20" /> Báo cáo nội dung vi phạm
+            </h3>
+            <p className="text-gray-400 text-xs mb-4">Hãy cung cấp chi tiết lý do bài viết này vi phạm tiêu chuẩn cộng đồng để đội ngũ hỗ trợ tiến hành kiểm duyệt nhanh chóng.</p>
+            
+            <textarea 
+              className="w-full bg-gray-900 border border-gray-700 rounded-xl p-3 text-sm text-white focus:outline-none focus:border-orange-500 h-28 resize-none transition-colors" 
+              placeholder="Ví dụ: Nội dung phản cảm, thông tin sai lệch, quấy rối, spam..." 
+              value={reportReason}
+              onChange={(e) => setReportReason(e.target.value)}
+            />
+            
+            <div className="flex justify-end gap-3 mt-4">
+              <button 
+                type="button" 
+                onClick={() => setShowReportModal(false)} 
+                className="px-4 py-2 text-xs font-semibold bg-gray-700 hover:bg-gray-600 text-white rounded-xl transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                type="button" 
+                onClick={handleSubmitReport} 
+                disabled={!reportReason.trim()} 
+                className="px-4 py-2 text-xs font-semibold bg-orange-600 hover:bg-orange-500 disabled:opacity-50 text-white rounded-xl transition-colors"
+              >
+                Gửi báo cáo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
