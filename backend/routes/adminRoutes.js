@@ -1,3 +1,4 @@
+// 📄 backend/routes/adminRoutes.js
 const express = require("express");
 const router = express.Router();
 
@@ -5,7 +6,7 @@ const adminController = require("../controllers/adminController");
 const packageController = require('../controllers/packageController');
 const adminStatsController = require("../controllers/adminStatsController");
 
-// 🌟 Import thêm Controller chuyên xử lý Post cho Admin
+// Import thêm Controller chuyên xử lý Post cho Admin
 const postAdminController = require("../controllers/postAdminController");
 
 const { verifyToken, authorizeRoles } = require("../middleware/authMiddleware");
@@ -19,7 +20,6 @@ router.get('/packages', verifyToken, packageController.getAllPackages);
 // 2. BỨC TƯỜNG LỬA (Chặn Admin/Moderator)
 // TẤT CẢ các route bên dưới dòng này tự động bắt buộc quyền Admin (hoặc Moderator)
 // ==========================================
-// Lưu ý: Đã cấp thêm quyền 'moderator' nếu sau này bạn có nhân viên duyệt bài riêng
 router.use(verifyToken, authorizeRoles("admin", "moderator")); 
 
 // =========================================================
@@ -28,7 +28,7 @@ router.use(verifyToken, authorizeRoles("admin", "moderator"));
 // Lấy danh sách hàng đợi các bài viết bị lỗi AI chặn / bị cộng đồng report
 router.get("/posts/queue", postAdminController.getAdminReportedPosts);
 
-// Xử lý phán quyết cuối cùng cho một bài viết (Khôi phục hoặc Khóa vĩnh viễn)
+// Xử lý phán quyết cuối cùng cho một bài viết (Khôi phục hoặc Xóa vĩnh viễn)
 router.patch("/posts/:id/resolve", postAdminController.resolveModeration);
 
 // =========================================================

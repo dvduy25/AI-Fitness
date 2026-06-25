@@ -657,3 +657,48 @@ exports.sharePostToUser = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+exports.reportPost = async (req, res) => {
+  try {
+    const { postId } = req.params;
+    const { reason } = req.body;
+    const reporterId = req.user.id || req.user._id;
+
+    // 1. Kiểm tra bài viết có tồn tại không
+    const post = await Post.findById(postId);
+    if (!post) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết." });
+    }
+
+    // 2. Chống Spam: Kiểm tra xem user này đã báo cáo bài này trước đó chưa
+    const hasReported = post.reports.some(
+      (report) => report.reporterId.toString() === reporterId.toString()
+    );
+    if (hasReported) {
+      return res.status(400).json({ success: false, message: "Bạn đã báo cáo bài viết này rồi." });
+    }
+
+    // 3. Đẩy báo cáo mới vào mảng
+    post.reports.push({
+      reporterId,
+      reason
+    });
+
+    // 4. Tăng bộ đếm báo cáo
+    post.reportsCount += 1;
+
+    // 5. Tự động kiểm duyệt: Nếu có từ 3 báo cáo trở lên, tự động chuyển sang chờ duyệt (Tùy chỉnh con số 3 theo ý bạn)
+    if (post.reportsCount >= 3 && post.status === 'approved') {
+      post.status = 'pending_review';
+    }
+
+    await post.save();
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét nội dung này." 
+    });
+
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
