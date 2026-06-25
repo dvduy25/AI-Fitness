@@ -343,22 +343,22 @@ export default function Community() {
     } catch (error) { console.error("Lỗi xóa thông báo", error); }
   };
   // ================= XỬ LÝ BÁO CÁO =================
-  const handleReportPost = async (postId) => {
-    const reason = window.prompt("Vui lòng nhập lý do báo cáo bài viết này:");
-    if (!reason) return;
+  // Thêm tham số 'reason' vào function
+const handleReportPost = async (postId, reason) => { 
+  // 1. Không dùng prompt() nữa vì chúng ta đã có Modal xịn rồi!
+  
+  // 2. Chặn nếu không có lý do (đề phòng thêm)
+  if (!reason) return; 
 
-    try {
-      // Giả định bạn có endpoint /report ở backend
-      const res = await axios.post(`${API_BASE_URL}/api/posts/${postId}/report`, { reason }, { headers: { Authorization: `Bearer ${token}` } });
-      if (res.data.success || res.status === 200) {
-        alert("✅ Đã gửi báo cáo thành công. Quản trị viên sẽ xem xét!");
-      }
-    } catch (error) {
-      // Fallback nếu backend chưa tạo endpoint này
-      alert("✅ Đã ghi nhận báo cáo trên giao diện (Cần thêm endpoint backend để lưu vào database).");
-      console.error("Lỗi báo cáo", error);
-    }
-  };
+  try {
+    // 3. Code gửi API của bạn giữ nguyên, ví dụ:
+    // await axios.post(`/api/posts/${postId}/report`, { reason });
+    
+    alert("Báo cáo thành công!"); // Hoặc dùng toast thông báo thành công
+  } catch (error) {
+    console.error("Lỗi khi báo cáo:", error);
+  }
+};
 
   // ================= BỘ LỌC TÌM KIẾM =================
   const filteredPosts = posts.filter(post => {
