@@ -7,8 +7,6 @@ const MealPlan = require("../models/MealPlan");
 const SavedLibrary = require("../models/SavedLibrary");
 const Comment = require("../models/Comment");
 const Notification = require("../models/Notification");
-// Bổ sung Model Report để lưu trữ các báo cáo vi phạm
-const Report = require("../models/Report"); 
 
 const mongoose = require("mongoose");
 
@@ -578,7 +576,7 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-// 12.2. Đếm số lượng thông báo chưa đọc (Dùng để hiện chấm xanh ở UI)
+// 🌟 ĐÃ THÊM: 12.2. Đếm số lượng thông báo chưa đọc (Dùng để hiện chấm xanh ở UI)
 exports.getUnreadNotificationCount = async (req, res) => {
   try {
     const unreadCount = await Notification.countDocuments({ 
@@ -592,7 +590,7 @@ exports.getUnreadNotificationCount = async (req, res) => {
   }
 };
 
-// 12.3. Đánh dấu 1 thông báo là đã đọc (Khi user click vào thông báo)
+// 🌟 ĐÃ THÊM: 12.3. Đánh dấu 1 thông báo là đã đọc (Khi user click vào thông báo)
 exports.markNotificationAsRead = async (req, res) => {
   try {
     const notification = await Notification.findOneAndUpdate(
@@ -609,7 +607,7 @@ exports.markNotificationAsRead = async (req, res) => {
   }
 };
 
-// 12.4. Đánh dấu TẤT CẢ thông báo là đã đọc (Nút "Mark all as read")
+// 🌟 ĐÃ THÊM: 12.4. Đánh dấu TẤT CẢ thông báo là đã đọc (Nút "Mark all as read")
 exports.markAllNotificationsAsRead = async (req, res) => {
   try {
     await Notification.updateMany(
@@ -655,66 +653,6 @@ exports.sharePostToUser = async (req, res) => {
     });
 
     res.status(200).json({ success: true, message: "Đã gửi bài viết tới người dùng!" });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ==========================================
-// 14. BÁO CÁO BÀI VIẾT (REPORT POST)
-// ==========================================
-exports.reportPost = async (req, res) => {
-  try {
-    const { reason, details } = req.body;
-    const postId = req.params.postId;
-    const reporterId = req.user.id || req.user._id;
-
-    // Kiểm tra bài viết có tồn tại hay không
-    const post = await Post.findById(postId);
-    if (!post) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
-    }
-
-    // Tạo mới dữ liệu Báo cáo
-    const newReport = new Report({
-      postId,
-      reportedUserId: post.userId,
-      reporterId,
-      reason,
-      details
-    });
-
-    await newReport.save();
-
-    res.status(201).json({ success: true, message: "Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét nội dung này." });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-// ==========================================
-// 15. XÓA BÁO CÁO VI PHẠM (DELETE REPORT)
-// ==========================================
-exports.deleteReport = async (req, res) => {
-  try {
-    const reportId = req.params.reportId;
-    const currentUserId = req.user.id || req.user._id;
-    const currentUserRole = req.user.role; // Giả sử bạn lưu role trong req.user từ middleware verify token
-
-    // 1. Kiểm tra xem báo cáo có tồn tại không
-    const report = await Report.findById(reportId);
-    if (!report) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy báo cáo này." });
-    }
-
-    // 2. Kiểm tra quyền truy cập (Chỉ người gửi báo cáo hoặc Admin mới được xóa)
-    if (report.reporterId.toString() !== currentUserId.toString() && currentUserRole !== 'admin') {
-      return res.status(403).json({ success: false, message: "Bạn không có quyền xóa báo cáo này." });
-    }
-
-    // 3. Thực hiện xóa báo cáo
-    await Report.findByIdAndDelete(reportId);
-
-    res.status(200).json({ success: true, message: "Đã xóa báo cáo thành công." });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
