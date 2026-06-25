@@ -47,7 +47,7 @@ router.delete("/notifications/:notiId", verifyToken, postController.deleteNotifi
 // 3. HỆ THỐNG BÁO CÁO VI PHẠM (REPORT)
 // ⚠️ Phải đặt trên các route biến động để tránh bị lỗi nuốt route
 // ==========================================
-router.delete("/report/:reportId", verifyToken, postController.deleteReport);
+
 
 // ==========================================
 // 4. CHI TIẾT BÀI VIẾT, SỬA & XÓA (ROUTE ĐỘNG NẰM DƯỚI)
