@@ -30,7 +30,8 @@ const postSchema = new mongoose.Schema({
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   commentsCount: { type: Number, default: 0 },
   savesCount: { type: Number, default: 0 } ,
-
+  viewsCount: { type: Number, default: 0 },
+  sharesCount: { type: Number, default: 0 },
   // =================================================================
   // HỆ THỐNG KIỂM DUYỆT (Bắt buộc phải có để Admin Controller hoạt động)
   // =================================================================

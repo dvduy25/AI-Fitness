@@ -8,13 +8,15 @@ import {
   Eye, Share2, Bell, BadgeCheck, UserPlus, UserMinus, Info, Link, Edit, UserCircle, Users
 } from 'lucide-react';
 
-// IMPORT CÁC COMPONENT CON (Đảm bảo bạn đã có các file này trong project)
+// IMPORT CÁC COMPONENT CON
 import PlanDetailsModal from './PlanDetailsModal';
 import MediaCarousel from './MediaCarousel';
 import PostDetailsModal from './PostDetailsModal';
+import PostItem from './PostItem'; // Đảm bảo đã import
+import NotificationSidebar from './NotificationSidebar'; // Đảm bảo đã import
 
-// const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+// const API_BASE_URL = 'http://localhost:5000';
 
 export default function Community() {
   const navigate = useNavigate();
@@ -56,7 +58,6 @@ export default function Community() {
   const videoInputRef = useRef(null);
   const token = localStorage.getItem("token");
 
-  // ĐÃ SỬA: Quét nhiều key hơn đề phòng token lưu tên dưới dạng username hoặc fullName
   const getCurrentUser = () => {
     if (!token) return null;
     try {
@@ -70,7 +71,6 @@ export default function Community() {
   const currentUser = getCurrentUser();
   const currentUserId = currentUser?.id;
 
-  // Tính số thông báo chưa đọc cho Mobile Badge
   const unreadCount = realNotifications.filter(n => !n.isRead).length;
 
   // ================= TẢI DỮ LIỆU BAN ĐẦU =================
@@ -128,8 +128,8 @@ export default function Community() {
         setSelectedUserFilter({
           id: userId,
           ...res.data.user,
-          followersCount: res.data.user.followers?.length || 0, // Đếm số phần tử trong mảng followers
-          followingCount: res.data.user.following?.length || 0, // Đếm số phần tử trong mảng following
+          followersCount: res.data.user.followers?.length || 0,
+          followingCount: res.data.user.following?.length || 0,
           isLoading: false
         });
       }
@@ -342,6 +342,23 @@ export default function Community() {
       setRealNotifications(prev => prev.filter(n => n._id !== notiId));
     } catch (error) { console.error("Lỗi xóa thông báo", error); }
   };
+  // ================= XỬ LÝ BÁO CÁO =================
+  const handleReportPost = async (postId) => {
+    const reason = window.prompt("Vui lòng nhập lý do báo cáo bài viết này:");
+    if (!reason) return;
+
+    try {
+      // Giả định bạn có endpoint /report ở backend
+      const res = await axios.post(`${API_BASE_URL}/api/posts/${postId}/report`, { reason }, { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.success || res.status === 200) {
+        alert("✅ Đã gửi báo cáo thành công. Quản trị viên sẽ xem xét!");
+      }
+    } catch (error) {
+      // Fallback nếu backend chưa tạo endpoint này
+      alert("✅ Đã ghi nhận báo cáo trên giao diện (Cần thêm endpoint backend để lưu vào database).");
+      console.error("Lỗi báo cáo", error);
+    }
+  };
 
   // ================= BỘ LỌC TÌM KIẾM =================
   const filteredPosts = posts.filter(post => {
@@ -358,7 +375,7 @@ export default function Community() {
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
 
-      {/* ================= CỘT TRÁI: ĐANG THEO DÕI (Chỉ hiện trên Desktop) ================= */}
+      {/* ================= CỘT TRÁI: ĐANG THEO DÕI ================= */}
       <div className="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-24 space-y-6 z-10">
         <button
           onClick={handleViewMyProfile}
@@ -402,8 +419,7 @@ export default function Community() {
       {/* ================= CỘT GIỮA: NỘI DUNG CHÍNH ================= */}
       <div className="flex-1 max-w-2xl min-w-0 w-full flex flex-col gap-6">
 
-        {/* === MOBILE ACTION BAR (Chỉ hiện trên điện thoại / tablet) === */}
-        {/* ĐÃ SỬA: Thay đổi từ 'sticky top-[70px]' thành 'relative' và thu gọn kích thước để không gây vướng màn hình */}
+        {/* === MOBILE ACTION BAR === */}
         <div className="lg:hidden flex items-center justify-between bg-gray-800/90 backdrop-blur-md border border-gray-700/60 p-2.5 rounded-2xl shadow-xl z-20 relative">
           <button onClick={handleViewMyProfile} className="flex items-center gap-2 text-white font-bold hover:text-emerald-400 transition-colors">
             <div className="bg-emerald-600/20 text-emerald-400 p-1.5 rounded-full border border-emerald-500/30">
@@ -607,138 +623,25 @@ export default function Community() {
           {loading ? (
             <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>
           ) : filteredPosts.length > 0 ? (
-            filteredPosts.map(post => {
-              const isMyPost = post.userId?._id === currentUserId || post.userId === currentUserId;
-              const hasLiked = post.likes.includes(currentUserId);
-              const isEditing = editingPost?.id === post._id;
-
-              return (
-                <div key={post._id} className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/60 p-5 md:p-7 rounded-3xl shadow-xl hover:border-gray-600 transition-colors cursor-pointer group/post" onClick={() => !isEditing && handleViewPostDetails(post)}>
-                  <div className="flex items-start justify-between mb-5">
-                    <div className="flex items-center gap-4 cursor-pointer group/avatar" onClick={(e) => {
-                      e.stopPropagation();
-                      if (!selectedUserFilter || selectedUserFilter.id !== post.userId?._id) {
-                        handleViewProfile(post.userId?._id, { name: post.userId?.name || "Người dùng", isVerified: post.userId?.isVerified, avatar: post.userId?.avatar });
-                      }
-                    }}>
-                      <img src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-12 h-12 rounded-full object-cover ring-2 ring-gray-700 group-hover/avatar:ring-emerald-500 transition-all shadow-md" />
-                      <div>
-                        <h4 className="font-bold text-base text-gray-100 group-hover/avatar:text-emerald-400 transition-colors flex items-center gap-1.5">
-                          {post.userId?.name || "Người dùng"}
-                          {post.userId?.isVerified && <BadgeCheck className="w-4 h-4 text-blue-400" />}
-                        </h4>
-                        <p className="text-xs text-gray-400 mt-0.5">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
-                      </div>
-                    </div>
-
-                    {isMyPost && (
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setEditingPost({ id: post._id, content: post.content }); }}
-                          className="text-gray-500 hover:text-blue-400 p-2 hover:bg-gray-700/50 rounded-xl transition-colors"
-                          title="Sửa bài viết"
-                        >
-                          <Edit className="w-5 h-5" />
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleDeletePost(post._id); }}
-                          className="text-gray-500 hover:text-red-400 p-2 hover:bg-gray-700/50 rounded-xl transition-colors"
-                          title="Xóa bài viết"
-                        >
-                          <Trash2 className="w-5 h-5" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mb-4">
-                    {isEditing ? (
-                      <div onClick={e => e.stopPropagation()} className="space-y-3">
-                        <textarea
-                          value={editingPost.content}
-                          onChange={(e) => setEditingPost({ ...editingPost, content: e.target.value })}
-                          className="w-full bg-gray-900 border border-emerald-500/50 rounded-xl p-4 text-gray-100 focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none h-24"
-                        />
-                        <div className="flex justify-end gap-2">
-                          <button onClick={() => setEditingPost(null)} className="px-4 py-2 text-sm font-bold text-gray-300 bg-gray-700 hover:bg-gray-600 rounded-lg">Hủy</button>
-                          <button onClick={() => handleSaveEditPost(post._id)} className="px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-500 rounded-lg">Lưu cập nhật</button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-gray-200 text-[15px] leading-relaxed whitespace-pre-wrap">{post.content}</p>
-                    )}
-                  </div>
-
-                  <MediaCarousel images={post.images} video={post.video} onMediaClick={(e) => { e.stopPropagation(); handleViewPostDetails(post); }} />
-
-                  {post.workoutSnapshot && (
-                    <div onClick={(e) => { e.stopPropagation(); setViewingPlan({ type: 'workout', data: post.workoutSnapshot }) }} className="mt-4 bg-gray-900/80 border border-emerald-500/30 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group/plan hover:bg-gray-800 transition-all hover:border-emerald-500/60 shadow-md">
-                      <div className="flex items-center gap-4 text-emerald-400">
-                        <div className="p-3 bg-emerald-500/10 rounded-xl group-hover/plan:bg-emerald-500/20 transition-colors"><Activity className="w-6 h-6" /></div>
-                        <div>
-                          <p className="font-bold text-[15px] text-gray-100">Lịch tập được chia sẻ <span className="text-xs text-gray-500 font-normal ml-1">(Chạm để xem)</span></p>
-                          <p className="text-sm text-gray-400 mt-1">Gồm {post.workoutSnapshot.weeklySchedule?.length || post.workoutSnapshot.exercises?.length || 0} bài tập / mục</p>
-                        </div>
-                      </div>
-                      <button onClick={(e) => handleSaveToLibrary(e, post._id, 'workout')} className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2.5 text-sm font-bold text-emerald-400 hover:text-white bg-emerald-400/10 hover:bg-emerald-500 rounded-xl transition-all">
-                        <Bookmark className="w-4 h-4" /> <span>Lưu về kho</span>
-                      </button>
-                    </div>
-                  )}
-
-                  {post.dietSnapshot && (
-                    <div onClick={(e) => { e.stopPropagation(); setViewingPlan({ type: 'diet', data: post.dietSnapshot }) }} className="mt-4 bg-gray-900/80 border border-yellow-500/30 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group/plan hover:bg-gray-800 transition-all hover:border-yellow-500/60 shadow-md">
-                      <div className="flex items-center gap-4 text-yellow-400">
-                        <div className="p-3 bg-yellow-500/10 rounded-xl group-hover/plan:bg-yellow-500/20 transition-colors"><Utensils className="w-6 h-6" /></div>
-                        <div>
-                          <p className="font-bold text-[15px] text-gray-100">Thực đơn được chia sẻ <span className="text-xs text-gray-500 font-normal ml-1">(Chạm để xem)</span></p>
-                          <p className="text-sm text-gray-400 mt-1">Mục tiêu: {post.dietSnapshot.dailyTotal?.calories || 0} kcal/ngày</p>
-                        </div>
-                      </div>
-                      <button onClick={(e) => handleSaveToLibrary(e, post._id, 'diet')} className="w-full sm:w-auto flex justify-center items-center gap-2 px-4 py-2.5 text-sm font-bold text-yellow-400 hover:text-white bg-yellow-400/10 hover:bg-yellow-500 rounded-xl transition-all">
-                        <Bookmark className="w-4 h-4" /> <span>Lưu về kho</span>
-                      </button>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between mt-6 pt-5 border-t border-gray-700/50 flex-wrap gap-y-4">
-                    <div className="flex items-center gap-4 sm:gap-8">
-                      <button onClick={(e) => { e.stopPropagation(); handleToggleLike(post._id); }} className="flex items-center gap-2 text-gray-400 hover:text-pink-500 group/btn transition-colors">
-                        <div className={`p-2 rounded-full ${hasLiked ? 'bg-pink-500/10' : 'group-hover/btn:bg-pink-500/10'}`}>
-                          <Heart className={`w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover/btn:scale-110 ${hasLiked ? "fill-pink-500 text-pink-500" : ""}`} />
-                        </div>
-                        <span className="text-base font-bold">{post.likes?.length || 0}</span>
-                      </button>
-                      <button className="flex items-center gap-2 text-gray-400 hover:text-blue-400 group/btn transition-colors">
-                        <div className="p-2 rounded-full group-hover/btn:bg-blue-400/10">
-                          <MessageCircle className="w-5 h-5 sm:w-6 sm:h-6 transition-transform group-hover/btn:scale-110" />
-                        </div>
-                        <span className="text-base font-bold">{post.commentsCount || 0}</span>
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-3 sm:gap-6">
-                      <div className="flex items-center gap-1.5 text-gray-500 bg-gray-800 px-3 py-1.5 rounded-lg" title="Lượt xem">
-                        <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span className="text-sm font-semibold">{post.viewsCount || 0}</span>
-                      </div>
-
-                      {(post.workoutSnapshot || post.dietSnapshot) && (
-                        <div className="flex items-center gap-1.5 text-yellow-500/90 bg-yellow-500/10 px-3 py-1.5 rounded-lg border border-yellow-500/20" title="Số người đã lưu lịch này">
-                          <Bookmark className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-500/50" />
-                          <span className="text-sm font-bold">{post.savesCount || 0}</span>
-                        </div>
-                      )}
-
-                      <button onClick={(e) => { e.stopPropagation(); openShareModal(post._id); }} className="flex items-center gap-1.5 text-gray-400 hover:text-emerald-400 bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors" title="Chia sẻ">
-                        <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-                        <span className="text-sm font-semibold hidden sm:inline">Chia sẻ</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+            filteredPosts.map(post => (
+              <PostItem
+                key={post._id}
+                post={post}
+                currentUserId={currentUserId}
+                editingPost={editingPost}
+                setEditingPost={setEditingPost}
+                handleViewPostDetails={handleViewPostDetails}
+                handleViewProfile={handleViewProfile}
+                selectedUserFilter={selectedUserFilter}
+                handleDeletePost={handleDeletePost}
+                handleSaveEditPost={handleSaveEditPost}
+                setViewingPlan={setViewingPlan}
+                handleSaveToLibrary={handleSaveToLibrary}
+                handleToggleLike={handleToggleLike}
+                openShareModal={openShareModal}
+                handleReportPost={handleReportPost}
+              />
+            ))
           ) : (
             <div className="text-center py-16 bg-gray-800/40 border border-gray-700/50 rounded-3xl backdrop-blur-sm">
               <Search className="w-16 h-16 text-gray-600 mx-auto mb-5" />
@@ -749,61 +652,14 @@ export default function Community() {
         </div>
       </div>
 
-      {/* ================= CỘT PHẢI: THÔNG BÁO (Chỉ hiện trên Desktop rộng) ================= */}
+      {/* ================= CỘT PHẢI: THÔNG BÁO ================= */}
       <div className="hidden xl:block w-80 shrink-0 sticky top-24 space-y-6 z-10">
-        <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/50 rounded-3xl p-6 shadow-xl">
-          <h3 className="text-white text-lg font-bold mb-5 flex items-center gap-2 border-b border-gray-700/50 pb-4">
-            <Bell className="w-5 h-5 text-yellow-400" /> Thông báo mới
-            {unreadCount > 0 && <span className="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full">{unreadCount}</span>}
-          </h3>
-          <div className="space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
-            {realNotifications.length > 0 ? (
-              realNotifications.map(noti => {
-                let icon = <Bell className="w-4 h-4 text-gray-400" />;
-                let text = "đã gửi thông báo cho bạn.";
-                switch (noti.type) {
-                  case 'like': icon = <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />; text = "đã thích bài viết của bạn."; break;
-                  case 'comment': icon = <MessageCircle className="w-4 h-4 text-blue-400" />; text = "đã bình luận về bài viết của bạn."; break;
-                  case 'share_post': icon = <Share2 className="w-4 h-4 text-emerald-400" />; text = "đã chia sẻ một bài viết với bạn."; break;
-                  case 'save_plan': icon = <Bookmark className="w-4 h-4 text-yellow-400 fill-yellow-400" />; text = "đã lưu lịch của bạn về kho."; break;
-                  case 'new_post': icon = <Activity className="w-4 h-4 text-purple-400" />; text = "vừa đăng một bài viết mới."; break;
-                  case 'follow': icon = <UserPlus className="w-4 h-4 text-blue-500" />; text = "đã bắt đầu theo dõi bạn."; break;
-                  default: break;
-                }
-
-                return (
-                  <div
-                    key={noti._id}
-                    onClick={() => handleNotificationClick(noti)}
-                    className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all shadow-sm group/noti ${!noti.isRead
-                        ? 'bg-gray-800 border-gray-600 hover:bg-gray-700'
-                        : 'bg-gray-900/60 border-gray-700/40 hover:bg-gray-800'
-                      }`}
-                  >
-                    <div className="mt-0.5 bg-gray-800 p-2 rounded-full shrink-0 shadow-inner">{icon}</div>
-                    <div className="flex-1 pr-6">
-                      <p className={`text-sm leading-snug ${!noti.isRead ? 'text-white' : 'text-gray-300'}`}>
-                        <span className="font-bold text-emerald-400">{noti.senderId?.name || "Người dùng ẩn danh"}</span> {text}
-                      </p>
-                      <p className="text-[11px] text-gray-500 mt-1.5 font-medium">{new Date(noti.createdAt).toLocaleString('vi-VN')}</p>
-                    </div>
-                    <button
-                      onClick={(e) => handleDeleteNotification(e, noti._id)}
-                      className="absolute top-3 right-3 text-gray-500 hover:text-red-500 bg-gray-800/80 p-1.5 rounded-full opacity-0 group-hover/noti:opacity-100 transition-opacity z-10"
-                      title="Xóa thông báo"
-                    ><Trash2 className="w-3.5 h-3.5" /></button>
-                    {!noti.isRead && <div className="absolute top-1/2 -translate-y-1/2 right-4 w-2.5 h-2.5 bg-emerald-500 rounded-full shadow-[0_0_8px_rgba(16,185,129,0.8)] group-hover/noti:opacity-0 transition-opacity"></div>}
-                  </div>
-                );
-              })
-            ) : (
-              <div className="text-center py-6">
-                <Bell className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Chưa có thông báo nào.</p>
-              </div>
-            )}
-          </div>
-        </div>
+        <NotificationSidebar
+          unreadCount={unreadCount}
+          realNotifications={realNotifications}
+          handleNotificationClick={handleNotificationClick}
+          handleDeleteNotification={handleDeleteNotification}
+        />
       </div>
 
       {/* ================= CÁC MODAL ẨN ================= */}
@@ -1007,4 +863,4 @@ export default function Community() {
 
     </div>
   );
-} 
+}

@@ -640,17 +640,31 @@ exports.deleteNotification = async (req, res) => {
 // ==========================================
 // 13. CHIA SẺ BÀI VIẾT TỚI USER ĐANG FOLLOW
 // ==========================================
+// Đảm bảo bạn đã import model Post ở đầu file, ví dụ: 
+// const Post = require('../models/Post');
+
 exports.sharePostToUser = async (req, res) => {
   try {
     const { targetUserId } = req.body;
+    const postId = req.params.postId;
     
-    await Notification.create({
-      userId: targetUserId,
-      senderId: req.user.id || req.user._id,
-      type: 'share_post',
-      postId: req.params.postId,
-      isRead: false
-    });
+    // Chạy song song 2 tác vụ: Tạo thông báo & Tăng lượt chia sẻ
+    await Promise.all([
+      // 1. Tạo thông báo cho người nhận
+      Notification.create({
+        userId: targetUserId,
+        senderId: req.user.id || req.user._id,
+        type: 'share_post',
+        postId: postId,
+        isRead: false
+      }),
+
+      // 2. Tăng sharesCount thêm 1 trong DB
+      Post.findByIdAndUpdate(
+        postId, 
+        { $inc: { sharesCount: 1 } }
+      )
+    ]);
 
     res.status(200).json({ success: true, message: "Đã gửi bài viết tới người dùng!" });
   } catch (error) {
