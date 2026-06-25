@@ -5,7 +5,7 @@ const fs = require("fs");
 
 // 1. Tạo thư mục lưu trữ chung cho videos
 // SỬA Ở ĐÂY: Dùng đường dẫn tuyệt đối (lùi lại 1 cấp từ thư mục middleware ra thư mục gốc)
-const dir = path.join(__dirname, '../uploads/videos');
+const dir = path.join(__dirname, '../uploads/media');
 
 if (!fs.existsSync(dir)) {
   fs.mkdirSync(dir, { recursive: true });

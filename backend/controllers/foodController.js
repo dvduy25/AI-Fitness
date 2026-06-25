@@ -144,7 +144,7 @@ exports.uploadFoodImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: "Vui lòng chọn một file ảnh để tải lên!" });
     }
-    const imageUrl = `/uploads/images/${req.file.filename}`;
+    const imageUrl = `/uploads/media/${req.file.filename}`;
     return res.status(200).json({ message: "Tải ảnh lên thành công!", imageUrl });
   } catch (error) {
     return res.status(500).json({ message: "Lỗi upload ảnh", error: error.message });

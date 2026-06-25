@@ -126,7 +126,7 @@ exports.uploadExerciseVideo = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: "Vui lòng chọn một file video để tải lên!" });
     }
-    const videoUrl = `/uploads/videos/${req.file.filename}`;
+    const videoUrl = `/uploads/media/${req.file.filename}`;
     res.status(200).json({ message: "Tải video lên thành công!", videoUrl });
   } catch (error) {
     res.status(500).json({ message: "Lỗi upload video", error: error.message });

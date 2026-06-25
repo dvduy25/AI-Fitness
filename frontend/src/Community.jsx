@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Heart, MessageCircle, Send, Activity, Utensils, 
-  Trash2, Image as ImageIcon, Film, X, 
+import {
+  Heart, MessageCircle, Send, Activity, Utensils,
+  Trash2, Image as ImageIcon, Film, X,
   Dumbbell, Apple, Bookmark, Flame, Search, User,
   Eye, Share2, Bell, BadgeCheck, UserPlus, UserMinus, Info, Link, Edit, UserCircle, Users
 } from 'lucide-react';
@@ -13,29 +13,29 @@ import PlanDetailsModal from './PlanDetailsModal';
 import MediaCarousel from './MediaCarousel';
 import PostDetailsModal from './PostDetailsModal';
 
-const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
-// const API_BASE_URL = 'http://localhost:5000';
+// const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
+const API_BASE_URL = 'http://localhost:5000';
 
 export default function Community() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
   const [loading, setLoading] = useState(true);
-  
-  const [activeTab, setActiveTab] = useState('feed'); 
-  
+
+  const [activeTab, setActiveTab] = useState('feed');
+
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUserFilter, setSelectedUserFilter] = useState(null);
-  const [savedScrollPos, setSavedScrollPos] = useState(0); 
+  const [savedScrollPos, setSavedScrollPos] = useState(0);
 
   const [newPostContent, setNewPostContent] = useState("");
   const [selectedImages, setSelectedImages] = useState([]);
   const [selectedVideo, setSelectedVideo] = useState(null);
-  const [attachPlan, setAttachPlan] = useState(null); 
-  
-  const [viewingPlan, setViewingPlan] = useState(null); 
-  const [viewingPostDetails, setViewingPostDetails] = useState(null); 
+  const [attachPlan, setAttachPlan] = useState(null);
 
-  const [showArchiveModal, setShowArchiveModal] = useState(false); 
+  const [viewingPlan, setViewingPlan] = useState(null);
+  const [viewingPostDetails, setViewingPostDetails] = useState(null);
+
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
   const [archiveSelectionType, setArchiveSelectionType] = useState(null);
   const [archivedPlansList, setArchivedPlansList] = useState([]);
   const [loadingArchive, setLoadingArchive] = useState(false);
@@ -59,12 +59,12 @@ export default function Community() {
   // ĐÃ SỬA: Quét nhiều key hơn đề phòng token lưu tên dưới dạng username hoặc fullName
   const getCurrentUser = () => {
     if (!token) return null;
-    try { 
+    try {
       const payload = JSON.parse(atob(token.split('.')[1]));
       return {
         id: payload.id || payload._id,
-        name: payload.name || payload.fullName || payload.username 
-      }; 
+        name: payload.name || payload.fullName || payload.username || "tôi"
+      };
     } catch (e) { return null; }
   };
   const currentUser = getCurrentUser();
@@ -108,10 +108,10 @@ export default function Community() {
     } catch (error) { console.error("Lỗi tải danh sách thông báo", error); }
   };
 
-  useEffect(() => { 
-    fetchPosts(activeTab); 
+  useEffect(() => {
+    fetchPosts(activeTab);
     fetchFollowing();
-    fetchNotifications(); 
+    fetchNotifications();
   }, [activeTab]);
 
   // ================= XỬ LÝ PROFILE =================
@@ -125,7 +125,13 @@ export default function Community() {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.success) {
-        setSelectedUserFilter({ id: userId, ...res.data.user, isLoading: false });
+        setSelectedUserFilter({
+          id: userId,
+          ...res.data.user,
+          followersCount: res.data.user.followers?.length || 0, // Đếm số phần tử trong mảng followers
+          followingCount: res.data.user.following?.length || 0, // Đếm số phần tử trong mảng following
+          isLoading: false
+        });
       }
     } catch (error) {
       console.error("Lỗi tải thông tin user", error);
@@ -139,19 +145,19 @@ export default function Community() {
     setSelectedUserFilter(null);
     setTimeout(() => {
       window.scrollTo({ top: savedScrollPos, behavior: 'instant' });
-    }, 10); 
+    }, 10);
   };
 
   const handleToggleFollow = async (userId) => {
     try {
       const res = await axios.post(`${API_BASE_URL}/api/users/${userId}/follow`, {}, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
-        fetchFollowing(); 
+        fetchFollowing();
         if (selectedUserFilter && selectedUserFilter.id === userId) {
           setSelectedUserFilter(prev => ({
             ...prev,
-            followersCount: res.data.isFollowing 
-              ? (prev.followersCount || 0) + 1 
+            followersCount: res.data.isFollowing
+              ? (prev.followersCount || 0) + 1
               : Math.max(0, (prev.followersCount || 0) - 1)
           }));
         }
@@ -197,8 +203,8 @@ export default function Community() {
         endpoint = `${API_BASE_URL}/api/posts/share-master`;
         formData.append("shareType", attachPlan.type);
       } else if (attachPlan.source === 'archive') {
-        endpoint = `${API_BASE_URL}/api/posts/share-library`; 
-        formData.append("libraryId", attachPlan.libraryId); 
+        endpoint = `${API_BASE_URL}/api/posts/share-library`;
+        formData.append("libraryId", attachPlan.libraryId);
       }
     }
 
@@ -208,7 +214,7 @@ export default function Community() {
         setNewPostContent(""); setSelectedImages([]); setSelectedVideo(null); setAttachPlan(null);
         if (imageInputRef.current) imageInputRef.current.value = "";
         if (videoInputRef.current) videoInputRef.current.value = "";
-        fetchPosts(activeTab); 
+        fetchPosts(activeTab);
       }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi đăng bài!"); }
   };
@@ -231,8 +237,8 @@ export default function Community() {
     if (!window.confirm("Bạn có chắc muốn xóa bài viết này? Hành động này không thể hoàn tác.")) return;
     try {
       await axios.delete(`${API_BASE_URL}/api/posts/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
-      setPosts(posts.filter(p => p._id !== postId)); 
-      if (viewingPostDetails?._id === postId) setViewingPostDetails(null); 
+      setPosts(posts.filter(p => p._id !== postId));
+      if (viewingPostDetails?._id === postId) setViewingPostDetails(null);
     } catch (error) {
       alert("Lỗi khi xóa bài viết.");
     }
@@ -255,10 +261,10 @@ export default function Community() {
       const postIndex = posts.findIndex(p => p._id === postId);
       const isLiked = posts[postIndex].likes.includes(currentUserId);
       const updatedPosts = [...posts];
-      
+
       if (isLiked) updatedPosts[postIndex].likes = updatedPosts[postIndex].likes.filter(id => id !== currentUserId);
       else updatedPosts[postIndex].likes.push(currentUserId);
-      
+
       setPosts(updatedPosts);
       if (viewingPostDetails?._id === postId) setViewingPostDetails(updatedPosts[postIndex]);
       await axios.post(`${API_BASE_URL}/api/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
@@ -290,7 +296,7 @@ export default function Community() {
         if (viewingPostDetails?._id === sharingPostId) setViewingPostDetails(prev => ({ ...prev, sharesCount: res.data.sharesCount }));
       }
     } catch (error) { console.error(error); }
-    
+
     navigator.clipboard.writeText(`${window.location.origin}/post/${sharingPostId}`);
     alert("Đã sao chép liên kết bài viết!");
     setShowShareModal(false);
@@ -351,10 +357,10 @@ export default function Community() {
 
   return (
     <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
-      
+
       {/* ================= CỘT TRÁI: ĐANG THEO DÕI (Chỉ hiện trên Desktop) ================= */}
       <div className="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-24 space-y-6 z-10">
-        <button 
+        <button
           onClick={handleViewMyProfile}
           className="w-full bg-emerald-600 hover:bg-emerald-500 text-white rounded-3xl p-4 shadow-xl shadow-emerald-900/20 flex items-center gap-3 transition-all hover:-translate-y-1"
         >
@@ -370,8 +376,8 @@ export default function Community() {
           </h3>
           <div className="space-y-2 max-h-[50vh] overflow-y-auto custom-scrollbar pr-2">
             {followingList.length > 0 ? followingList.map(user => (
-              <div 
-                key={user._id} 
+              <div
+                key={user._id}
                 onClick={() => handleViewProfile(user._id, { name: user.name, isVerified: user.isVerified, avatar: user.avatar })}
                 className={`flex items-center gap-3 p-2.5 rounded-2xl cursor-pointer transition-all ${selectedUserFilter?.id === user._id ? 'bg-emerald-500/20 border border-emerald-500/40 shadow-inner' : 'hover:bg-gray-700 border border-transparent'}`}
               >
@@ -395,13 +401,13 @@ export default function Community() {
 
       {/* ================= CỘT GIỮA: NỘI DUNG CHÍNH ================= */}
       <div className="flex-1 max-w-2xl min-w-0 w-full flex flex-col gap-6">
-        
+
         {/* === MOBILE ACTION BAR (Chỉ hiện trên điện thoại / tablet) === */}
         {/* ĐÃ SỬA: Thay đổi từ 'sticky top-[70px]' thành 'relative' và thu gọn kích thước để không gây vướng màn hình */}
         <div className="lg:hidden flex items-center justify-between bg-gray-800/90 backdrop-blur-md border border-gray-700/60 p-2.5 rounded-2xl shadow-xl z-20 relative">
           <button onClick={handleViewMyProfile} className="flex items-center gap-2 text-white font-bold hover:text-emerald-400 transition-colors">
             <div className="bg-emerald-600/20 text-emerald-400 p-1.5 rounded-full border border-emerald-500/30">
-              <UserCircle className="w-5 h-5"/>
+              <UserCircle className="w-5 h-5" />
             </div>
             <span className="truncate max-w-[140px] text-[15px]">{currentUser?.name || "Tài khoản"}</span>
           </button>
@@ -436,18 +442,18 @@ export default function Community() {
         {selectedUserFilter && (
           <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/80 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden animate-in slide-in-from-top-4 duration-300 group">
             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-emerald-900/40 to-transparent"></div>
-            <button 
-              onClick={handleCloseProfile} 
+            <button
+              onClick={handleCloseProfile}
               className="absolute top-4 right-4 p-2.5 text-gray-400 hover:text-white bg-gray-900/80 hover:bg-red-500 rounded-full transition-all z-10 shadow-lg"
             >
               <X className="w-5 h-5" />
             </button>
             <div className="flex flex-col sm:flex-row gap-6 sm:gap-8 items-center sm:items-start relative z-0">
               <div className="relative">
-                <img 
-                  src={selectedUserFilter.avatar || "https://ui-avatars.com/api/?name=U"} 
-                  alt="avatar" 
-                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-800 shadow-xl ring-2 ring-emerald-500/30 group-hover:ring-emerald-500/60 transition-all" 
+                <img
+                  src={selectedUserFilter.avatar || "https://ui-avatars.com/api/?name=U"}
+                  alt="avatar"
+                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-800 shadow-xl ring-2 ring-emerald-500/30 group-hover:ring-emerald-500/60 transition-all"
                 />
                 {selectedUserFilter.isLoading && (
                   <div className="absolute inset-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin"></div>
@@ -476,18 +482,17 @@ export default function Community() {
                   </div>
                 </div>
                 {selectedUserFilter.id !== currentUserId && (
-                  <button 
+                  <button
                     onClick={() => handleToggleFollow(selectedUserFilter.id)}
-                    className={`w-full sm:w-64 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-bold text-base transition-all shadow-lg ${
-                      followingList.some(u => u._id === selectedUserFilter.id) 
-                      ? 'bg-gray-700 text-white hover:bg-gray-600 border border-gray-600'
-                      : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-900/30 hover:scale-[1.02]'
-                    }`}
+                    className={`w-full sm:w-64 flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl font-bold text-base transition-all shadow-lg ${followingList.some(u => u._id === selectedUserFilter.id)
+                        ? 'bg-gray-700 text-white hover:bg-gray-600 border border-gray-600'
+                        : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-900/30 hover:scale-[1.02]'
+                      }`}
                   >
                     {followingList.some(u => u._id === selectedUserFilter.id) ? (
-                      <><UserMinus className="w-5 h-5"/> Đang theo dõi</>
+                      <><UserMinus className="w-5 h-5" /> Đang theo dõi</>
                     ) : (
-                      <><UserPlus className="w-5 h-5"/> Theo dõi người này</>
+                      <><UserPlus className="w-5 h-5" /> Theo dõi người này</>
                     )}
                   </button>
                 )}
@@ -500,13 +505,13 @@ export default function Community() {
         {!selectedUserFilter && (
           <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/60 p-5 sm:p-6 rounded-3xl shadow-xl">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-4">
-              <textarea 
-                value={newPostContent} 
-                onChange={(e) => setNewPostContent(e.target.value)} 
-                placeholder="Hôm nay bạn đã tập luyện thế nào? Chia sẻ cùng mọi người nhé..." 
-                className="w-full bg-gray-900/60 border border-gray-700/80 rounded-2xl p-5 text-gray-100 text-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 resize-none h-28 placeholder-gray-500" 
+              <textarea
+                value={newPostContent}
+                onChange={(e) => setNewPostContent(e.target.value)}
+                placeholder="Hôm nay bạn đã tập luyện thế nào? Chia sẻ cùng mọi người nhé..."
+                className="w-full bg-gray-900/60 border border-gray-700/80 rounded-2xl p-5 text-gray-100 text-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 resize-none h-28 placeholder-gray-500"
               />
-              
+
               {attachPlan && (
                 <div className="flex items-center justify-between bg-gray-900/80 border border-emerald-500/40 p-4 rounded-2xl flex-wrap gap-2">
                   <div className="flex items-center gap-3">
@@ -546,16 +551,16 @@ export default function Community() {
               <div className="flex justify-between items-center pt-4 border-t border-gray-700/50">
                 <div className="flex gap-1 sm:gap-2">
                   <input type="file" accept="image/*" multiple className="hidden" ref={imageInputRef} onChange={(e) => {
-                      const newImages = Array.from(e.target.files);
-                      setSelectedImages(prev => [...prev, ...newImages].slice(0, 4));
-                    }} 
+                    const newImages = Array.from(e.target.files);
+                    setSelectedImages(prev => [...prev, ...newImages].slice(0, 4));
+                  }}
                   />
                   <input type="file" accept="video/*" className="hidden" ref={videoInputRef} onChange={(e) => setSelectedVideo(e.target.files[0])} />
-                  
+
                   <button type="button" onClick={() => imageInputRef.current?.click()} className="p-2 sm:p-2.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-700/50 rounded-xl transition-colors" title="Thêm ảnh (tối đa 4)"><ImageIcon className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                   <button type="button" onClick={() => videoInputRef.current?.click()} className="p-2 sm:p-2.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-700/50 rounded-xl transition-colors" title="Thêm video"><Film className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                   <div className="w-px h-6 sm:h-8 bg-gray-700 mx-1 sm:mx-2 self-center"></div>
-                  
+
                   <button type="button" onClick={() => openArchiveSelector('workout')} className="p-2 sm:p-2.5 text-gray-400 hover:text-emerald-400 hover:bg-gray-700/50 rounded-xl transition-colors" title="Đính kèm lịch tập"><Dumbbell className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                   <button type="button" onClick={() => openArchiveSelector('diet')} className="p-2 sm:p-2.5 text-gray-400 hover:text-yellow-400 hover:bg-gray-700/50 rounded-xl transition-colors" title="Đính kèm thực đơn"><Apple className="w-5 h-5 sm:w-6 sm:h-6" /></button>
                 </div>
@@ -580,7 +585,7 @@ export default function Community() {
               onClick={() => setActiveTab('latest')}
               className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'latest' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
             >
-                Mới nhất
+              Mới nhất
             </button>
             <button
               onClick={() => setActiveTab('following')}
@@ -600,7 +605,7 @@ export default function Community() {
         {/* DANH SÁCH BÀI VIẾT */}
         <div className="space-y-6">
           {loading ? (
-             <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>
+            <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>
           ) : filteredPosts.length > 0 ? (
             filteredPosts.map(post => {
               const isMyPost = post.userId?._id === currentUserId || post.userId === currentUserId;
@@ -611,11 +616,11 @@ export default function Community() {
                 <div key={post._id} className="bg-gray-800/60 backdrop-blur-sm border border-gray-700/60 p-5 md:p-7 rounded-3xl shadow-xl hover:border-gray-600 transition-colors cursor-pointer group/post" onClick={() => !isEditing && handleViewPostDetails(post)}>
                   <div className="flex items-start justify-between mb-5">
                     <div className="flex items-center gap-4 cursor-pointer group/avatar" onClick={(e) => {
-                        e.stopPropagation();
-                        if (!selectedUserFilter || selectedUserFilter.id !== post.userId?._id) {
-                          handleViewProfile(post.userId?._id, { name: post.userId?.name || "Người dùng", isVerified: post.userId?.isVerified, avatar: post.userId?.avatar });
-                        }
-                      }}>
+                      e.stopPropagation();
+                      if (!selectedUserFilter || selectedUserFilter.id !== post.userId?._id) {
+                        handleViewProfile(post.userId?._id, { name: post.userId?.name || "Người dùng", isVerified: post.userId?.isVerified, avatar: post.userId?.avatar });
+                      }
+                    }}>
                       <img src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-12 h-12 rounded-full object-cover ring-2 ring-gray-700 group-hover/avatar:ring-emerald-500 transition-all shadow-md" />
                       <div>
                         <h4 className="font-bold text-base text-gray-100 group-hover/avatar:text-emerald-400 transition-colors flex items-center gap-1.5">
@@ -628,15 +633,15 @@ export default function Community() {
 
                     {isMyPost && (
                       <div className="flex items-center gap-2">
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); setEditingPost({ id: post._id, content: post.content }); }} 
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingPost({ id: post._id, content: post.content }); }}
                           className="text-gray-500 hover:text-blue-400 p-2 hover:bg-gray-700/50 rounded-xl transition-colors"
                           title="Sửa bài viết"
                         >
                           <Edit className="w-5 h-5" />
                         </button>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeletePost(post._id); }} 
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleDeletePost(post._id); }}
                           className="text-gray-500 hover:text-red-400 p-2 hover:bg-gray-700/50 rounded-xl transition-colors"
                           title="Xóa bài viết"
                         >
@@ -680,7 +685,7 @@ export default function Community() {
                       </button>
                     </div>
                   )}
-                  
+
                   {post.dietSnapshot && (
                     <div onClick={(e) => { e.stopPropagation(); setViewingPlan({ type: 'diet', data: post.dietSnapshot }) }} className="mt-4 bg-gray-900/80 border border-yellow-500/30 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 group/plan hover:bg-gray-800 transition-all hover:border-yellow-500/60 shadow-md">
                       <div className="flex items-center gap-4 text-yellow-400">
@@ -717,7 +722,7 @@ export default function Community() {
                         <Eye className="w-4 h-4 sm:w-5 sm:h-5" />
                         <span className="text-sm font-semibold">{post.viewsCount || 0}</span>
                       </div>
-                      
+
                       {(post.workoutSnapshot || post.dietSnapshot) && (
                         <div className="flex items-center gap-1.5 text-yellow-500/90 bg-yellow-500/10 px-3 py-1.5 rounded-lg border border-yellow-500/20" title="Số người đã lưu lịch này">
                           <Bookmark className="w-4 h-4 sm:w-5 sm:h-5 fill-yellow-500/50" />
@@ -767,14 +772,13 @@ export default function Community() {
                 }
 
                 return (
-                  <div 
-                    key={noti._id} 
+                  <div
+                    key={noti._id}
                     onClick={() => handleNotificationClick(noti)}
-                    className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all shadow-sm group/noti ${
-                      !noti.isRead 
-                      ? 'bg-gray-800 border-gray-600 hover:bg-gray-700' 
-                      : 'bg-gray-900/60 border-gray-700/40 hover:bg-gray-800'
-                    }`}
+                    className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all shadow-sm group/noti ${!noti.isRead
+                        ? 'bg-gray-800 border-gray-600 hover:bg-gray-700'
+                        : 'bg-gray-900/60 border-gray-700/40 hover:bg-gray-800'
+                      }`}
                   >
                     <div className="mt-0.5 bg-gray-800 p-2 rounded-full shrink-0 shadow-inner">{icon}</div>
                     <div className="flex-1 pr-6">
@@ -783,7 +787,7 @@ export default function Community() {
                       </p>
                       <p className="text-[11px] text-gray-500 mt-1.5 font-medium">{new Date(noti.createdAt).toLocaleString('vi-VN')}</p>
                     </div>
-                    <button 
+                    <button
                       onClick={(e) => handleDeleteNotification(e, noti._id)}
                       className="absolute top-3 right-3 text-gray-500 hover:text-red-500 bg-gray-800/80 p-1.5 rounded-full opacity-0 group-hover/noti:opacity-100 transition-opacity z-10"
                       title="Xóa thông báo"
@@ -803,11 +807,11 @@ export default function Community() {
       </div>
 
       {/* ================= CÁC MODAL ẨN ================= */}
-      
+
       {/* 1. Modal Chi Tiết Bài Viết */}
       {viewingPostDetails && (
-        <PostDetailsModal 
-          post={viewingPostDetails} 
+        <PostDetailsModal
+          post={viewingPostDetails}
           onClose={() => setViewingPostDetails(null)}
           currentUserId={currentUserId}
           token={token}
@@ -834,7 +838,7 @@ export default function Community() {
                 <p className="font-bold text-emerald-400 text-base">Lịch đang áp dụng (Master)</p>
                 <p className="text-sm text-gray-400 mt-1">Lịch chính mà bạn đang tập/ăn</p>
               </div>
-              <Activity className="w-6 h-6 text-gray-500 group-hover:text-emerald-400 transition-colors"/>
+              <Activity className="w-6 h-6 text-gray-500 group-hover:text-emerald-400 transition-colors" />
             </button>
             <div className="border-t border-gray-700/80 pt-4">
               <p className="text-sm font-semibold text-gray-400 mb-3">Hoặc chọn từ kho lưu trữ của bạn:</p>
@@ -912,8 +916,8 @@ export default function Community() {
             </div>
             <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 space-y-2">
               {followingList.length > 0 ? followingList.map(user => (
-                <div 
-                  key={user._id} 
+                <div
+                  key={user._id}
                   onClick={() => {
                     handleViewProfile(user._id, { name: user.name, isVerified: user.isVerified, avatar: user.avatar });
                     setShowMobileFollowing(false);
@@ -968,17 +972,16 @@ export default function Community() {
                   }
 
                   return (
-                    <div 
-                      key={noti._id} 
+                    <div
+                      key={noti._id}
                       onClick={() => {
                         handleNotificationClick(noti);
                         setShowMobileNotifications(false);
                       }}
-                      className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all shadow-sm ${
-                        !noti.isRead 
-                        ? 'bg-gray-800 border-gray-600 hover:bg-gray-700' 
-                        : 'bg-gray-800/40 border-gray-700/40 hover:bg-gray-800/80'
-                      }`}
+                      className={`relative flex items-start gap-3 p-4 rounded-2xl border cursor-pointer transition-all shadow-sm ${!noti.isRead
+                          ? 'bg-gray-800 border-gray-600 hover:bg-gray-700'
+                          : 'bg-gray-800/40 border-gray-700/40 hover:bg-gray-800/80'
+                        }`}
                     >
                       <div className="mt-0.5 bg-gray-900 p-2 rounded-full shrink-0 shadow-inner">{icon}</div>
                       <div className="flex-1 pr-4">
@@ -1004,4 +1007,4 @@ export default function Community() {
 
     </div>
   );
-}
+} 

@@ -23,7 +23,7 @@ const {
 // ==========================================
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    const dir = "uploads/images/";
+    const dir = "uploads/media/";
     
     // 🛑 ĐOẠN CODE THẦN THÁNH: Nếu thư mục chưa có, tự động tạo luôn!
     if (!fs.existsSync(dir)) {

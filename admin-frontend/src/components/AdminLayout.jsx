@@ -1,18 +1,16 @@
 // 📄 src/components/AdminLayout.jsx
 import React from 'react';
 import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
-// 👇 ĐÃ THÊM: Import thêm icon Settings (Cài đặt)
-import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt, Settings } from 'lucide-react';
+// 👇 ĐÃ THÊM: Import icon AlertTriangle để làm menu Báo cáo
+import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt, Settings, AlertTriangle } from 'lucide-react';
 
 const AdminLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // 1. LẤY DỮ LIỆU TỪ LOCAL STORAGE
   const token = localStorage.getItem('adminToken');
   const adminInfo = JSON.parse(localStorage.getItem('adminInfo') || '{}');
 
-  // 2. CHỐT CHẶN BẢO MẬT KÉP
   if (!token) {
     return <Navigate to="/login" replace />;
   }
@@ -23,15 +21,15 @@ const AdminLayout = () => {
     navigate('/login');
   };
 
-  // 3. CẤU HÌNH MENU
   const navItems = [
     { path: '/', name: 'Dashboard', icon: LayoutDashboard },
     { path: '/exercises', name: 'Quản lý Bài tập', icon: Dumbbell },
     { path: '/foods', name: 'Quản lý Thực phẩm', icon: Apple },
     { path: '/users', name: 'Quản lý Users', icon: Users },
+    // 👇 NÚT MỚI THÊM: Quản lý báo cáo vi phạm
+    { path: '/reports', name: 'Quản lý Báo cáo', icon: AlertTriangle },
     { path: '/premium', name: 'Gói Premium', icon: ShieldCheck },
     { path: '/premium-history', name: 'Lịch sử mua Premium', icon: Receipt },
-    // 👇 NÚT MỚI THÊM: Cài đặt hệ thống
     { path: '/system-settings', name: 'Cài đặt Hệ thống', icon: Settings },
   ];
 
@@ -92,7 +90,6 @@ const AdminLayout = () => {
           </div>
         </header>
 
-        {/* Chỗ này sẽ "đổ" nội dung các trang vào */}
         <main className="flex-1 overflow-y-auto p-8 bg-gray-50">
           <Outlet />
         </main>
