@@ -3,9 +3,9 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// 1. Tạo thư mục lưu trữ chung cho media (Ảnh + Video)
+// 1. Tạo thư mục lưu trữ chung cho videos
 // SỬA Ở ĐÂY: Dùng đường dẫn tuyệt đối (lùi lại 1 cấp từ thư mục middleware ra thư mục gốc)
-const dir = path.join(__dirname, '../uploads/media');
+const dir = path.join(__dirname, '../uploads/videos');
 
 if (!fs.existsSync(dir)) {
   fs.mkdirSync(dir, { recursive: true });

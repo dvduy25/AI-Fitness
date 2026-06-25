@@ -1,35 +1,32 @@
 const mongoose = require("mongoose");
+
 const exerciseSchema = new mongoose.Schema({
- name: String, muscleGroup: String,
- level: { type: String, enum: ["beginner", "intermediate", "advanced"] },
- equipmentRequired: { type: String, enum: ['bodyweight', 
-
-    'dumbbells', 
-
-    'barbell', 
-
-    'pull_up_bar', 
-
-    'cable_machine', 
-
-    'machine', 
-
-    'dip_station', 
-
-    'resistance_band', 
-
-    'box', 
-
-    'ab_wheel', 
-
-    'jump_rope', 
-
-    'kettlebell'] },
-    videoUrl: { 
+  name: String, 
+  muscleGroup: String,
+  level: { 
     type: String, 
-    default: "" // Có thể để trống nếu chưa tìm được clip
+    enum: ["beginner", "intermediate", "advanced"],
+    default: "beginner"
   },
-  description: { type: String, default: "" } // Thêm mô tả ngắn nếu cần
-
+  equipmentRequired: { 
+    type: String, 
+    default: "Không cần dụng cụ" 
+  },
+  videoUrl: { 
+    type: String, 
+    default: "" 
+  },
+  description: { 
+    type: String, 
+    default: "" 
+  },
+  // 🌟 ĐÃ THÊM: Độ hiệu quả của bài tập (Thang điểm từ 1 đến 5)
+  effectiveness: {
+    type: Number,
+    min: 1,
+    max: 5,
+    default: 5 // Mặc định là 5 điểm nếu không nhập
+  }
 }, { timestamps: true });
+
 module.exports = mongoose.model("Exercise", exerciseSchema);

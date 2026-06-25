@@ -61,7 +61,8 @@ app.use("/api/system", systemRoutes);
 
 // BẮT BUỘC ĐỂ TRÊN: Tuyến đường Admin (Để Admin luôn có thể đăng nhập vào tắt bảo trì khi hệ thống khóa)
 app.use("/api/admin", adminRoutes);
-
+app.use("/api/exercises", exerciseRoutes); 
+app.use("/api/foods", foodRoutes); 
 // ==========================================
 // 4. KÍCH HOẠT MIDDLEWARE KIỂM TRA BẢO TRÌ (MAINTENANCE)
 // ==========================================
@@ -72,8 +73,7 @@ app.use(systemController.checkMaintenance);
 // 5. VÙNG API DÀNH CHO USER (SẼ BỊ KHÓA KHI BẢO TRÌ)
 // ==========================================
 app.use("/api/users", userRoutes);    
-app.use("/api/exercises", exerciseRoutes); 
-app.use("/api/foods", foodRoutes);         
+        
 app.use("/api/workout-plan", workoutPlanRoutes); 
 app.use("/api/meal-plan", mealPlanRoutes);       
 app.use("/api/ai", aiRoutes);

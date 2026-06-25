@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 exports.checkMaintenance = async (req, res, next) => {
   try {
     // BƯỚC 1: Ngoại lệ bắt buộc - Cho qua API kiểm tra trạng thái bảo trì
-    // Nếu không cho qua, chính trang web sẽ không biết hệ thống có bảo trì hay không để hiện màn hình bảo trì
     if (req.originalUrl === '/api/system/maintenance') {
       return next();
     }
@@ -19,22 +18,21 @@ exports.checkMaintenance = async (req, res, next) => {
       const token = authHeader.split(' ')[1];
       
       try {
-        // Giải mã token bằng mã bí mật JWT_SECRET trong file .env của bạn
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
         
         // Cực kỳ quan trọng: Nếu đúng là ADMIN -> Cho qua luôn! Bất chấp bảo trì bật hay tắt
         if (decoded && decoded.role === 'admin') {
-          req.user = decoded; // Lưu thông tin admin vào req để dùng ở các hàm sau nếu cần
+          req.user = decoded; 
           return next();
         }
       } catch (jwtError) {
-        // Token bị sai, giả mạo hoặc hết hạn -> Xem như user vãng lai, cho trôi xuống check bảo trì tiếp
         console.log('Token không hợp lệ trong lúc bảo trì:', jwtError.message);
       }
     }
 
-    // BƯỚC 3: KIỂM TRA TRẠNG THÁI BẢO TRÌ TRONG DATABASE (Dành cho User thường và Khách)
-    const config = await SystemConfig.findOne(); // Lấy cấu hình hệ thống
+    // BƯỚC 3: KIỂM TRA TRẠNG THÁI BẢO TRÌ TRONG DATABASE
+    // 🛑 ĐÃ SỬA LỖI TẠI ĐÂY: Đổi SystemConfig thành SystemSetting
+    const config = await SystemSetting.findOne({ key: "system_notification" }); 
     
     // Nếu trạng thái bảo trì đang bật (isActive = true) và loại cấu hình là MAINTENANCE
     if (config && config.isActive && config.type === 'MAINTENANCE') {
@@ -49,7 +47,6 @@ exports.checkMaintenance = async (req, res, next) => {
     next();
   } catch (error) {
     console.error('Lỗi nghiêm trọng tại Middleware Bảo trì:', error);
-    // Nếu code backend lỗi, cho next() để tránh sập toàn bộ luồng app của user
     next(); 
   }
 };
@@ -60,7 +57,6 @@ exports.checkMaintenance = async (req, res, next) => {
  */
 exports.toggleMaintenance = async (req, res) => {
   const { type, message, isActive } = req.body; 
-  // Yêu cầu truyền lên: { "type": "NORMAL"/"MAINTENANCE", "message": "Nội dung...", "isActive": true/false }
 
   if (!["NORMAL", "MAINTENANCE"].includes(type)) {
     return res.status(400).json({ success: false, message: "Type phải là NORMAL hoặc MAINTENANCE!" });
@@ -91,7 +87,7 @@ exports.toggleMaintenance = async (req, res) => {
  * API: Lấy trạng thái hiện tại (Công khai cho cả khách và user xem)
  * GET /api/system/maintenance
  */
-exports.getMaintenanceStatus = async (req, res) => { // <--- ĐÃ SỬA LỖI TYPO TẠI ĐÂY
+exports.getMaintenanceStatus = async (req, res) => { 
   try {
     let config = await SystemSetting.findOne({ key: "system_notification" });
     if (!config) {
