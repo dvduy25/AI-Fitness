@@ -83,12 +83,23 @@ exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // 1. Tìm người dùng qua email
     const user = await User.findOne({ email });
     if (!user) return res.status(400).json({ message: "Không tìm thấy tài khoản với email này!" });
 
+    // 🌟 2. CHỐT CHẶN: KIỂM TRA TÀI KHOẢN CÓ BỊ KHÓA KHÔNG
+    if (user.isLocked) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Quản trị viên!" 
+      });
+    }
+
+    // 3. Kiểm tra mật khẩu
     const validPassword = await bcrypt.compare(password, user.password);
     if (!validPassword) return res.status(400).json({ message: "Sai mật khẩu, vui lòng thử lại!" });
 
+    // 4. Cấp Token nếu hợp lệ
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
     const { password: _, ...userWithoutPassword } = user._doc;
@@ -231,6 +242,64 @@ exports.getFollowers = async (req, res) => {
     res.status(200).json({ success: true, followers: user.followers });
   } catch (error) {
     res.status(500).json({ success: false, message: "Lỗi lấy danh sách người theo dõi", error: error.message });
+  }
+};
+// ==========================================
+// CHỨC NĂNG ĐỔI MẬT KHẨU
+// Route gợi ý: PUT /api/users/change-password
+// ==========================================
+exports.changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id; // Lấy từ authMiddleware
+    const { oldPassword, newPassword } = req.body;
+
+    // 1. Kiểm tra đầu vào
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Vui lòng nhập đầy đủ mật khẩu cũ và mật khẩu mới!" 
+      });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Mật khẩu mới phải có ít nhất 6 ký tự!" 
+      });
+    }
+
+    // 2. Tìm người dùng trong database
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
+    }
+
+    // 3. Kiểm tra mật khẩu cũ xem có khớp không
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: "Mật khẩu cũ không chính xác!" });
+    }
+
+    // 4. Mã hóa mật khẩu mới
+    const salt = await bcrypt.genSalt(10);
+    const hashedNewPassword = await bcrypt.hash(newPassword, salt);
+
+    // 5. Cập nhật mật khẩu mới vào database
+    user.password = hashedNewPassword;
+    await user.save();
+
+    res.status(200).json({ 
+      success: true, 
+      message: "Đổi mật khẩu thành công! Vui lòng sử dụng mật khẩu mới cho lần đăng nhập sau." 
+    });
+
+  } catch (error) {
+    console.error("Lỗi khi đổi mật khẩu:", error);
+    res.status(500).json({ 
+      success: false, 
+      message: "Lỗi server khi đổi mật khẩu", 
+      error: error.message 
+    });
   }
 };
 

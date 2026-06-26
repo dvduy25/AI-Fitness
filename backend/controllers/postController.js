@@ -10,7 +10,11 @@ const Notification = require("../models/Notification");
 
 const mongoose = require("mongoose");
 
-// Helper: Xử lý đường dẫn Media (Ảnh/Video)
+// ==========================================
+// HELPERS CƠ BẢN
+// ==========================================
+
+// 1. Xử lý đường dẫn Media (Ảnh/Video)
 const handleMediaFiles = (req) => {
   const baseUrl = `${req.protocol}://${req.get('host')}`;
   let images = [];
@@ -26,6 +30,8 @@ const handleMediaFiles = (req) => {
   }
   return { images, video };
 };
+
+// ❌ Đã xóa bỏ getLockedUserIds và isPostAuthorLocked vì không còn cần thiết nữa.
 
 // ==========================================
 // 1. TẠO BÀI VIẾT TỪ NHẬT KÝ (WORKOUT/DIET LOG)
@@ -65,6 +71,7 @@ exports.createPost = async (req, res) => {
       images,
       video,
       postType,
+      status: 'approved', // Mặc định là approved (nếu schema đã có default thì bỏ qua)
       originalReferenceId: workoutLogId || dietLogId || null,
       workoutSnapshot,
       dietSnapshot
@@ -72,7 +79,6 @@ exports.createPost = async (req, res) => {
 
     await newPost.save();
 
-    // Bắn thông báo cho những người đang Follow khi có bài mới
     const usersFollowingMe = await User.find({ following: userId });
     const notifications = usersFollowingMe.map(u => ({
       userId: u._id,
@@ -123,6 +129,7 @@ exports.shareMasterPlan = async (req, res) => {
       images,
       video,
       postType,
+      status: 'approved',
       workoutSnapshot,
       dietSnapshot
     });
@@ -154,6 +161,7 @@ exports.shareFromLibrary = async (req, res) => {
       images,
       video,
       postType: savedItem.type === 'workout' ? 'master_workout' : 'master_diet',
+      status: 'approved',
       workoutSnapshot: savedItem.workoutData || null,
       dietSnapshot: savedItem.dietData || null,
       originalReferenceId: libraryId
@@ -185,7 +193,11 @@ exports.getFeed = async (req, res) => {
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const posts = await Post.aggregate([
-      { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+      // 🌟 TỐI ƯU: Chỉ lấy bài approved, code cực kỳ sạch và chạy nhanh
+      { $match: { 
+          createdAt: { $gte: thirtyDaysAgo },
+          status: 'approved' 
+      }},
       {
         $lookup: {
           from: "comments", 
@@ -235,7 +247,7 @@ exports.getFeed = async (req, res) => {
           localField: "userId",
           foreignField: "_id",
           pipeline: [
-            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1, isLocked: 1 } }
           ],
           as: "userId"
         }
@@ -262,9 +274,15 @@ exports.getPostById = async (req, res) => {
       req.params.postId, 
       { $inc: { viewsCount: 1 } },
       { new: true }
-    ).populate("userId", "name avatar role");
+    ).populate("userId", "name avatar role isLocked");
 
     if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
+    
+    // 🌟 Kiểm tra status trực tiếp trên bài viết
+    if (post.status !== 'approved') {
+      return res.status(403).json({ success: false, message: "Bài viết này hiện không khả dụng." });
+    }
+
     res.status(200).json({ success: true, post });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
@@ -278,14 +296,19 @@ exports.toggleLike = async (req, res) => {
   try {
     const userId = req.user.id;
     const post = await Post.findById(req.params.postId);
+    
     if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
+    
+    // 🌟 Tối ưu: Chỉ cần kiểm tra status
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Không thể thả tim, bài viết hiện không khả dụng." });
+    }
 
     const isLiked = post.likes.includes(userId);
     if (isLiked) {
       post.likes.pull(userId);
     } else {
       post.likes.push(userId);
-      // Bắn thông báo Like
       if (post.userId.toString() !== userId.toString()) {
         await Notification.create({ userId: post.userId, senderId: userId, type: 'like', postId: post._id, isRead: false });
       }
@@ -302,7 +325,12 @@ exports.addComment = async (req, res) => {
   try {
     const { content } = req.body;
     const post = await Post.findById(req.params.postId);
+    
     if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
+    
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Không thể bình luận, bài viết hiện không khả dụng." });
+    }
 
     const newComment = new Comment({ 
       postId: post._id, 
@@ -314,7 +342,6 @@ exports.addComment = async (req, res) => {
     post.commentsCount += 1;
     await post.save();
 
-    // Bắn thông báo Comment
     if (post.userId.toString() !== req.user.id.toString()) {
       await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'comment', postId: post._id, isRead: false });
     }
@@ -334,7 +361,12 @@ exports.cloneSnapshot = async (req, res) => {
   try {
     const { postId, type } = req.body;
     const post = await Post.findById(postId);
+    
     if (!post) return res.status(404).json({ message: "Bài viết không còn tồn tại" });
+    
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Không thể lưu lịch, bài viết hiện không khả dụng." });
+    }
 
     if (type === 'workout' && post.workoutSnapshot) {
       const { _id, ...cleanData } = post.workoutSnapshot;
@@ -343,7 +375,6 @@ exports.cloneSnapshot = async (req, res) => {
       post.savesCount = (post.savesCount || 0) + 1;
       await post.save();
 
-      // Bắn thông báo Lưu lịch
       if (post.userId.toString() !== req.user.id.toString()) {
         await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id, isRead: false });
       }
@@ -358,7 +389,6 @@ exports.cloneSnapshot = async (req, res) => {
       post.savesCount = (post.savesCount || 0) + 1;
       await post.save();
 
-      // Bắn thông báo Lưu lịch
       if (post.userId.toString() !== req.user.id.toString()) {
         await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'save_plan', postId: post._id, isRead: false });
       }
@@ -412,6 +442,13 @@ exports.deletePost = async (req, res) => {
 // CRUD Comment
 exports.getComments = async (req, res) => {
   try {
+    const post = await Post.findById(req.params.postId);
+    if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
+    
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Bài viết hiện không khả dụng, không thể xem bình luận." });
+    }
+
     const comments = await Comment.find({ postId: req.params.postId }).populate("userId", "name avatar role").sort({ createdAt: -1 });
     res.status(200).json({ success: true, comments });
   } catch (error) {
@@ -457,13 +494,15 @@ exports.deleteComment = async (req, res) => {
 // ==========================================
 exports.incrementShare = async (req, res) => {
   try {
-    const post = await Post.findByIdAndUpdate(
-      req.params.postId, 
-      { $inc: { sharesCount: 1 } }, 
-      { new: true }
-    );
-    
+    const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết" });
+
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Không thể chia sẻ, bài viết hiện không khả dụng." });
+    }
+
+    post.sharesCount += 1;
+    await post.save();
     
     res.status(200).json({ success: true, sharesCount: post.sharesCount });
   } catch (error) {
@@ -481,16 +520,20 @@ exports.getFollowingPosts = async (req, res) => {
     if (!currentUser) return res.status(404).json({ success: false, message: "Không tìm thấy user" });
 
     const followingList = currentUser.following || [];
-
+    
     const posts = await Post.aggregate([
-      { $match: { userId: { $in: followingList } } },
+      // 🌟 TỐI ƯU: Không cần $nin lockedUserIds nữa
+      { $match: { 
+          userId: { $in: followingList },
+          status: 'approved' 
+      }},
       { $sort: { createdAt: -1 } },
       {
         $lookup: {
           from: "users",
           localField: "userId",
           foreignField: "_id",
-          pipeline: [{ $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }],
+          pipeline: [{ $project: { name: 1, avatar: 1, role: 1, isVerified: 1, isLocked: 1 } }],
           as: "userId"
         }
       },
@@ -509,15 +552,20 @@ exports.getFollowingPosts = async (req, res) => {
 exports.getLikedPosts = async (req, res) => {
   try {
     const currentUserId = req.user.id || req.user._id;
+    
     const posts = await Post.aggregate([
-      { $match: { likes: new mongoose.Types.ObjectId(currentUserId) } }, 
+      // 🌟 TỐI ƯU
+      { $match: { 
+          likes: new mongoose.Types.ObjectId(currentUserId),
+          status: 'approved'
+      }}, 
       { $sort: { createdAt: -1 } },
       {
         $lookup: {
           from: "users",
           localField: "userId",
           foreignField: "_id",
-          pipeline: [{ $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }],
+          pipeline: [{ $project: { name: 1, avatar: 1, role: 1, isVerified: 1, isLocked: 1 } }],
           as: "userId"
         }
       },
@@ -536,6 +584,8 @@ exports.getLikedPosts = async (req, res) => {
 exports.getLatestPosts = async (req, res) => {
   try {
     const posts = await Post.aggregate([
+      // 🌟 TỐI ƯU
+      { $match: { status: 'approved' } },
       { $sort: { createdAt: -1 } }, 
       { $limit: 100 }, 
       {
@@ -544,7 +594,7 @@ exports.getLatestPosts = async (req, res) => {
           localField: "userId",
           foreignField: "_id",
           pipeline: [
-            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1 } }
+            { $project: { name: 1, avatar: 1, role: 1, isVerified: 1, isLocked: 1 } }
           ],
           as: "userId"
         }
@@ -561,8 +611,6 @@ exports.getLatestPosts = async (req, res) => {
 // ==========================================
 // 12. QUẢN LÝ THÔNG BÁO (LẤY, CHẤM XANH, XÓA)
 // ==========================================
-
-// 12.1. Lấy danh sách thông báo
 exports.getNotifications = async (req, res) => {
   try {
     const notifications = await Notification.find({ userId: req.user.id || req.user._id })
@@ -576,7 +624,6 @@ exports.getNotifications = async (req, res) => {
   }
 };
 
-// 🌟 ĐÃ THÊM: 12.2. Đếm số lượng thông báo chưa đọc (Dùng để hiện chấm xanh ở UI)
 exports.getUnreadNotificationCount = async (req, res) => {
   try {
     const unreadCount = await Notification.countDocuments({ 
@@ -590,7 +637,6 @@ exports.getUnreadNotificationCount = async (req, res) => {
   }
 };
 
-// 🌟 ĐÃ THÊM: 12.3. Đánh dấu 1 thông báo là đã đọc (Khi user click vào thông báo)
 exports.markNotificationAsRead = async (req, res) => {
   try {
     const notification = await Notification.findOneAndUpdate(
@@ -607,7 +653,6 @@ exports.markNotificationAsRead = async (req, res) => {
   }
 };
 
-// 🌟 ĐÃ THÊM: 12.4. Đánh dấu TẤT CẢ thông báo là đã đọc (Nút "Mark all as read")
 exports.markAllNotificationsAsRead = async (req, res) => {
   try {
     await Notification.updateMany(
@@ -621,12 +666,11 @@ exports.markAllNotificationsAsRead = async (req, res) => {
   }
 };
 
-// 12.5. Xóa thông báo thủ công
 exports.deleteNotification = async (req, res) => {
   try {
     const deleted = await Notification.findOneAndDelete({ 
       _id: req.params.notiId, 
-      userId: req.user.id || req.user._id // Bảo mật: Chỉ xóa được thông báo của chính mình
+      userId: req.user.id || req.user._id 
     });
 
     if (!deleted) return res.status(404).json({ message: "Thông báo không tồn tại hoặc không có quyền xóa" });
@@ -640,17 +684,19 @@ exports.deleteNotification = async (req, res) => {
 // ==========================================
 // 13. CHIA SẺ BÀI VIẾT TỚI USER ĐANG FOLLOW
 // ==========================================
-// Đảm bảo bạn đã import model Post ở đầu file, ví dụ: 
-// const Post = require('../models/Post');
-
 exports.sharePostToUser = async (req, res) => {
   try {
     const { targetUserId } = req.body;
     const postId = req.params.postId;
     
-    // Chạy song song 2 tác vụ: Tạo thông báo & Tăng lượt chia sẻ
+    const post = await Post.findById(postId);
+    if (!post) return res.status(404).json({ message: "Không tìm thấy bài viết." });
+
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Không thể chia sẻ, bài viết hiện không khả dụng." });
+    }
+
     await Promise.all([
-      // 1. Tạo thông báo cho người nhận
       Notification.create({
         userId: targetUserId,
         senderId: req.user.id || req.user._id,
@@ -658,12 +704,7 @@ exports.sharePostToUser = async (req, res) => {
         postId: postId,
         isRead: false
       }),
-
-      // 2. Tăng sharesCount thêm 1 trong DB
-      Post.findByIdAndUpdate(
-        postId, 
-        { $inc: { sharesCount: 1 } }
-      )
+      Post.findByIdAndUpdate(postId, { $inc: { sharesCount: 1 } })
     ]);
 
     res.status(200).json({ success: true, message: "Đã gửi bài viết tới người dùng!" });
@@ -671,19 +712,23 @@ exports.sharePostToUser = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ==========================================
+// 14. BÁO CÁO BÀI VIẾT
+// ==========================================
 exports.reportPost = async (req, res) => {
   try {
     const { postId } = req.params;
     const { reason } = req.body;
     const reporterId = req.user.id || req.user._id;
 
-    // 1. Kiểm tra bài viết có tồn tại không
     const post = await Post.findById(postId);
-    if (!post) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy bài viết." });
+    if (!post) return res.status(404).json({ success: false, message: "Không tìm thấy bài viết." });
+
+    if (post.status !== 'approved') {
+      return res.status(403).json({ message: "Bài viết này đã bị ẩn hoặc không khả dụng." });
     }
 
-    // 2. Chống Spam: Kiểm tra xem user này đã báo cáo bài này trước đó chưa
     const hasReported = post.reports.some(
       (report) => report.reporterId.toString() === reporterId.toString()
     );
@@ -691,26 +736,15 @@ exports.reportPost = async (req, res) => {
       return res.status(400).json({ success: false, message: "Bạn đã báo cáo bài viết này rồi." });
     }
 
-    // 3. Đẩy báo cáo mới vào mảng
-    post.reports.push({
-      reporterId,
-      reason
-    });
-
-    // 4. Tăng bộ đếm báo cáo
+    post.reports.push({ reporterId, reason });
     post.reportsCount += 1;
 
-    // 5. Tự động kiểm duyệt: Nếu có từ 3 báo cáo trở lên, tự động chuyển sang chờ duyệt (Tùy chỉnh con số 3 theo ý bạn)
     if (post.reportsCount >= 3 && post.status === 'approved') {
       post.status = 'pending_review';
     }
 
     await post.save();
-
-    res.status(200).json({ 
-      success: true, 
-      message: "Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét nội dung này." 
-    });
+    res.status(200).json({ success: true, message: "Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét nội dung này." });
 
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });

@@ -1,6 +1,10 @@
 const User = require("../models/User");
 const Food = require("../models/Food");
 const Exercise = require("../models/Exercise");
+
+
+const Post = require("../models/Post");
+const Comment = require("../models/Comment");
 const Transaction = require("../models/Transaction"); // Sử dụng model này để lấy doanh thu
 
 // ==========================================
@@ -188,25 +192,61 @@ exports.updateUser = async (req, res) => {
     res.status(500).json({ message: "Lỗi cập nhật người dùng", error: error.message });
   }
 };
+ // Tùy chọn: dùng nếu bạn muốn ẩn cả comment
 
 exports.toggleLockUser = async (req, res) => {
   try {
     const { id } = req.params;
 
+    // 1. Chặn Admin tự khóa mình
     if (id === req.user.id) {
-      return res.status(400).json({ message: "Bạn không thể tự khóa tài khoản Admin của chính mình!" });
+      return res.status(400).json({ 
+        success: false, 
+        message: "Bạn không thể tự khóa tài khoản Admin của chính mình!" 
+      });
     }
 
+    // 2. Kiểm tra User tồn tại
     const user = await User.findById(id);
-    if (!user) return res.status(404).json({ message: "Không tìm thấy người dùng!" });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: "Không tìm thấy người dùng!" 
+      });
+    }
 
+    // 3. Đảo ngược trạng thái khóa
     user.isLocked = !user.isLocked;
     await user.save();
 
-    const statusMessage = user.isLocked ? "Đã KHÓA tài khoản" : "Đã MỞ KHÓA tài khoản";
-    res.status(200).json({ message: `${statusMessage} thành công!`, isLocked: user.isLocked });
+    // 🌟 4. ĐỒNG BỘ NỘI DUNG (TỐI ƯU HIỆU NĂNG CHO BẢNG TIN)
+    if (user.isLocked) {
+      // Ẩn bài viết
+      await Post.updateMany({ userId: id }, { $set: { status: 'banned' } });
+      // Ẩn bình luận (Nếu schema Comment của bạn có trường status)
+      // await Comment.updateMany({ userId: id }, { $set: { status: 'locked' } }); 
+    } else {
+      // Mở lại bài viết
+      await Post.updateMany({ userId: id, status: 'banned' }, { $set: { status: 'approved' } });
+      // Mở lại bình luận
+      // await Comment.updateMany({ userId: id, status: 'locked' }, { $set: { status: 'approved' } });
+    }
+
+    const statusMessage = user.isLocked ? "Đã KHÓA tài khoản và ẩn nội dung" : "Đã MỞ KHÓA tài khoản";
+    
+    // 5. Trả về kết quả cho Frontend
+    res.status(200).json({ 
+      success: true, 
+      message: `${statusMessage} thành công!`, 
+      isLocked: user.isLocked 
+    });
+    
   } catch (error) {
-    res.status(500).json({ message: "Lỗi xử lý khóa tài khoản", error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      message: "Lỗi xử lý khóa tài khoản", 
+      error: error.message 
+    });
   }
 };
 

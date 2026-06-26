@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell } from 'lucide-react'; 
-import axios from 'axios'; // ĐÃ THÊM: Import axios
+import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell, Lock } from 'lucide-react'; // ĐÃ THÊM: Lock icon
+import axios from 'axios'; 
 
 // Import các trang (Components)
 import AuthPage from "./AuthPage"; 
@@ -18,19 +18,47 @@ import MyLibrary from "./MyLibrary";
 import FloatingBot from "./FloatingBot"; 
 import CalorieCalculator from "./CalorieCalculator";
 
+// =========================================================
+// 🛡️ LƯỚI BẢO VỆ TOÀN CẦU
+// =========================================================
+axios.interceptors.response.use(
+  (response) => {
+    return response;
+  },
+  (error) => {
+    if (error.response && error.response.status === 403) {
+      // 1. Xóa toàn bộ dữ liệu phiên đăng nhập
+      localStorage.removeItem("token");
+      localStorage.removeItem("adminToken");
+      localStorage.removeItem("role");
+      
+      // 2. Thay vì alert(), chúng ta phát ra một sự kiện để App.jsx bắt lấy
+      window.dispatchEvent(new Event("accountLocked"));
+    }
+    return Promise.reject(error);
+  }
+);
+
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false); 
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
+  // State quản lý hiển thị Modal khi bị khóa
+  const [isLockedModalOpen, setIsLockedModalOpen] = useState(false);
+  
   // Lưu cấu hình hệ thống từ Database trả về
   const [systemConfig, setSystemConfig] = useState({ isActive: false, type: "NORMAL", message: "" });
-  
-  // ĐÃ ĐỔI TÊN: isBannerClosed -> isNotificationClosed cho phù hợp với Modal
   const [isNotificationClosed, setIsNotificationClosed] = useState(false);
 
   useEffect(() => {
+    // 0. Lắng nghe sự kiện tài khoản bị khóa từ Axios
+    const handleAccountLocked = () => {
+      setIsLockedModalOpen(true);
+    };
+    window.addEventListener("accountLocked", handleAccountLocked);
+
     // 1. Kiểm tra trạng thái đăng nhập
     const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
     const role = localStorage.getItem("role"); 
@@ -46,7 +74,7 @@ const App = () => {
     const checkSystemStatus = async () => {
       try {
         const res = await axios.get("https://ai-fitness-w6fd.onrender.com/api/system/maintenance");
-        const result = res.data; // Axios tự động parse JSON vào res.data
+        const result = res.data; 
         
         if (result && result.success && result.data) {
           setSystemConfig(result.data);
@@ -59,6 +87,11 @@ const App = () => {
     };
 
     checkSystemStatus();
+
+    // Cleanup listener khi unmount
+    return () => {
+      window.removeEventListener("accountLocked", handleAccountLocked);
+    };
   }, []);
 
   const handleLoginSuccess = () => {
@@ -76,6 +109,11 @@ const App = () => {
     setIsLoggedIn(false);
     setIsAdmin(false);
     setIsMenuOpen(false);
+  };
+
+  // Hàm xử lý khi người dùng bấm OK trên bảng thông báo khóa
+  const handleAcknowledgeLock = () => {
+    window.location.href = "/"; // Đẩy văng ra trang đăng nhập
   };
 
   // =========================================================
@@ -115,7 +153,7 @@ const App = () => {
   // =========================================================
   // 3. CHƯA ĐĂNG NHẬP -> CHUYỂN VÀO TRANG LOGIN
   // =========================================================
-  if (!isLoggedIn) {
+  if (!isLoggedIn && !isLockedModalOpen) {
     return (
       <div className="bg-gray-950 min-h-screen w-full flex items-center justify-center overflow-hidden">
         <AuthPage onLoginSuccess={handleLoginSuccess} />
@@ -133,10 +171,35 @@ const App = () => {
 
   return (
     <BrowserRouter>
-      <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30">
+      <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30 relative">
         
         {/* ========================================================= */}
-        {/* 4. THÔNG BÁO THƯỜNG (NORMAL) -> HIỂN THỊ DẠNG POPUP Ở GIỮA */}
+        {/* 🚨 MODAL THÔNG BÁO TÀI KHOẢN BỊ KHÓA (CHẶN TOÀN MÀN HÌNH) */}
+        {/* ========================================================= */}
+        {isLockedModalOpen && (
+          <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+            <div className="bg-gray-900 border border-red-900/50 rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300 relative">
+              <div className="flex flex-col items-center text-center">
+                <div className="w-20 h-20 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mb-5 border border-red-500/20">
+                  <Lock className="w-10 h-10" />
+                </div>
+                <h3 className="text-xl font-black text-white mb-2 uppercase tracking-tight">Tài Khoản Bị Khóa</h3>
+                <p className="text-gray-400 mb-8 leading-relaxed text-sm">
+                  Phiên đăng nhập của bạn đã hết hạn hoặc tài khoản đã bị khóa bởi Quản trị viên.
+                </p>
+                <button 
+                  onClick={handleAcknowledgeLock}
+                  className="w-full py-3.5 px-4 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-red-500/25 active:scale-95 flex justify-center items-center gap-2"
+                >
+                  <LogOut className="w-5 h-5" /> Quay Lại Đăng Nhập
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================= */}
+        {/* 4. THÔNG BÁO THƯỜNG (NORMAL) TỪ SYSTEM */}
         {/* ========================================================= */}
         {isLoggedIn && systemConfig.isActive && systemConfig.type === "NORMAL" && !isNotificationClosed && (
           <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">

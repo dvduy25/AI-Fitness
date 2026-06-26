@@ -16,8 +16,8 @@ import PostItem from './PostItem'; // Đảm bảo đã import
 import NotificationSidebar from './NotificationSidebar'; // Đảm bảo đã import
 
 const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
-// const API_BASE_URL = 'http://localhost:5000';
 
+// const API_BASE_URL = 'http://localhost:5000';
 export default function Community() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);

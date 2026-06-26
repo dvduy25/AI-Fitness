@@ -9,7 +9,9 @@ const {
     // 🌟 THÊM CÁC HÀM MỚI TỪ CONTROLLER VÀO ĐÂY:
     toggleFollow,
     getFollowing,
-    getFollowers,getUserProfileById
+    getFollowers,
+    getUserProfileById,
+    changePassword
 } = require("../controllers/userController");
 
 // ==========================================
@@ -38,7 +40,7 @@ router.get("/:id/following", verifyToken, getFollowing);
 
 // Lấy danh sách người ĐANG THEO DÕI MÌNH (Followers)
 router.get("/:id/followers", verifyToken, getFollowers);
-
+router.put("/change-password", verifyToken, changePassword);
 // Cấp / Thu hồi tích xanh (Chỉ Admin)
 
 

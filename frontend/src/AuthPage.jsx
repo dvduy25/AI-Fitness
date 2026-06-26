@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { 
   Mail, Lock, LogIn, Loader2, AlertTriangle, 
   CheckCircle, ArrowRight, Activity, UserPlus, 
@@ -6,27 +6,31 @@ import {
 } from "lucide-react";
 
 const AuthPage = ({ onLoginSuccess }) => {
-  const [isLogin, setIsLogin] = useState(true); // Toggle giữa Đăng nhập và Đăng ký
+  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: "", type: "" });
 
-  // Gom toàn bộ state của cả Login và Register, THÊM medicalConditions
+  // 🌟 THÊM MỚI: Tự động dọn dẹp Token cũ/lỗi ngay khi mở trang đăng nhập
+  useEffect(() => {
+    localStorage.removeItem("token");
+  }, []);
+
   const [formData, setFormData] = useState({
     email: "", password: "", name: "", 
     age: "", gender: "male", height: "", weight: "",
     goal: "lose_weight", fitnessLevel: "beginner",
-    medicalConditions: "" // Khởi tạo rỗng
+    medicalConditions: "" 
   });
   
   const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
-
+// const API_BASE_URL = 'http://localhost:5000';
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const toggleMode = () => {
     setIsLogin(!isLogin);
-    setMessage({ text: "", type: "" }); // Xóa thông báo cũ khi chuyển tab
+    setMessage({ text: "", type: "" }); 
   };
 
   const handleSubmit = async (e) => {
@@ -34,7 +38,6 @@ const AuthPage = ({ onLoginSuccess }) => {
     setLoading(true);
     setMessage({ text: "", type: "" });
 
-    // Validate (Bắt lỗi các trường bắt buộc)
     if (!isLogin) {
       if (!formData.name || !formData.age || !formData.height || !formData.weight) {
         setLoading(false);
@@ -48,10 +51,8 @@ const AuthPage = ({ onLoginSuccess }) => {
       }
     }
 
-    // Xác định Endpoint và Payload
     const endpoint = isLogin ? "/api/users/login" : "/api/users/register";
     
-    // Tách chuỗi bệnh lý thành mảng (cách nhau bởi dấu phẩy) cho Backend xử lý
     const processedMedicalConditions = formData.medicalConditions
       ? formData.medicalConditions.split(",").map(item => item.trim()).filter(item => item !== "")
       : [];
@@ -83,7 +84,9 @@ const AuthPage = ({ onLoginSuccess }) => {
             if(onLoginSuccess) onLoginSuccess();
         }, 1500);
       } else {
-        setMessage({ text: data.message, type: "error" });
+        setMessage({ text: data.message || "Tài khoản bị khóa hoặc thông tin không chính xác!", type: "error" });
+        // Nếu đăng nhập thất bại (bị khóa/sai pass), xóa luôn token cho chắc
+        localStorage.removeItem("token");
       }
     } catch (error) {
       setMessage({ text: "Lỗi kết nối server! Vui lòng thử lại.", type: "error" });
@@ -185,7 +188,6 @@ const AuthPage = ({ onLoginSuccess }) => {
                 </select>
               </div>
 
-              {/* TRƯỜNG BỆNH LÝ MỚI THÊM VÀO */}
               <div className="relative group md:col-span-2 mt-2">
                 <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                   <HeartPulse className="h-5 w-5 text-gray-500 group-focus-within:text-red-400 transition-colors" />

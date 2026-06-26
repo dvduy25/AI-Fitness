@@ -7,38 +7,38 @@ function imageLimit(val) {
 
 const postSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-  content: { type: String, maxLength: 2000 }, 
-  images: { 
+  content: { type: String, maxLength: 2000 },
+  images: {
     type: [String],
-    validate: [imageLimit, 'Không được vượt quá 10 ảnh.'] 
+    validate: [imageLimit, 'Không được vượt quá 10 ảnh.']
   },
   video: { type: String, default: null },
 
   // Phân loại bài viết để Frontend render giao diện tương ứng
-  postType: { 
-    type: String, 
-    enum: ['text', 'workout_log', 'diet_log', 'master_workout', 'master_diet'], 
-    default: 'text' 
+  postType: {
+    type: String,
+    enum: ['text', 'workout_log', 'diet_log', 'master_workout', 'master_diet'],
+    default: 'text'
   },
 
   // Lưu bản sao lịch tập / thực đơn tại thời điểm đăng bài
-  originalReferenceId: { type: mongoose.Schema.Types.ObjectId, default: null }, 
+  originalReferenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
   workoutSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   dietSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
 
   // Tương tác bài viết
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   commentsCount: { type: Number, default: 0 },
-  savesCount: { type: Number, default: 0 } ,
+  savesCount: { type: Number, default: 0 },
   viewsCount: { type: Number, default: 0 },
   sharesCount: { type: Number, default: 0 },
   // =================================================================
   // HỆ THỐNG KIỂM DUYỆT (Bắt buộc phải có để Admin Controller hoạt động)
   // =================================================================
-  status: { 
-    type: String, 
-    enum: ['approved', 'pending_review', 'hidden_by_system', 'banned'], 
-    default: 'approved' 
+  status: {
+    type: String,
+    enum: ['approved', 'pending_review', 'hidden_by_system', 'banned'],
+    default: 'approved'
   },
   reports: [{
     reporterId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },

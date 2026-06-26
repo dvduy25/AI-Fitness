@@ -92,7 +92,7 @@ const AdminReportManager = () => {
     }
   };
 
-  // 4. KHÓA TÀI KHOẢN NGƯỜI DÙNG (Dùng Route có sẵn của bạn)
+  // 4. KHÓA TÀI KHOẢN NGƯỜI DÙNG (Cập nhật để tự động load lại trang)
   const handleLockAccount = async (userId) => {
     if (!userId) {
       alert("Lỗi: Không tìm thấy ID người dùng.");
@@ -107,7 +107,6 @@ const AdminReportManager = () => {
     if (reason === null) return;
 
     try {
-      // 💡 Đã cập nhật thành method PUT và gọi đúng endpoint toggle-lock
       const response = await axios.put(
         `${API_BASE_URL}/users/${userId}/toggle-lock`, 
         { reason }, 
@@ -115,7 +114,14 @@ const AdminReportManager = () => {
       );
 
       if (response.data.success) {
+        // Hiện thông báo thành công
         alert("🔒 Thao tác khóa tài khoản thành công!");
+        
+        // CÁCH 1: Tải lại mượt mà (chỉ fetch lại dữ liệu, không chớp màn hình)
+        fetchReportedPosts(); 
+        
+        // CÁCH 2: Nếu bạn muốn F5 cứng (Hard Reload) thì bỏ comment dòng dưới và xóa dòng trên:
+        // window.location.reload();
       }
     } catch (err) {
       alert(err.response?.data?.message || "Lỗi khi khóa tài khoản.");
