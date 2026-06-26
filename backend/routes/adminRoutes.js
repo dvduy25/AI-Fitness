@@ -5,7 +5,7 @@ const router = express.Router();
 const adminController = require("../controllers/adminController");
 const packageController = require('../controllers/packageController');
 const adminStatsController = require("../controllers/adminStatsController");
-
+const { replyContact } = require('../controllers/contactController');
 // Import thêm Controller chuyên xử lý Post cho Admin
 const postAdminController = require("../controllers/postAdminController");
 
@@ -67,5 +67,5 @@ router.put("/users/:id/toggle-lock", adminController.toggleLockUser);
 router.post('/packages', packageController.createPackage);
 router.put('/packages/:id', packageController.updatePackage);
 router.delete('/packages/:id', packageController.deletePackage);
-
+router.put('/:contactId/reply',  replyContact);
 module.exports = router;

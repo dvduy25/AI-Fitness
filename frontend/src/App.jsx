@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
-import { LogOut, Home, User, Utensils, Dumbbell, Activity, History, Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell, Lock } from 'lucide-react'; // ĐÃ THÊM: Lock icon
+import { 
+  LogOut, Home, User, Utensils, Dumbbell, Activity, History, 
+  Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell, Lock,
+  MessageSquare, Send, CheckCircle2 // ĐÃ THÊM: Icon cho chức năng Liên Hệ
+} from 'lucide-react'; 
 import axios from 'axios'; 
 
 // Import các trang (Components)
@@ -27,12 +31,9 @@ axios.interceptors.response.use(
   },
   (error) => {
     if (error.response && error.response.status === 403) {
-      // 1. Xóa toàn bộ dữ liệu phiên đăng nhập
       localStorage.removeItem("token");
       localStorage.removeItem("adminToken");
       localStorage.removeItem("role");
-      
-      // 2. Thay vì alert(), chúng ta phát ra một sự kiện để App.jsx bắt lấy
       window.dispatchEvent(new Event("accountLocked"));
     }
     return Promise.reject(error);
@@ -45,21 +46,57 @@ const App = () => {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
-  // State quản lý hiển thị Modal khi bị khóa
+  // State quản lý Modals
   const [isLockedModalOpen, setIsLockedModalOpen] = useState(false);
   
-  // Lưu cấu hình hệ thống từ Database trả về
+  // State Hệ thống
   const [systemConfig, setSystemConfig] = useState({ isActive: false, type: "NORMAL", message: "" });
   const [isNotificationClosed, setIsNotificationClosed] = useState(false);
 
+  // =========================================================
+  // STATE & HÀM XỬ LÝ CHO CHỨC NĂNG LIÊN HỆ ADMIN
+  // =========================================================
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [contactForm, setContactForm] = useState({ type: 'help', title: '', content: '' });
+  const [isSubmittingContact, setIsSubmittingContact] = useState(false);
+  const [contactSuccess, setContactSuccess] = useState(false);
+
+  const handleContactSubmit = async (e) => {
+    e.preventDefault();
+    if (!contactForm.title.trim() || !contactForm.content.trim()) return;
+
+    setIsSubmittingContact(true);
+    try {
+      const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
+      
+      // GỌI API ĐẾN BACKEND ĐỂ LƯU LIÊN HỆ (Bạn cần tạo Route này ở Backend)
+      // await axios.post("https://ai-fitness-w6fd.onrender.com/api/contact", contactForm, {
+      //   headers: { Authorization: `Bearer ${token}` }
+      // });
+
+      // GIẢ LẬP GỌI API THÀNH CÔNG (Sau này mở comment dòng trên và xóa timeout này)
+      await new Promise(resolve => setTimeout(resolve, 1500)); 
+
+      setContactSuccess(true);
+      setTimeout(() => {
+        setIsContactModalOpen(false);
+        setContactSuccess(false);
+        setContactForm({ type: 'help', title: '', content: '' }); // Reset form
+      }, 2000); // Tự động đóng sau 2s khi hiện success
+    } catch (error) {
+      console.error("Lỗi gửi liên hệ:", error);
+      alert("Có lỗi xảy ra khi gửi. Vui lòng thử lại sau!");
+    } finally {
+      setIsSubmittingContact(false);
+    }
+  };
+
   useEffect(() => {
-    // 0. Lắng nghe sự kiện tài khoản bị khóa từ Axios
     const handleAccountLocked = () => {
       setIsLockedModalOpen(true);
     };
     window.addEventListener("accountLocked", handleAccountLocked);
 
-    // 1. Kiểm tra trạng thái đăng nhập
     const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
     const role = localStorage.getItem("role"); 
     
@@ -70,7 +107,6 @@ const App = () => {
       }
     }
 
-    // 2. Gọi API lấy cấu hình bằng AXIOS
     const checkSystemStatus = async () => {
       try {
         const res = await axios.get("https://ai-fitness-w6fd.onrender.com/api/system/maintenance");
@@ -88,7 +124,6 @@ const App = () => {
 
     checkSystemStatus();
 
-    // Cleanup listener khi unmount
     return () => {
       window.removeEventListener("accountLocked", handleAccountLocked);
     };
@@ -111,14 +146,10 @@ const App = () => {
     setIsMenuOpen(false);
   };
 
-  // Hàm xử lý khi người dùng bấm OK trên bảng thông báo khóa
   const handleAcknowledgeLock = () => {
-    window.location.href = "/"; // Đẩy văng ra trang đăng nhập
+    window.location.href = "/"; 
   };
 
-  // =========================================================
-  // 1. MÀN HÌNH CHỜ TRONG LÚC QUÉT HỆ THỐNG
-  // =========================================================
   if (isCheckingAuth) {
     return (
       <div className="bg-gray-950 min-h-screen flex items-center justify-center">
@@ -127,9 +158,6 @@ const App = () => {
     );
   }
 
-  // =========================================================
-  // 2. BẢO TRÌ (MAINTENANCE) -> KHÓA CỨNG (TRỪ ADMIN)
-  // =========================================================
   if (systemConfig.isActive && systemConfig.type === "MAINTENANCE" && !isAdmin) {
     return (
       <div className="bg-gray-950 min-h-screen w-full flex flex-col items-center justify-center p-6 text-center select-none">
@@ -144,15 +172,11 @@ const App = () => {
           <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
             <div className="bg-amber-500 h-full animate-pulse w-full"></div>
           </div>
-          <span className="text-gray-600 text-[11px] mt-6 font-medium">Đội ngũ AI Fitness xin lỗi vì sự bất tiện này</span>
         </div>
       </div>
     );
   }
 
-  // =========================================================
-  // 3. CHƯA ĐĂNG NHẬP -> CHUYỂN VÀO TRANG LOGIN
-  // =========================================================
   if (!isLoggedIn && !isLockedModalOpen) {
     return (
       <div className="bg-gray-950 min-h-screen w-full flex items-center justify-center overflow-hidden">
@@ -174,8 +198,95 @@ const App = () => {
       <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30 relative">
         
         {/* ========================================================= */}
-        {/* 🚨 MODAL THÔNG BÁO TÀI KHOẢN BỊ KHÓA (CHẶN TOÀN MÀN HÌNH) */}
+        {/* 📬 MODAL LIÊN HỆ ADMIN */}
         {/* ========================================================= */}
+        {isContactModalOpen && (
+          <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+            <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 relative">
+              
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-xl font-black text-white flex items-center gap-2">
+                  <MessageSquare className="w-6 h-6 text-blue-500" />
+                  Liên Hệ Ban Quản Trị
+                </h2>
+                <button 
+                  onClick={() => setIsContactModalOpen(false)}
+                  className="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {contactSuccess ? (
+                <div className="flex flex-col items-center text-center py-8 animate-in fade-in zoom-in">
+                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mb-4">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-2">Đã gửi thành công!</h3>
+                  <p className="text-gray-400 text-sm">Cảm ơn bạn. Admin sẽ ghi nhận và phản hồi sớm nhất.</p>
+                </div>
+              ) : (
+                <form onSubmit={handleContactSubmit} className="space-y-4">
+                  {/* Chọn loại liên hệ */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-300 ml-1">Chủ đề <span className="text-red-500">*</span></label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button type="button" onClick={() => setContactForm({...contactForm, type: 'help'})}
+                        className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'help' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
+                        🛟 Trợ giúp
+                      </button>
+                      <button type="button" onClick={() => setContactForm({...contactForm, type: 'bug'})}
+                        className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'bug' ? 'bg-red-500/20 border-red-500/50 text-red-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
+                        🐞 Báo lỗi
+                      </button>
+                      <button type="button" onClick={() => setContactForm({...contactForm, type: 'feedback'})}
+                        className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'feedback' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
+                        💡 Góp ý
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tiêu đề */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-300 ml-1">Tiêu đề <span className="text-red-500">*</span></label>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="Tóm tắt vấn đề của bạn..."
+                      className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                      value={contactForm.title}
+                      onChange={(e) => setContactForm({...contactForm, title: e.target.value})}
+                    />
+                  </div>
+
+                  {/* Nội dung chi tiết */}
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-semibold text-gray-300 ml-1">Nội dung chi tiết <span className="text-red-500">*</span></label>
+                    <textarea 
+                      required
+                      rows={4}
+                      placeholder="Mô tả chi tiết để Admin có thể giúp bạn tốt nhất nhé..."
+                      className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none"
+                      value={contactForm.content}
+                      onChange={(e) => setContactForm({...contactForm, content: e.target.value})}
+                    />
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    disabled={isSubmittingContact || !contactForm.title.trim() || !contactForm.content.trim()}
+                    className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+                  >
+                    {isSubmittingContact ? <Activity className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                    {isSubmittingContact ? "Đang gửi..." : "Gửi Cho Admin"}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 🚨 MODAL KHÓA TÀI KHOẢN */}
         {isLockedModalOpen && (
           <div className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
             <div className="bg-gray-900 border border-red-900/50 rounded-3xl p-6 md:p-8 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-300 relative">
@@ -198,16 +309,13 @@ const App = () => {
           </div>
         )}
 
-        {/* ========================================================= */}
-        {/* 4. THÔNG BÁO THƯỜNG (NORMAL) TỪ SYSTEM */}
-        {/* ========================================================= */}
+        {/* THÔNG BÁO TỪ HỆ THỐNG */}
         {isLoggedIn && systemConfig.isActive && systemConfig.type === "NORMAL" && !isNotificationClosed && (
           <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 md:p-8 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-300 relative">
               <button 
                 onClick={() => setIsNotificationClosed(true)}
                 className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
-                title="Đóng thông báo"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -231,16 +339,13 @@ const App = () => {
           </div>
         )}
 
-        {/* TRẠNG THÁI CẢNH BÁO CHO ADMIN KHI ĐANG TEST TRONG LÚC BẢO TRÌ */}
         {systemConfig.isActive && systemConfig.type === "MAINTENANCE" && isAdmin && (
           <div className="bg-red-950/80 text-red-400 border-b border-red-900/50 px-4 py-1 text-center text-[11px] font-bold tracking-wider uppercase sticky top-0 z-50">
             ⚠️ Chế độ bảo trì đang bật. Bạn đang truy cập bằng quyền Quản Trị Viên!
           </div>
         )}
 
-        {/* ========================================== */}
         {/* NAVBAR DESKTOP */}
-        {/* ========================================== */}
         <nav className="hidden md:flex bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 sticky top-0 z-40 w-full shadow-lg h-16 items-center px-8 justify-between">
           <div className="flex items-center gap-2 text-xl font-black text-white tracking-tight shrink-0">
             <Activity className="w-6 h-6 text-emerald-500" />
@@ -275,9 +380,7 @@ const App = () => {
           </div>
         </nav>
 
-        {/* ========================================== */}
         {/* HEADER MOBILE */}
-        {/* ========================================== */}
         <header className="md:hidden flex items-center justify-between px-4 h-14 bg-gray-900/80 backdrop-blur-xl border-b border-gray-800 sticky top-0 z-40">
           <div className="flex items-center gap-2 text-lg font-black text-white tracking-tight">
             <Activity className="w-5 h-5 text-emerald-500" />
@@ -294,9 +397,7 @@ const App = () => {
           </div>
         </header>
 
-        {/* ========================================== */}
         {/* SIDEBAR MENU TRƯỢT */}
-        {/* ========================================== */}
         {isMenuOpen && (
           <div className="fixed inset-0 z-[60] bg-black/60 backdrop-blur-sm flex justify-end" onClick={() => setIsMenuOpen(false)}>
             <div 
@@ -324,8 +425,19 @@ const App = () => {
                 </Link>
                 
                 <div className="h-px bg-gray-800 my-4 mx-2"></div>
+
+                {/* 🌟 NÚT LIÊN HỆ ĐƯỢC THÊM VÀO ĐÂY */}
+                <button 
+                  onClick={() => {
+                    setIsContactModalOpen(true);
+                    setIsMenuOpen(false);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-800 border border-transparent hover:border-gray-700 text-gray-300 hover:text-blue-400 transition-all font-semibold"
+                >
+                  <MessageSquare className="w-5 h-5"/> Liên Hệ Hỗ Trợ
+                </button>
                 
-                <Link to="/premium" onClick={() => setIsMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 border border-yellow-500/30 text-yellow-500 font-bold hover:bg-yellow-500/20 transition-colors shadow-inner">
+                <Link to="/premium" onClick={() => setIsMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-yellow-500/10 to-yellow-600/10 border border-yellow-500/30 text-yellow-500 font-bold hover:bg-yellow-500/20 transition-colors shadow-inner mt-2">
                   <Crown className="w-5 h-5"/> Nâng Cấp VIP
                 </Link>
               </div>
@@ -342,9 +454,7 @@ const App = () => {
           </div>
         )}
 
-        {/* ========================================== */}
         {/* NỘI DUNG CHÍNH */}
-        {/* ========================================== */}
         <main className="flex-1 w-full pb-20 md:pb-0 relative">
           <Routes>
             <Route path="/" element={<TodayDashboard />} />
@@ -364,9 +474,7 @@ const App = () => {
 
         <FloatingBot />
 
-        {/* ========================================== */}
         {/* BOTTOM NAVIGATION MOBILE */}
-        {/* ========================================== */}
         <nav className="md:hidden fixed bottom-0 left-0 w-full bg-gray-900/95 backdrop-blur-xl border-t border-gray-800 z-30 pb-safe overflow-x-auto">
           <div className="flex justify-around items-center h-16 px-2 w-full">
             {navItems.map((item) => (

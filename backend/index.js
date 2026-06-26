@@ -28,7 +28,7 @@ const dietRoutes = require('./routes/dietRoutes');
 const gamificationRoutes = require('./routes/gamificationRoutes');
 const postRoutes = require('./routes/postRoutes');
 const libraryRoutes = require('./routes/libraryRoutes');
-
+const contactRoutes = require('./routes/contactRoutes');
 // Hệ thống & Quản lý bảo trì
 const systemController = require("./controllers/systemController");
 const systemRoutes = require("./routes/systemRoutes");
@@ -84,7 +84,7 @@ app.use('/api/transactions', transactionRoutes);
 app.use('/api/gamification', gamificationRoutes);
 app.use('/api/posts', postRoutes);
 app.use('/api/library', libraryRoutes);
-
+app.use('/api/contact', contactRoutes);
 // ==========================================
 // 6. KHỞI CHẠY HỆ THỐNG & XỬ LÝ LỖI CORNER CASES
 // ==========================================
