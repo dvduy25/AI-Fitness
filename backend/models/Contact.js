@@ -14,5 +14,5 @@ const contactSchema = new mongoose.Schema({
 }, { 
   timestamps: true 
 });
-
+contactSchema.index({ repliedAt: 1 }, { expireAfterSeconds: 2592000 });
 module.exports = mongoose.model('Contact', contactSchema);

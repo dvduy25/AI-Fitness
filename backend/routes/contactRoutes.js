@@ -5,7 +5,9 @@ const {
   createContact, 
   getUserContacts,
   getAllContacts, // Bổ sung hàm lấy tất cả
-  replyContact    // Bổ sung hàm trả lời
+  replyContact ,
+  editContactReply,    // Import hàm sửa
+  deleteContactReply   // Bổ sung hàm trả lời
 } = require('../controllers/contactController');
 
 // Import middleware (Thêm verifyAdmin để check quyền)
@@ -20,7 +22,10 @@ router.post('/', verifyToken, createContact);
 // User lấy lịch sử của mình
 router.get('/my-history', verifyToken, getUserContacts);
 
+router.put('/admin/:contactId/reply/edit', verifyToken, authorizeRoles("admin"), editContactReply);
 
+// Admin xóa phản hồi
+router.put('/admin/:contactId/reply/delete', verifyToken, authorizeRoles("admin"), deleteContactReply);
 // ==========================================
 // 2. DÀNH CHO ADMIN
 // ==========================================

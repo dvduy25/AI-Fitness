@@ -85,10 +85,61 @@ const replyContact = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
+// ==========================================
+// 3. QUẢN LÝ PHẢN HỒI (DÀNH CHO ADMIN)
+// ==========================================
+
+// Sửa phản hồi đã gửi
+const editContactReply = async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    const { adminReply } = req.body; 
+
+    const contact = await Contact.findById(contactId);
+    if (!contact) {
+      return res.status(404).json({ message: "Không tìm thấy yêu cầu này!" });
+    }
+
+    // Cập nhật nội dung mới và thời gian sửa
+    contact.adminReply = adminReply;
+    contact.repliedAt = Date.now(); 
+    
+    await contact.save();
+
+    res.status(200).json({ success: true, message: "Cập nhật phản hồi thành công!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi server khi sửa phản hồi" });
+  }
+};
+
+// Xóa phản hồi (Đưa yêu cầu về lại trạng thái chờ)
+const deleteContactReply = async (req, res) => {
+  try {
+    const { contactId } = req.params;
+
+    const contact = await Contact.findById(contactId);
+    if (!contact) {
+      return res.status(404).json({ message: "Không tìm thấy yêu cầu này!" });
+    }
+
+    // Xóa dữ liệu phản hồi và hoàn tác trạng thái
+    contact.adminReply = null;
+    contact.repliedAt = null;
+    contact.status = 'pending'; 
+    
+    await contact.save();
+
+    res.status(200).json({ success: true, message: "Đã thu hồi phản hồi, trạng thái trở về Chờ xử lý!" });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi server khi xóa phản hồi" });
+  }
+};
 
 module.exports = { 
   createContact, 
   getUserContacts, 
-  getAllContacts, // Nhớ export hàm mới này
-  replyContact 
+  getAllContacts, 
+  replyContact,
+  editContactReply, // Bổ sung export
+  deleteContactReply // Bổ sung export
 };
