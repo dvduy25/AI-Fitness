@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-rou
 import {
   LogOut, Home, User, Utensils, Dumbbell, Activity, History,
   Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell, Lock,
-  MessageSquare, Send, CheckCircle2 // ĐÃ THÊM: Icon cho chức năng Liên Hệ
+  MessageSquare, Send, CheckCircle2
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -60,6 +60,25 @@ const App = () => {
   const [contactForm, setContactForm] = useState({ type: 'help', title: '', content: '' });
   const [isSubmittingContact, setIsSubmittingContact] = useState(false);
   const [contactSuccess, setContactSuccess] = useState(false);
+  
+  // 🌟 ĐÃ THÊM: State quản lý Tab và Lịch sử
+  const [contactTab, setContactTab] = useState('send'); // 'send' | 'history'
+  const [contactHistoryList, setContactHistoryList] = useState([]);
+
+  // 🌟 ĐÃ THÊM: Hàm gọi API lấy lịch sử
+  const fetchContactHistory = async () => {
+    try {
+      const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
+      const res = await axios.get("https://ai-fitness-w6fd.onrender.com/api/contact/my-history", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if(res.data.success) {
+        setContactHistoryList(res.data.data);
+      }
+    } catch (error) {
+      console.error("Lỗi lấy lịch sử:", error);
+    }
+  };
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
@@ -69,13 +88,10 @@ const App = () => {
     try {
       const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
 
-      // GỌI API ĐẾN BACKEND ĐỂ LƯU LIÊN HỆ (Bạn cần tạo Route này ở Backend)
-      // await axios.post("https://ai-fitness-w6fd.onrender.com/api/contact", contactForm, {
-      //   headers: { Authorization: `Bearer ${token}` }
-      // });
-
-      // GIẢ LẬP GỌI API THÀNH CÔNG (Sau này mở comment dòng trên và xóa timeout này)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // 🌟 ĐÃ MỞ KHÓA: Gọi API thật lên Backend
+      await axios.post("https://ai-fitness-w6fd.onrender.com/api/contact", contactForm, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
       setContactSuccess(true);
       setTimeout(() => {
@@ -198,18 +214,18 @@ const App = () => {
       <div className="bg-gray-950 min-h-screen w-full flex flex-col font-sans text-gray-200 selection:bg-emerald-500/30 relative">
 
         {/* ========================================================= */}
-        {/* 📬 MODAL LIÊN HỆ ADMIN */}
+        {/* 📬 MODAL LIÊN HỆ ADMIN (CÓ TAB LỊCH SỬ) */}
         {/* ========================================================= */}
         {isContactModalOpen && (
           <div className="fixed inset-0 z-[150] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
-            <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 relative">
-
-              <div className="flex justify-between items-center mb-6">
+            <div className="bg-gray-900 border border-gray-800 rounded-3xl p-6 w-full max-w-lg shadow-2xl animate-in zoom-in-95 duration-200 relative flex flex-col max-h-[90vh]">
+              
+              <div className="flex justify-between items-center mb-4 shrink-0">
                 <h2 className="text-xl font-black text-white flex items-center gap-2">
                   <MessageSquare className="w-6 h-6 text-blue-500" />
-                  Liên Hệ Ban Quản Trị
+                  Hỗ Trợ & Phản Hồi
                 </h2>
-                <button
+                <button 
                   onClick={() => setIsContactModalOpen(false)}
                   className="p-2 text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-full transition-colors"
                 >
@@ -217,71 +233,124 @@ const App = () => {
                 </button>
               </div>
 
-              {contactSuccess ? (
-                <div className="flex flex-col items-center text-center py-8 animate-in fade-in zoom-in">
-                  <div className="w-16 h-16 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mb-4">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <h3 className="text-lg font-bold text-white mb-2">Đã gửi thành công!</h3>
-                  <p className="text-gray-400 text-sm">Cảm ơn bạn. Admin sẽ ghi nhận và phản hồi sớm nhất.</p>
-                </div>
-              ) : (
-                <form onSubmit={handleContactSubmit} className="space-y-4">
-                  {/* Chọn loại liên hệ */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-300 ml-1">Chủ đề <span className="text-red-500">*</span></label>
-                    <div className="grid grid-cols-3 gap-2">
-                      <button type="button" onClick={() => setContactForm({ ...contactForm, type: 'help' })}
-                        className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'help' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
-                        🛟 Trợ giúp
-                      </button>
-                      <button type="button" onClick={() => setContactForm({ ...contactForm, type: 'bug' })}
-                        className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'bug' ? 'bg-red-500/20 border-red-500/50 text-red-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
-                        🐞 Báo lỗi
-                      </button>
-                      <button type="button" onClick={() => setContactForm({ ...contactForm, type: 'feedback' })}
-                        className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'feedback' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
-                        💡 Góp ý
-                      </button>
+              {/* TABS CHUYỂN ĐỔI: GỬI / LỊCH SỬ */}
+              <div className="flex gap-2 bg-gray-950 p-1.5 rounded-xl mb-6 shrink-0 border border-gray-800">
+                <button 
+                  onClick={() => setContactTab('send')}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${contactTab === 'send' ? 'bg-gray-800 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  Gửi Yêu Cầu
+                </button>
+                <button 
+                  onClick={() => {
+                    setContactTab('history');
+                    fetchContactHistory(); // Gọi API khi chuyển sang tab lịch sử
+                  }}
+                  className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${contactTab === 'history' ? 'bg-gray-800 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  Lịch Sử Của Tôi
+                </button>
+              </div>
+
+              <div className="overflow-y-auto pr-1 flex-1 custom-scrollbar">
+                {/* TAB 1: FORM GỬI YÊU CẦU */}
+                {contactTab === 'send' && (
+                  contactSuccess ? (
+                    <div className="flex flex-col items-center text-center py-8 animate-in fade-in zoom-in">
+                      <div className="w-16 h-16 bg-emerald-500/20 text-emerald-500 rounded-full flex items-center justify-center mb-4">
+                        <CheckCircle2 className="w-8 h-8" />
+                      </div>
+                      <h3 className="text-lg font-bold text-white mb-2">Đã gửi thành công!</h3>
+                      <p className="text-gray-400 text-sm">Cảm ơn bạn. Admin sẽ ghi nhận và phản hồi sớm nhất.</p>
                     </div>
-                  </div>
+                  ) : (
+                    <form onSubmit={handleContactSubmit} className="space-y-4">
+                      {/* Chọn loại liên hệ */}
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-semibold text-gray-300 ml-1">Chủ đề <span className="text-red-500">*</span></label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button type="button" onClick={() => setContactForm({ ...contactForm, type: 'help' })}
+                            className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'help' ? 'bg-blue-500/20 border-blue-500/50 text-blue-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
+                            🛟 Trợ giúp
+                          </button>
+                          <button type="button" onClick={() => setContactForm({ ...contactForm, type: 'bug' })}
+                            className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'bug' ? 'bg-red-500/20 border-red-500/50 text-red-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
+                            🐞 Báo lỗi
+                          </button>
+                          <button type="button" onClick={() => setContactForm({ ...contactForm, type: 'feedback' })}
+                            className={`p-2 rounded-xl text-sm font-bold border transition-all flex flex-col items-center justify-center gap-1 ${contactForm.type === 'feedback' ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-400' : 'bg-gray-800 border-transparent text-gray-400 hover:bg-gray-700'}`}>
+                            💡 Góp ý
+                          </button>
+                        </div>
+                      </div>
 
-                  {/* Tiêu đề */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-300 ml-1">Tiêu đề <span className="text-red-500">*</span></label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="Tóm tắt vấn đề của bạn..."
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
-                      value={contactForm.title}
-                      onChange={(e) => setContactForm({ ...contactForm, title: e.target.value })}
-                    />
-                  </div>
+                      {/* Tiêu đề */}
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-semibold text-gray-300 ml-1">Tiêu đề <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="Tóm tắt vấn đề của bạn..."
+                          className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                          value={contactForm.title}
+                          onChange={(e) => setContactForm({ ...contactForm, title: e.target.value })}
+                        />
+                      </div>
 
-                  {/* Nội dung chi tiết */}
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-gray-300 ml-1">Nội dung chi tiết <span className="text-red-500">*</span></label>
-                    <textarea
-                      required
-                      rows={4}
-                      placeholder="Mô tả chi tiết để Admin có thể giúp bạn tốt nhất nhé..."
-                      className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none"
-                      value={contactForm.content}
-                      onChange={(e) => setContactForm({ ...contactForm, content: e.target.value })}
-                    />
-                  </div>
+                      {/* Nội dung chi tiết */}
+                      <div className="space-y-1.5">
+                        <label className="text-sm font-semibold text-gray-300 ml-1">Nội dung chi tiết <span className="text-red-500">*</span></label>
+                        <textarea
+                          required
+                          rows={4}
+                          placeholder="Mô tả chi tiết để Admin có thể giúp bạn tốt nhất nhé..."
+                          className="w-full bg-gray-950 border border-gray-800 rounded-xl px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all resize-none"
+                          value={contactForm.content}
+                          onChange={(e) => setContactForm({ ...contactForm, content: e.target.value })}
+                        />
+                      </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmittingContact || !contactForm.title.trim() || !contactForm.content.trim()}
-                    className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/20"
-                  >
-                    {isSubmittingContact ? <Activity className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
-                    {isSubmittingContact ? "Đang gửi..." : "Gửi Cho Admin"}
-                  </button>
-                </form>
-              )}
+                      <button
+                        type="submit"
+                        disabled={isSubmittingContact || !contactForm.title.trim() || !contactForm.content.trim()}
+                        className="w-full mt-2 py-3.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-500 text-white rounded-xl font-bold flex justify-center items-center gap-2 transition-all active:scale-95 shadow-lg shadow-blue-500/20"
+                      >
+                        {isSubmittingContact ? <Activity className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+                        {isSubmittingContact ? "Đang gửi..." : "Gửi Cho Admin"}
+                      </button>
+                    </form>
+                  )
+                )}
+
+                {/* TAB 2: LỊCH SỬ XEM PHẢN HỒI */}
+                {contactTab === 'history' && (
+                  <div className="space-y-4">
+                    {contactHistoryList.length === 0 ? (
+                      <p className="text-center text-gray-500 py-6 text-sm">Bạn chưa gửi yêu cầu nào.</p>
+                    ) : (
+                      contactHistoryList.map((item, idx) => (
+                        <div key={idx} className="bg-gray-950 border border-gray-800 rounded-xl p-4">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="font-bold text-white">{item.title}</span>
+                            <span className={`text-[10px] uppercase font-bold px-2 py-1 rounded-md ${item.status === 'resolved' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}`}>
+                              {item.status === 'resolved' ? 'Đã giải quyết' : 'Đang xử lý'}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-400 mb-3">{item.content}</p>
+                          
+                          {/* Khung hiển thị câu trả lời của Admin */}
+                          {item.adminReply && (
+                            <div className="bg-emerald-950/30 border-l-4 border-emerald-500 p-3 rounded-r-lg mt-3">
+                              <p className="text-xs font-bold text-emerald-400 mb-1">Admin phản hồi:</p>
+                              <p className="text-sm text-gray-300">{item.adminReply}</p>
+                            </div>
+                          )}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -429,6 +498,7 @@ const App = () => {
                 {/* 🌟 NÚT LIÊN HỆ ĐƯỢC THÊM VÀO ĐÂY */}
                 <button
                   onClick={() => {
+                    setContactTab('send'); // Đặt mặc định là tab gửi khi mở
                     setIsContactModalOpen(true);
                     setIsMenuOpen(false);
                   }}

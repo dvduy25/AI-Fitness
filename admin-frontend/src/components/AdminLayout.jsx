@@ -2,7 +2,7 @@
 import React from 'react';
 import { Outlet, NavLink, useNavigate, useLocation, Navigate } from 'react-router-dom';
 // 👇 ĐÃ THÊM: Import icon AlertTriangle để làm menu Báo cáo
-import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt, Settings, AlertTriangle } from 'lucide-react';
+import { LayoutDashboard, Dumbbell, Apple, Users, LogOut, UserCircle, ShieldCheck, Receipt, Settings, AlertTriangle, MessageSquare } from 'lucide-react';
 
 const AdminLayout = () => {
   const navigate = useNavigate();
@@ -28,6 +28,7 @@ const AdminLayout = () => {
     { path: '/users', name: 'Quản lý Users', icon: Users },
     // 👇 NÚT MỚI THÊM: Quản lý báo cáo vi phạm
     { path: '/reports', name: 'Quản lý Báo cáo', icon: AlertTriangle },
+    { path: '/contacts', name: 'Hỗ trợ & Liên hệ', icon: MessageSquare },
     { path: '/premium', name: 'Gói Premium', icon: ShieldCheck },
     { path: '/premium-history', name: 'Lịch sử mua Premium', icon: Receipt },
     { path: '/system-settings', name: 'Cài đặt Hệ thống', icon: Settings },

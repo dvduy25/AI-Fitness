@@ -11,6 +11,7 @@ import Users from './pages/Users';
 import RevenueDashboard from './pages/RevenueDashboard'; 
 import AdminPremiumManager from './pages/AdminPremiumManager'; 
 import SystemNotificationManager from './pages/SystemNotificationManager'; 
+import AdminContactManager from './pages/AdminContactManager';
 
 // 👇 ĐÃ THÊM: Import trang Quản lý Báo cáo vi phạm
 import AdminReportManager from './pages/AdminReportManager'; 
@@ -29,7 +30,7 @@ function App() {
           
           {/* 👇 ĐÃ THÊM: Route xử lý báo cáo bài viết */}
           <Route path="reports" element={<AdminReportManager />} />
-          
+          <Route path="contacts" element={<AdminContactManager />} />
           <Route path="premium" element={<AdminPremiumManager />} />
           <Route path="premium-history" element={<RevenueDashboard />} />
           <Route path="system-settings" element={<SystemNotificationManager />} />
