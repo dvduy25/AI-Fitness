@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
 import {
@@ -8,19 +9,25 @@ import {
 import axios from 'axios';
 
 // Import các trang (Components)
+// 🚀 HIỆU NĂNG: Lazy-load các trang theo route để giảm kích thước bundle đầu vào.
+// Trước đây toàn bộ 24 trang được bundle chung vào 1 file JS ~1MB, khiến người
+// dùng phải tải toàn bộ ứng dụng (kể cả các trang họ chưa dùng tới) ngay khi mở
+// trang đầu tiên. Với React.lazy, mỗi trang chỉ được tải khi người dùng thực sự
+// điều hướng tới route đó.
+import { Suspense, lazy } from "react";
 import AuthPage from "./AuthPage";
-import TodayDashboard from "./DailyDashboard";
-import Profile from "./Profile";
-import MealPlanManager from "./MealPlanManager";
-import WorkoutPlanManager from "./WorkoutPlanManager";
-import DietHistory from "./DietHistory";
-import WorkoutTracker from "./WorkoutTracker";
-import PremiumUpgrade from "./PremiumUpgrade";
-import Community from "./Community";
-import PostDetail from "./PostDetail";
-import MyLibrary from "./MyLibrary";
+const TodayDashboard = lazy(() => import("./DailyDashboard"));
+const Profile = lazy(() => import("./Profile"));
+const MealPlanManager = lazy(() => import("./MealPlanManager"));
+const WorkoutPlanManager = lazy(() => import("./WorkoutPlanManager"));
+const DietHistory = lazy(() => import("./DietHistory"));
+const WorkoutTracker = lazy(() => import("./WorkoutTracker"));
+const PremiumUpgrade = lazy(() => import("./PremiumUpgrade"));
+const Community = lazy(() => import("./Community"));
+const PostDetail = lazy(() => import("./PostDetail"));
+const MyLibrary = lazy(() => import("./MyLibrary"));
+const CalorieCalculator = lazy(() => import("./CalorieCalculator"));
 import FloatingBot from "./FloatingBot";
-import CalorieCalculator from "./CalorieCalculator";
 
 // =========================================================
 // 🛡️ LƯỚI BẢO VỆ TOÀN CẦU
@@ -69,7 +76,7 @@ const App = () => {
   const fetchContactHistory = async () => {
     try {
       const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
-      const res = await axios.get("https://ai-fitness-w6fd.onrender.com/api/contact/my-history", {
+      const res = await api.get("/contact/my-history", {
         headers: { Authorization: `Bearer ${token}` }
       });
       if(res.data.success) {
@@ -89,7 +96,7 @@ const App = () => {
       const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
 
       // 🌟 ĐÃ MỞ KHÓA: Gọi API thật lên Backend
-      await axios.post("https://ai-fitness-w6fd.onrender.com/api/contact", contactForm, {
+      await api.post("/contact", contactForm, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -125,7 +132,7 @@ const App = () => {
 
     const checkSystemStatus = async () => {
       try {
-        const res = await axios.get("https://ai-fitness-w6fd.onrender.com/api/system/maintenance");
+        const res = await api.get("/system/maintenance");
         const result = res.data;
 
         if (result && result.success && result.data) {
@@ -526,20 +533,26 @@ const App = () => {
 
         {/* NỘI DUNG CHÍNH */}
         <main className="flex-1 w-full pb-20 md:pb-0 relative">
-          <Routes>
-            <Route path="/" element={<TodayDashboard />} />
-            <Route path="/community" element={<Community />} />
-            <Route path="/post/:postId" element={<PostDetail />} />
-            <Route path="/library" element={<MyLibrary />} />
-            <Route path="/diet-history" element={<DietHistory />} />
-            <Route path="/meal-plan" element={<MealPlanManager />} />
-            <Route path="/workout-plan" element={<WorkoutPlanManager />} />
-            <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
-            <Route path="/workout-tracker" element={<WorkoutTracker />} />
-            <Route path="/premium" element={<PremiumUpgrade />} />
-            <Route path="/calorie-calculator" element={<CalorieCalculator />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+          <Suspense fallback={
+            <div className="w-full h-[60vh] flex items-center justify-center">
+              <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin"></div>
+            </div>
+          }>
+            <Routes>
+              <Route path="/" element={<TodayDashboard />} />
+              <Route path="/community" element={<Community />} />
+              <Route path="/post/:postId" element={<PostDetail />} />
+              <Route path="/library" element={<MyLibrary />} />
+              <Route path="/diet-history" element={<DietHistory />} />
+              <Route path="/meal-plan" element={<MealPlanManager />} />
+              <Route path="/workout-plan" element={<WorkoutPlanManager />} />
+              <Route path="/profile" element={<Profile onLogout={handleLogout} />} />
+              <Route path="/workout-tracker" element={<WorkoutTracker />} />
+              <Route path="/premium" element={<PremiumUpgrade />} />
+              <Route path="/calorie-calculator" element={<CalorieCalculator />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </main>
 
         <FloatingBot />

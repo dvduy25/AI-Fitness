@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const Food = require("../models/Food");
 const Exercise = require("../models/Exercise");
+const { escapeRegex } = require("../utils/escapeRegex");
 
 
 const Post = require("../models/Post");
@@ -107,9 +108,10 @@ exports.getAllUsers = async (req, res) => {
     let query = {};
 
     if (search) {
+      const safeSearch = escapeRegex(String(search).trim().slice(0, 100));
       query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } }
+        { name: { $regex: safeSearch, $options: "i" } },
+        { email: { $regex: safeSearch, $options: "i" } }
       ];
     }
     

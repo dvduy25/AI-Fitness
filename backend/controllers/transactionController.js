@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Transaction = require('../models/Transaction'); // Import model lịch sử giao dịch
 const PremiumPackage = require('../models/PremiumPackage'); // ĐÃ THÊM: Import model Gói Premium động
 const axios = require('axios'); 
+const { verifyAdmobRequest } = require('../utils/verifyAdmobSignature');
 // ==========================================
 // 1. WEBHOOK THANH TOÁN THẬT (MOMO / VNPAY / ZALOPAY)
 // ==========================================
@@ -95,6 +96,15 @@ exports.adMobWebhook = async (req, res) => {
 
     if (!custom_data || !transaction_id) {
       return res.status(400).send("Thiếu thông tin bắt buộc");
+    }
+
+    // 🛡️ BẢO MẬT: Bắt buộc xác thực chữ ký SSV của Google trước khi cộng vé.
+    // Nếu không có bước này, bất kỳ ai cũng có thể tự gọi URL này để cộng
+    // khống vé AI cho mình mà không cần thật sự xem quảng cáo.
+    const verification = await verifyAdmobRequest(req);
+    if (!verification.valid) {
+      console.warn(`[CẢNH BÁO] Webhook AdMob có chữ ký không hợp lệ: ${verification.reason}`);
+      return res.status(403).send("Chữ ký không hợp lệ");
     }
 
     const userId = custom_data; 
@@ -220,10 +230,9 @@ exports.createPaymentUrl = async (req, res) => {
     const orderId = `VIP_${Date.now()}_${userId.substring(0, 4)}`;
     const orderInfo = `Nang cap ${selectedPackage.name}`;
     
-    // Link trả về Frontend sau khi thanh toán xong
-    const redirectUrl = "http://localhost:5173/profile"; 
-    // Link gọi về Webhook của bạn (Phải là public HTTPS, dùng Ngrok nếu test local)
-    const ipnUrl = "https://your-ngrok-domain.com/api/payment/webhook"; 
+    // Lấy từ .env - không hardcode URL
+    const redirectUrl = process.env.MOMO_REDIRECT_URL || "http://localhost:5173/profile";
+    const ipnUrl = process.env.MOMO_IPN_URL || "https://your-backend-domain.com/api/transactions/webhook/payment";
     
     const extraData = userId; // Nhét userId vào để Webhook biết ai mua (khớp với logic Webhook của bạn)
     const requestId = orderId;

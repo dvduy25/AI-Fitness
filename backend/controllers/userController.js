@@ -1,5 +1,5 @@
 const User = require("../models/User");
-const bcrypt = require("bcryptjs");
+const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const WeightLog = require("../models/WeightLog");
 const crypto = require('crypto');
@@ -137,23 +137,40 @@ exports.getUserProfileById = async (req, res) => {
   }
 };
 
+// 🛡️ BẢO MẬT: Whitelist các field mà USER được phép tự sửa.
+// TUYỆT ĐỐI không cho sửa: role, isPremium, premiumUntil, isLocked, isVerified,
+// aiTickets, followers, following, password, email, cccd (những field nhạy cảm
+// quyết định quyền hạn / trạng thái tài khoản) — nếu không user có thể tự phong
+// admin, tự cấp Premium vĩnh viễn, tự mở khóa tài khoản chỉ bằng cách gửi thêm
+// field vào body của request PUT /me.
+const ALLOWED_PROFILE_FIELDS = [
+  "name", "avatar", "phone", "address",
+  "age", "gender", "height", "weight",
+  "goal", "fitnessLevel", "workoutLocation",
+  "availableEquipment", "medicalConditions"
+];
+
 exports.updateProfile = async (req, res) => {
   try {
     const userId = req.user.id;
-    const updates = req.body;
 
-    delete updates.password;
-    delete updates.email; 
+    // Chỉ lấy ra đúng các field được phép, bỏ qua mọi field khác trong body
+    const updates = {};
+    for (const field of ALLOWED_PROFILE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(req.body, field)) {
+        updates[field] = req.body[field];
+      }
+    }
 
     const currentUser = await User.findById(userId);
     if (!currentUser) return res.status(404).json({ message: "Người dùng không tồn tại" });
 
-    const age = updates.age || currentUser.age;
-    const gender = updates.gender || currentUser.gender;
-    const height = updates.height || currentUser.height;
-    const weight = updates.weight || currentUser.weight;
-    const goal = updates.goal || currentUser.goal;
-    const fitnessLevel = updates.fitnessLevel || currentUser.fitnessLevel;
+    const age = updates.age ?? currentUser.age;
+    const gender = updates.gender ?? currentUser.gender;
+    const height = updates.height ?? currentUser.height;
+    const weight = updates.weight ?? currentUser.weight;
+    const goal = updates.goal ?? currentUser.goal;
+    const fitnessLevel = updates.fitnessLevel ?? currentUser.fitnessLevel;
 
     const newMacros = calculateMacros(age, gender, height, weight, goal, fitnessLevel);
     updates.targetMacros = newMacros;

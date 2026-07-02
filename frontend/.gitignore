@@ -1,0 +1,15 @@
+# Bảo mật
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+
+# OS
+.DS_Store
+Thumbs.db

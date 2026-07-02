@@ -1,0 +1,18 @@
+# Bảo mật: KHÔNG đẩy .env lên Git
+.env
+.env.local
+.env.production
+
+# Dependencies
+node_modules/
+
+# Upload files (lưu trên server, không cần trong Git)
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db

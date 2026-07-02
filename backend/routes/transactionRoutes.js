@@ -1,42 +1,45 @@
-const express = require('express');
+const express = require("express");
 const router = express.Router();
-
-// Import các hàm từ Controller của bạn (đổi đường dẫn cho khớp với dự án của bạn)
-const { 
-  paymentWebhook, 
-  adMobWebhook, 
-  virtualAdView, 
-  getMyTransactions ,
+const {
+  paymentWebhook,
+  adMobWebhook,
+  virtualAdView,
+  getMyTransactions,
   createPaymentUrl,
   virtualPayment
-} = require('../controllers/transactionController'); 
-
-// Import middleware xác thực (kiểm tra Token JWT)
-const { verifyToken } = require("../middleware/authMiddleware"); // Middleware bạn đang dùng để lấy req.user
-
-// ==========================================
-// CÁC ROUTE PUBLIC (Không cần Token)
-// Các cổng thanh toán (MoMo, VNPay) hoặc Google Admob sẽ gọi thẳng vào đây
-// ==========================================
-
-// [POST] Webhook nhận thông báo thanh toán thành công
-router.post('/webhook/payment', paymentWebhook);
-
-// [GET] Webhook nhận thông báo xem xong quảng cáo Admob
-router.get('/webhook/admob', adMobWebhook);
-
+} = require("../controllers/transactionController");
+const { verifyToken, authorizeRoles } = require("../middleware/authMiddleware");
+const { webhookLimiter } = require("../middleware/rateLimiter");
 
 // ==========================================
-// CÁC ROUTE PROTECTED (Cần đăng nhập - Có Token)
-// Chỉ User đang đăng nhập trên App mới được gọi
+// WEBHOOK CÔNG KHAI (MoMo / AdMob gọi vào)
+// Có rate limit riêng để chống spam webhook
 // ==========================================
+router.post("/webhook/payment", webhookLimiter, paymentWebhook);
+router.get("/webhook/admob", webhookLimiter, adMobWebhook);
 
-// [POST] Xem quảng cáo ảo để nhận vé AI
-router.post('/virtual-ad', verifyToken, virtualAdView);
+// ==========================================
+// ROUTES PROTECTED (Cần đăng nhập)
+// ==========================================
+router.post("/virtual-ad", verifyToken, virtualAdView);
+router.get("/my-history", verifyToken, getMyTransactions);
+router.post("/payment/create-url", verifyToken, createPaymentUrl);
 
-// [GET] Xem lịch sử nạp VIP và nhận vé
-router.get('/my-history', verifyToken, getMyTransactions);
-// Thay verifyToken bằng middleware xác thực của bạn
-router.post('/payment/create-url', verifyToken, createPaymentUrl);
-router.post('/virtual-payment', verifyToken, virtualPayment);
+// ==========================================
+// ⚠️  THANH TOÁN ẢO - CHỈ DÀNH CHO DEVELOPMENT
+// Được bảo vệ bằng 2 lớp:
+//   1. NODE_ENV !== "production"
+//   2. Phải là Admin
+// Nếu deploy production thì route này tự động bị vô hiệu hóa
+// ==========================================
+if (process.env.NODE_ENV !== "production") {
+  router.post(
+    "/virtual-payment",
+    verifyToken,
+    authorizeRoles("admin"),
+    virtualPayment
+  );
+  console.log("⚠️  [DEV ONLY] Route /api/transactions/virtual-payment đang hoạt động (chỉ admin).");
+}
+
 module.exports = router;

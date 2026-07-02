@@ -1,9 +1,9 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { X, Activity, Bookmark, Utensils, Heart, MessageCircle, Eye, Share2, BadgeCheck, Send, Flag } from 'lucide-react';
 import MediaCarousel from './MediaCarousel'; 
 
-const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
 const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, handleShare, handleSaveToLibrary, setViewingPlan, setSelectedUserFilter }) => {
   const [comments, setComments] = useState([]);
@@ -19,7 +19,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
   useEffect(() => {
     const fetchComments = async () => {
       try {
-        const response = await axios.get(`${API_BASE_URL}/api/posts/${post._id}/comments`, {
+        const response = await api.get(`/posts/${post._id}/comments`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (response.data.success) {
@@ -38,7 +38,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
     e.preventDefault();
     if (!newComment.trim()) return;
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/posts/${post._id}/comments`, { content: newComment }, {
+      const response = await api.post(`/posts/${post._id}/comments`, { content: newComment }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
@@ -65,7 +65,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
     }
     try {
       await axios.post(
-        `${API_BASE_URL}/api/posts/${post._id}/report`, 
+        `/api/posts/${post._id}/report`, 
         { reason: reportReason }, 
         { headers: { Authorization: `Bearer ${token}` } }
       );

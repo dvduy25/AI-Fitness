@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
@@ -5,7 +6,6 @@ import {
   ChevronRight, Bookmark, AlertTriangle, Loader2 
 } from 'lucide-react';
 
-const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
 export default function MyLibrary() {
   const [library, setLibrary] = useState([]);
@@ -16,7 +16,7 @@ export default function MyLibrary() {
   // 1. Lấy danh sách từ kho
   const fetchLibrary = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/library`, {
+      const response = await api.get(`/library`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
@@ -41,7 +41,7 @@ export default function MyLibrary() {
     try {
       // Gọi API apply bạn đã viết ở Backend
       const response = await axios.post(
-        `${API_BASE_URL}/api/library/${item._id}/apply`, 
+        `/api/library/${item._id}/apply`, 
         {}, 
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -60,7 +60,7 @@ export default function MyLibrary() {
   const handleRemove = async (id) => {
     if (!window.confirm("Xóa mục này khỏi kho lưu trữ?")) return;
     try {
-      await axios.delete(`${API_BASE_URL}/api/library/${id}`, {
+      await api.delete(`/library/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setLibrary(library.filter(item => item._id !== id));

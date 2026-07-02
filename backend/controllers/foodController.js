@@ -1,4 +1,5 @@
 const Food = require("../models/Food");
+const { escapeRegex, safeSearchRegex } = require("../utils/escapeRegex");
 
 // 🌟 KHAI BÁO THƯ VIỆN AI
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -10,7 +11,8 @@ exports.getAllFoods = async (req, res) => {
     const { search } = req.query;
     let query = {};
     if (search) {
-      query.name = { $regex: search, $options: "i" };
+      // 🛡️ Escape regex để chống NoSQL Regex Injection / ReDoS
+      query.name = safeSearchRegex(search);
     }
 
     const foods = await Food.find(query).sort({ createdAt: -1 });
@@ -31,7 +33,7 @@ exports.createFood = async (req, res) => {
 
     // Kiểm tra trùng lặp
     const duplicateFood = await Food.findOne({
-      name: { $regex: new RegExp(`^${name.trim()}$`, "i") }
+      name: { $regex: new RegExp(`^${escapeRegex(name.trim())}$`, "i") }
     });
 
     if (duplicateFood) {
@@ -65,7 +67,7 @@ exports.updateFood = async (req, res) => {
     // Nếu đổi tên, kiểm tra xem tên mới có trùng với món khác không
     if (name) {
       const duplicateFood = await Food.findOne({
-        name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
+        name: { $regex: new RegExp(`^${escapeRegex(name.trim())}$`, "i") },
         _id: { $ne: id }
       });
 
@@ -99,10 +101,6 @@ exports.deleteFood = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: "Lỗi xóa món ăn", error: error.message });
   }
-};
-
-const escapeRegex = (string) => {
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 };
 
 // 5. API GỢI Ý MÓN ĂN (Tìm kiếm Regex)

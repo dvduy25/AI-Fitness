@@ -104,7 +104,15 @@ exports.createPost = async (req, res) => {
 exports.shareMasterPlan = async (req, res) => {
   try {
     const { content, shareType } = req.body;
-    const userId = req.user.id;
+    // CHI PT MOI DUOC CHIA SE LICH TAP / LICH AN
+    if (req.user.role !== "trainer") {
+      return res.status(403).json({
+        success: false,
+        message: "Chi co Personal Trainer (PT) moi duoc chia se lich tap va lich an!",
+        requiresPTRole: true,
+      });
+    }
+    const userId = req.user._id;
     const { images, video } = handleMediaFiles(req);
 
     let workoutSnapshot = null;

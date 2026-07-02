@@ -1,4 +1,5 @@
 const Exercise = require("../models/Exercise");
+const { escapeRegex, safeSearchRegex } = require("../utils/escapeRegex");
 
 // 🌟 KHAI BÁO THƯ VIỆN AI Ở ĐÂY (ĐẦU FILE)
 const { GoogleGenerativeAI } = require("@google/generative-ai");
@@ -23,7 +24,7 @@ exports.createExercise = async (req, res) => {
 
     // 🔍 KIỂM TRA TRÙNG TÊN (Không phân biệt hoa thường và khoảng trắng thừa)
     const duplicateExercise = await Exercise.findOne({
-      name: { $regex: new RegExp(`^${name.trim()}$`, "i") }
+      name: { $regex: new RegExp(`^${escapeRegex(name.trim())}$`, "i") }
     });
 
     if (duplicateExercise) {
@@ -58,7 +59,7 @@ exports.getExercises = async (req, res) => {
     if (muscleGroup) filter.muscleGroup = muscleGroup;
     if (level) filter.level = level;
     if (equipmentRequired) filter.equipmentRequired = equipmentRequired;
-    if (search) filter.name = { $regex: search, $options: "i" };
+    if (search) filter.name = safeSearchRegex(search); // 🛡️ Chống NoSQL Regex Injection / ReDoS
 
     const exercises = await Exercise.find(filter).sort({ createdAt: -1 });
     res.status(200).json(exercises);
@@ -86,7 +87,7 @@ exports.updateExercise = async (req, res) => {
     // Nếu Admin sửa cả tên, kiểm tra xem tên mới có trùng với bài tập KHÁC không
     if (name) {
       const duplicateExercise = await Exercise.findOne({
-        name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
+        name: { $regex: new RegExp(`^${escapeRegex(name.trim())}$`, "i") },
         _id: { $ne: req.params.id } // Loại trừ chính bài tập đang sửa ra
       });
 

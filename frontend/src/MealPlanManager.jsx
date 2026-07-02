@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -53,7 +54,6 @@ export default function MealPlanManager() {
   // --- STATE CHO TÍNH NĂNG KIỂM TRA ĐỘ LỆCH CALO/MACRO ---
   const [deviationData, setDeviationData] = useState(null);
 
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   const getHeaders = () => ({ headers: { Authorization: `Bearer ${localStorage.getItem('token')}` } });
 
   useEffect(() => {
@@ -73,7 +73,7 @@ export default function MealPlanManager() {
 
   const fetchUserData = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/users/me`, getHeaders());
+      const res = await api.get(`/users/me`, getHeaders());
       setUserData(res.data);
     } catch (err) { console.error("Lỗi tải User:", err); }
   };
@@ -81,7 +81,7 @@ export default function MealPlanManager() {
   const fetchCurrentPlan = async () => {
     setIsLoadingPlan(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/meal-plan/my-plan`, getHeaders());
+      const res = await api.get(`/meal-plan/my-plan`, getHeaders());
       if (res.data && res.data.hasPlan === true) {
         setGeneratedPlan(res.data.masterMealPlan || res.data.data);
       } else { setGeneratedPlan(null); }
@@ -91,7 +91,7 @@ export default function MealPlanManager() {
   const fetchFoods = async () => {
     setIsLoadingFoods(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/foods`, getHeaders());
+      const res = await api.get(`/foods`, getHeaders());
       const mappedFoods = res.data.map(food => ({
         _id: food._id,
         name: food.name,
@@ -112,7 +112,7 @@ export default function MealPlanManager() {
 
   const fetchPlanDeviation = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/meal-plan/check-deviation`, getHeaders());
+      const res = await api.get(`/meal-plan/check-deviation`, getHeaders());
       if (res.data && res.data.success) {
         setDeviationData(res.data.data || res.data);
       } else {
@@ -134,7 +134,7 @@ export default function MealPlanManager() {
   const handleWatchAd = async () => {
     setIsLoadingAd(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, {}, getHeaders());
+      const res = await api.post(`/transactions/virtual-ad`, {}, getHeaders());
       alert(res.data.message); 
       fetchUserData(); 
       setShowPremiumModal(false); 
@@ -154,7 +154,7 @@ export default function MealPlanManager() {
     setIsGenerating(true); setError(null); setSuccessMsg("");
     try {
       const payload = { mealsPerDay, customRequest };
-      const res = await axios.post(`${API_BASE_URL}/api/ai/generate-meal-plan`, payload, getHeaders());
+      const res = await api.post(`/ai/generate-meal-plan`, payload, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan);
       setSuccessMsg("AI đã tạo thành công lộ trình dinh dưỡng!");
       fetchUserData(); 
@@ -176,7 +176,7 @@ export default function MealPlanManager() {
     
     try {
       // Gọi endpoint cân bằng tự động của bạn (điều chỉnh đường dẫn cho phù hợp với Backend)
-      const res = await axios.post(`${API_BASE_URL}/api/ai/adjust-meal-plan-by-ai`, {}, getHeaders());
+      const res = await api.post(`/ai/adjust-meal-plan-by-ai`, {}, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan || res.data.plan);
       setSuccessMsg("AI đã cân bằng lại định lượng thành công!");
       fetchUserData(); // Cập nhật lại số vé AI
@@ -195,7 +195,7 @@ export default function MealPlanManager() {
     if (!generatedPlan) return alert("Chưa có thực đơn để lưu!");
     try {
       setIsProcessing(true);
-      const res = await axios.post(`${API_BASE_URL}/api/library/save-master`, 
+      const res = await api.post(`/library/save-master`, 
         { type: 'diet' }, 
         getHeaders()
       );
@@ -215,7 +215,7 @@ export default function MealPlanManager() {
     try {
       setIsLibraryLoading(true);
       setShowLibraryModal(true);
-      const res = await axios.get(`${API_BASE_URL}/api/library?type=diet`, getHeaders());
+      const res = await api.get(`/library?type=diet`, getHeaders());
       setLibraryItems(res.data.library || []);
     } catch (error) {
       setError("Không thể tải kho lưu trữ!");
@@ -229,7 +229,7 @@ export default function MealPlanManager() {
     if (!window.confirm("Thực đơn từ kho sẽ GHI ĐÈ lên thực đơn hiện tại. Bạn có chắc chắn?")) return;
     try {
       setIsLibraryLoading(true);
-      const res = await axios.post(`${API_BASE_URL}/api/meal-plan/apply-library`, 
+      const res = await api.post(`/meal-plan/apply-library`, 
         { libraryId }, 
         getHeaders()
       );
@@ -253,7 +253,7 @@ export default function MealPlanManager() {
     setSuccessMsg("");
     try {
       const payload = { mealsPerDay: Number(mealsPerDay) };
-      const res = await axios.post(`${API_BASE_URL}/api/meal-plan/init-manual`, payload, getHeaders());
+      const res = await api.post(`/meal-plan/init-manual`, payload, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan);
       setSuccessMsg("Đã khởi tạo lịch ăn thủ công thành công!");
     } catch (err) {
@@ -268,7 +268,7 @@ export default function MealPlanManager() {
     
     setIsProcessing(true);
     try {
-      await axios.delete(`${API_BASE_URL}/api/meal-plan/my-plan`, getHeaders());
+      await api.delete(`/meal-plan/my-plan`, getHeaders());
       setGeneratedPlan(null);
       setSuccessMsg("Đã xóa toàn bộ lịch ăn.");
     } catch (err) {
@@ -290,7 +290,7 @@ export default function MealPlanManager() {
     if (!newMealData.mealType) return alert("Vui lòng nhập tên bữa ăn!");
     setIsProcessing(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/meal-plan/meal`, newMealData, getHeaders());
+      const res = await api.post(`/meal-plan/meal`, newMealData, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan);
       setShowAddMealModal(false); setNewMealData({ mealType: '', scheduledTime: '12:00' });
     } catch (error) { alert("Lỗi thêm bữa ăn!"); } finally { setIsProcessing(false); }
@@ -300,7 +300,7 @@ export default function MealPlanManager() {
     if (!window.confirm("Xóa toàn bộ bữa ăn này?")) return;
     setIsProcessing(true);
     try {
-      const res = await axios.delete(`${API_BASE_URL}/api/meal-plan/meal/${mealId}`, getHeaders());
+      const res = await api.delete(`/meal-plan/meal/${mealId}`, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan);
     } catch (error) { alert("Lỗi xóa bữa ăn!"); } finally { setIsProcessing(false); }
   };
@@ -309,7 +309,7 @@ export default function MealPlanManager() {
     setIsProcessing(true);
     try {
       const payload = { mealId: targetMealForFood, foodId: foodId, quantityInGrams: 100 };
-      const res = await axios.post(`${API_BASE_URL}/api/meal-plan/item`, payload, getHeaders());
+      const res = await api.post(`/meal-plan/item`, payload, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan);
       setShowAddFoodModal(false); 
       setSearchFoodQuery('');
@@ -319,7 +319,7 @@ export default function MealPlanManager() {
   const handleUpdateGrams = async () => {
     setIsProcessing(true);
     try {
-      const res = await axios.patch(`${API_BASE_URL}/api/meal-plan/item`, {
+      const res = await axios.patch(`/api/meal-plan/item`, {
         mealId: editItemData.mealId, itemId: editItemData.itemId, newQuantity: Number(editItemData.grams)
       }, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan); setShowEditGramModal(false);
@@ -330,7 +330,7 @@ export default function MealPlanManager() {
     if (!window.confirm("Bạn có chắc muốn xóa món này?")) return;
     setIsProcessing(true);
     try {
-      const res = await axios.delete(`${API_BASE_URL}/api/meal-plan/item/${mealId}/${itemId}`, getHeaders());
+      const res = await api.delete(`/meal-plan/item/${mealId}/${itemId}`, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan);
     } catch (error) { alert("Lỗi xóa món ăn!"); } finally { setIsProcessing(false); }
   };

@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect, useRef } from 'react';
 import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Activity, Star, CheckCircle } from 'lucide-react';
 import axios from 'axios';
@@ -20,7 +21,7 @@ export default function FloatingBot() {
       const token = localStorage.getItem('token'); 
       if (!token) return;
 
-      const response = await axios.get('https://ai-fitness-w6fd.onrender.com/api/gamification/stats', {
+      const response = await axios.get('/api/gamification/stats', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -42,7 +43,7 @@ export default function FloatingBot() {
     setClosing(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post('https://ai-fitness-w6fd.onrender.com/api/gamification/manual-close', {}, {
+      const response = await axios.post('/api/gamification/manual-close', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert(response.data.message);

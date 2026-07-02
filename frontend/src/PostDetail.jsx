@@ -1,3 +1,4 @@
+import api from "./services/api";
 // 📄 src/pages/PostDetail.jsx
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -7,7 +8,6 @@ import {
   Utensils, Download, Trash2, Edit2, X, ChevronLeft, ChevronRight, Flag 
 } from 'lucide-react';
 
-const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
 // ========================================================
 // COMPONENT CAROUSEL CHO TRANG CHI TIẾT (CÓ CONTROLS VIDEO)
@@ -127,12 +127,12 @@ export default function PostDetail() {
 
   const fetchPostDetail = async () => {
     try {
-      const postRes = await axios.get(`${API_BASE_URL}/api/posts/${postId}`, {
+      const postRes = await api.get(`/posts/${postId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (postRes.data.success) setPost(postRes.data.post);
 
-      const cmtRes = await axios.get(`${API_BASE_URL}/api/posts/${postId}/comments`, {
+      const cmtRes = await api.get(`/posts/${postId}/comments`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (cmtRes.data.success) setComments(cmtRes.data.comments);
@@ -156,7 +156,7 @@ export default function PostDetail() {
       else updatedPost.likes.push(currentUserId);
       setPost(updatedPost);
 
-      await axios.post(`${API_BASE_URL}/api/posts/${postId}/like`, {}, {
+      await api.post(`/posts/${postId}/like`, {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
     } catch (error) { fetchPostDetail(); }
@@ -165,7 +165,7 @@ export default function PostDetail() {
   const handleSendComment = async () => {
     if (!commentText.trim()) return;
     try {
-      await axios.post(`${API_BASE_URL}/api/posts/${postId}/comment`, 
+      await api.post(`/posts/${postId}/comment`, 
         { content: commentText },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -177,7 +177,7 @@ export default function PostDetail() {
   const handleDeleteComment = async (commentId) => {
     if (!window.confirm("Xóa bình luận này?")) return;
     try {
-      await axios.delete(`${API_BASE_URL}/api/posts/comment/${commentId}`, {
+      await api.delete(`/posts/comment/${commentId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       fetchPostDetail(); 
@@ -187,7 +187,7 @@ export default function PostDetail() {
   const handleUpdateComment = async (commentId) => {
     if (!editCommentText.trim()) return;
     try {
-      await axios.put(`${API_BASE_URL}/api/posts/comment/${commentId}`, 
+      await api.put(`/posts/comment/${commentId}`, 
         { content: editCommentText },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -198,7 +198,7 @@ export default function PostDetail() {
 
   const handleClone = async (type) => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/posts/clone`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/posts/clone`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) alert(res.data.message);
     } catch (error) { alert("Lỗi khi lưu dữ liệu."); }
   };
@@ -212,7 +212,7 @@ export default function PostDetail() {
     }
     try {
       await axios.post(
-        `${API_BASE_URL}/api/posts/${postId}/report`,
+        `/api/posts/${postId}/report`,
         { reason: reportReason },
         { headers: { Authorization: `Bearer ${token}` } }
       );

@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 // Thêm CheckCircle vào dòng import này ở đầu file Profile.jsx
 import { CheckCircle } from 'lucide-react';
@@ -21,7 +22,6 @@ export default function UserProfile() {
     medicalConditionsStr: '' 
   });
 
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
   useEffect(() => {
     fetchProfile();
@@ -31,7 +31,7 @@ export default function UserProfile() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get(`${API_BASE_URL}/api/users/me`, config);
+      const res = await api.get(`/users/me`, config);
       
       const user = res.data?.data || res.data?.user || res.data || {};
       
@@ -104,7 +104,7 @@ export default function UserProfile() {
 
       delete payload.medicalConditionsStr; 
 
-      const res = await axios.put(`${API_BASE_URL}/api/users/me`, payload, config);
+      const res = await api.put(`/users/me`, payload, config);
       
       const updatedUser = res.data?.data || res.data?.user || res.data || {};
       

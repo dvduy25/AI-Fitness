@@ -1,150 +1,257 @@
-// controllers/workoutLogController.js
+// controllers/workoutLogController.js (VIẾT LẠI)
+// =====================================================
+// Chỉ 2 chức năng:
+//   1. Check-in hôm nay có tập không
+//   2. Cập nhật kỷ lục max tạ / max rep từng bài
+// =====================================================
 const WorkoutLog = require("../models/WorkoutLog");
+const Exercise   = require("../models/Exercise");
 
-// ==========================================
-// 1. LƯU HOẶC CẬP NHẬT KẾT QUẢ TẬP HÔM NAY (UPSERT)
-// ==========================================
-// ==========================================
-// 1. LƯU HOẶC CẬP NHẬT KẾT QUẢ TẬP HÔM NAY (UPSERT AN TOÀN)
-// ==========================================
-// controllers/workoutLogController.js
+const toDateStr = () => new Date().toISOString().split("T")[0];
 
-exports.saveDailyLog = async (req, res) => {
+// ─────────────────────────────────────────────────
+// POST /api/workout-logs/checkin
+// Body: { didWorkout: true | false, note? }
+// Tạo hoặc cập nhật record ngày hôm nay
+// ─────────────────────────────────────────────────
+exports.checkIn = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { planDay, exercises } = req.body;
+    const userId = req.user._id;
+    const { didWorkout, note = "" } = req.body;
 
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
-
-    // BƯỚC 1: Tìm xem hôm nay đã có nhật ký chưa
-    let log = await WorkoutLog.findOne({ 
-      userId, 
-      date: { $gte: startOfDay, $lte: endOfDay } 
-    });
-
-    if (log) {
-      // BƯỚC 2: Nếu có rồi thì cập nhật bài tập và ngày trong lịch
-      log.exercises = exercises;
-      log.planDay = planDay;
-      log.isCompleted = true;
-      await log.save();
-    } else {
-      // BƯỚC 3: Nếu chưa có thì tạo mới hoàn toàn
-      log = new WorkoutLog({
-        userId,
-        planDay,
-        exercises,
-        isCompleted: true,
-        date: new Date() // Ngày hiện tại
+    if (typeof didWorkout !== "boolean") {
+      return res.status(400).json({
+        success: false,
+        message: "didWorkout phải là true hoặc false!",
       });
-      await log.save();
     }
 
-    res.status(200).json({ message: "Đã đồng bộ kết quả tập!", log });
-  } catch (error) {
-    console.error("Lỗi Backend saveDailyLog:", error);
-    res.status(500).json({ message: "Lỗi lưu kết quả", error: error.message });
-  }
-};
+    const today = toDateStr();
 
-// ==========================================
-// 2. LẤY MỨC TẠ CỦA LẦN GẦN NHẤT (ĐỂ SO SÁNH TĂNG TIẾN)
-// ==========================================
-exports.getPreviousExerciseRecord = async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { exerciseId } = req.params;
+    const log = await WorkoutLog.findOneAndUpdate(
+      { userId, date: today },
+      {
+        $set: {
+          didWorkout,
+          note,
+          // Nếu đổi sang nghỉ → xóa exerciseMaxes
+          ...(!didWorkout ? { exerciseMaxes: [] } : {}),
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
-    // 1. Tạo mốc thời gian 00:00:00 của ngày hôm nay
-    const startOfToday = new Date();
-    startOfToday.setHours(0, 0, 0, 0);
-
-    // 2. Tìm buổi tập gần nhất BÉ HƠN ngày hôm nay (loại trừ buổi đang tập dở)
-    const lastLog = await WorkoutLog.findOne({ 
-      userId, 
-      "exercises.exerciseId": exerciseId,
-      date: { $lt: startOfToday } // <-- ĐIỂM QUAN TRỌNG NHẤT LÀ ĐÂY
-    }).sort({ date: -1 });
-
-    if (!lastLog) {
-      return res.status(200).json({ hasHistory: false, message: "Đây là lần đầu tập bài này hoặc chưa có dữ liệu cũ" });
-    }
-
-    // 3. Lọc ra đúng bài tập đó trong buổi tập cũ
-    const previousRecord = lastLog.exercises.find(ex => ex.exerciseId.toString() === exerciseId);
-
-    if (!previousRecord || previousRecord.setsPerformed.length === 0) {
-      return res.status(200).json({ hasHistory: false });
-    }
-
-    // 4. Trả về thành công
-    res.status(200).json({ 
-      hasHistory: true, 
-      date: lastLog.date, 
-      previousSets: previousRecord.setsPerformed 
+    return res.json({
+      success: true,
+      message: didWorkout ? "Check-in tập luyện thành công!" : "Đã ghi nhận ngày nghỉ!",
+      log,
     });
   } catch (error) {
-    console.error("Lỗi API getPreviousExerciseRecord:", error);
-    res.status(500).json({ message: "Lỗi lấy lịch sử", error: error.message });
+    console.error("[checkIn]", error.message);
+    res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
   }
 };
 
-// ==========================================
-// 3. LẤY DỮ LIỆU ĐANG TẬP DỞ CỦA NGÀY HÔM NAY (ĐỂ TIẾP TỤC TẬP)
-// ==========================================
+// ─────────────────────────────────────────────────
+// PUT /api/workout-logs/max
+// Body: { exerciseId, maxWeight, maxReps }
+// Cập nhật kỷ lục 1 bài tập hôm nay
+// ─────────────────────────────────────────────────
+exports.updateExerciseMax = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { exerciseId, maxWeight, maxReps } = req.body;
+
+    if (!exerciseId || maxWeight == null || maxReps == null) {
+      return res.status(400).json({
+        success: false,
+        message: "Thiếu exerciseId, maxWeight hoặc maxReps!",
+      });
+    }
+    if (Number(maxWeight) < 0 || Number(maxReps) < 0) {
+      return res.status(400).json({ success: false, message: "Giá trị không thể âm!" });
+    }
+
+    const today = toDateStr();
+
+    // Kiểm tra đã check-in tập hôm nay chưa
+    const todayLog = await WorkoutLog.findOne({ userId, date: today });
+    if (!todayLog || !todayLog.didWorkout) {
+      return res.status(400).json({
+        success: false,
+        message: "Bạn chưa check-in tập hôm nay! Hãy xác nhận 'Có tập' trước.",
+      });
+    }
+
+    // Lấy tên bài tập để cache
+    const exercise = await Exercise.findById(exerciseId).select("name");
+    const exerciseName = exercise?.name || "Không rõ";
+
+    // Lấy kỷ lục cũ để lưu prev
+    const existing = todayLog.exerciseMaxes.find(
+      (e) => e.exerciseId.toString() === exerciseId.toString()
+    );
+
+    const prevMaxWeight = existing?.maxWeight ?? 0;
+    const prevMaxReps   = existing?.maxReps ?? 0;
+
+    // Chỉ cập nhật nếu cao hơn kỷ lục cũ
+    const newMaxWeight = Math.max(Number(maxWeight), prevMaxWeight);
+    const newMaxReps   = Math.max(Number(maxReps), prevMaxReps);
+
+    // Upsert vào mảng exerciseMaxes
+    const existsInArray = todayLog.exerciseMaxes.some(
+      (e) => e.exerciseId.toString() === exerciseId.toString()
+    );
+
+    let updatedLog;
+    if (existsInArray) {
+      updatedLog = await WorkoutLog.findOneAndUpdate(
+        { userId, date: today, "exerciseMaxes.exerciseId": exerciseId },
+        {
+          $set: {
+            "exerciseMaxes.$.maxWeight":    newMaxWeight,
+            "exerciseMaxes.$.maxReps":      newMaxReps,
+            "exerciseMaxes.$.prevMaxWeight": prevMaxWeight,
+            "exerciseMaxes.$.prevMaxReps":   prevMaxReps,
+            "exerciseMaxes.$.exerciseName":  exerciseName,
+          },
+        },
+        { new: true }
+      );
+    } else {
+      updatedLog = await WorkoutLog.findOneAndUpdate(
+        { userId, date: today },
+        {
+          $push: {
+            exerciseMaxes: {
+              exerciseId,
+              exerciseName,
+              maxWeight: newMaxWeight,
+              maxReps:   newMaxReps,
+              prevMaxWeight,
+              prevMaxReps,
+            },
+          },
+        },
+        { new: true }
+      );
+    }
+
+    const improved =
+      newMaxWeight > prevMaxWeight || newMaxReps > prevMaxReps;
+
+    return res.json({
+      success: true,
+      message: improved ? "Kỷ lục mới!" : "Đã cập nhật (không vượt kỷ lục cũ).",
+      improved,
+      current: { exerciseName, maxWeight: newMaxWeight, maxReps: newMaxReps },
+      previous: { maxWeight: prevMaxWeight, maxReps: prevMaxReps },
+      log: updatedLog,
+    });
+  } catch (error) {
+    console.error("[updateExerciseMax]", error.message);
+    res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
+  }
+};
+
+// ─────────────────────────────────────────────────
+// GET /api/workout-logs/today  — Lấy log hôm nay
+// ─────────────────────────────────────────────────
 exports.getTodayLog = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    // Lấy mốc thời gian từ 00:00:00 đến 23:59:59 của ngày hôm nay
-    const startOfDay = new Date();
-    startOfDay.setHours(0, 0, 0, 0);
-    const endOfDay = new Date();
-    endOfDay.setHours(23, 59, 59, 999);
+    const userId = req.user._id;
+    const today = toDateStr();
 
-    const todayLog = await WorkoutLog.findOne({
-      userId,
-      date: { $gte: startOfDay, $lte: endOfDay }
+    const log = await WorkoutLog.findOne({ userId, date: today }).populate(
+      "exerciseMaxes.exerciseId",
+      "name muscleGroup"
+    );
+
+    return res.json({
+      success: true,
+      date: today,
+      log: log || null,
+      didWorkout: log?.didWorkout ?? null,
     });
-
-    res.status(200).json({ log: todayLog });
   } catch (error) {
-    res.status(500).json({ message: "Lỗi lấy dữ liệu hôm nay", error: error.message });
+    res.status(500).json({ success: false, message: "Lỗi server!" });
   }
 };
-// ==========================================
-// 4. LẤY CHI TIẾT TẬP LUYỆN THEO 1 NGÀY CỤ THỂ
-// ==========================================
-exports.getWorkoutLogByDate = async (req, res) => {
+
+// ─────────────────────────────────────────────────
+// GET /api/workout-logs/history?month=2025-07
+// Lịch sử tập trong tháng (dùng cho calendar UI)
+// ─────────────────────────────────────────────────
+exports.getHistory = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { date } = req.query; // Nhận YYYY-MM-DD từ Frontend
+    const userId = req.user._id;
+    const { month } = req.query; // "2025-07"
 
-    if (!date) {
-      return res.status(400).json({ message: "Vui lòng cung cấp ngày (date)!" });
+    const filter = { userId };
+    if (month) filter.date = { $regex: `^${month}` };
+
+    const logs = await WorkoutLog.find(filter)
+      .sort({ date: 1 })
+      .select("date didWorkout exerciseMaxes note");
+
+    // Tính streak liên tiếp
+    const workedOutDates = logs
+      .filter((l) => l.didWorkout)
+      .map((l) => l.date)
+      .sort();
+
+    let streak = 0;
+    const today = toDateStr();
+    let checkDate = new Date(today);
+
+    while (true) {
+      const dateStr = checkDate.toISOString().split("T")[0];
+      if (!workedOutDates.includes(dateStr)) break;
+      streak++;
+      checkDate.setDate(checkDate.getDate() - 1);
     }
 
-    // Tạo mốc bắt đầu và kết thúc của cái ngày mà user click vào
-    const queryDate = new Date(date);
-    const startOfDay = new Date(queryDate.setHours(0, 0, 0, 0));
-    const endOfDay = new Date(queryDate.setHours(23, 59, 59, 999));
-
-    // Tìm lịch sử tập luyện trong ngày đó
-    const log = await WorkoutLog.findOne({
-      userId,
-      date: { $gte: startOfDay, $lte: endOfDay }
-    }).populate('exercises.exerciseId', 'name muscleGroup'); // Lấy Tên và Nhóm cơ của bài tập
-
-    if (!log) {
-      return res.status(200).json({ log: null }); // Trả về null nếu ngày đó không tập
-    }
-
-    res.status(200).json({ log });
+    return res.json({
+      success: true,
+      logs,
+      stats: {
+        totalDays: logs.length,
+        workedOutDays: workedOutDates.length,
+        restDays: logs.filter((l) => !l.didWorkout).length,
+        currentStreak: streak,
+      },
+    });
   } catch (error) {
-    console.error("Lỗi getWorkoutLogByDate:", error);
-    res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu tập luyện" });
+    res.status(500).json({ success: false, message: "Lỗi server!" });
+  }
+};
+
+// ─────────────────────────────────────────────────
+// GET /api/workout-logs/personal-records
+// Tất cả kỷ lục cá nhân của user (max mọi thời gian)
+// ─────────────────────────────────────────────────
+exports.getPersonalRecords = async (req, res) => {
+  try {
+    const userId = req.user._id;
+
+    const records = await WorkoutLog.aggregate([
+      { $match: { userId, didWorkout: true } },
+      { $unwind: "$exerciseMaxes" },
+      {
+        $group: {
+          _id: "$exerciseMaxes.exerciseId",
+          exerciseName:  { $last: "$exerciseMaxes.exerciseName" },
+          allTimeWeight: { $max: "$exerciseMaxes.maxWeight" },
+          allTimeReps:   { $max: "$exerciseMaxes.maxReps" },
+          lastUpdated:   { $max: "$date" },
+        },
+      },
+      { $sort: { allTimeWeight: -1 } },
+    ]);
+
+    return res.json({ success: true, records });
+  } catch (error) {
+    res.status(500).json({ success: false, message: "Lỗi server!" });
   }
 };

@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
@@ -10,7 +11,6 @@ export default function ExerciseEvaluation({ isOpen, onClose, exerciseId, exerci
   const [isLoading, setIsLoading] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
- const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   useEffect(() => {
     if (isOpen && exerciseId && currentLogId) {
       fetchEvaluation();
@@ -24,7 +24,7 @@ export default function ExerciseEvaluation({ isOpen, onClose, exerciseId, exerci
 
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post(`${API_BASE_URL}/api/ai/evaluate-exercise`, {
+      const res = await api.post(`/ai/evaluate-exercise`, {
         currentLogId: currentLogId,
         exerciseId: exerciseId
       }, {

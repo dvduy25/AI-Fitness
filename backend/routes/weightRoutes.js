@@ -1,12 +1,10 @@
 const express = require("express");
 const router = express.Router();
 const { verifyToken } = require("../middleware/authMiddleware");
+const { validate, schemas } = require("../middleware/validation");
 const { logWeight, getWeightHistory } = require("../controllers/weightController");
 
-// [POST] /api/weight - Ghi nhận cân nặng hôm nay
-router.post("/", verifyToken, logWeight);
-
-// [GET] /api/weight/history?period=month - Lấy lịch sử cân nặng (period có thể là 'week', 'month', 'all')
+router.post("/", verifyToken, validate(schemas.weightLog), logWeight);
 router.get("/history", verifyToken, getWeightHistory);
 
 module.exports = router;

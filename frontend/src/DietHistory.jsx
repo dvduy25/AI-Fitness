@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
@@ -6,7 +7,6 @@ import {
 } from 'lucide-react';
 
 export default function ActivityHistory() {
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   
   // State quản lý Lịch
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -34,8 +34,8 @@ export default function ActivityHistory() {
       const dateString = formatDateToAPI(date);
 
       const [dietRes, workoutRes] = await Promise.allSettled([
-        axios.get(`${API_BASE_URL}/api/diet/date?date=${dateString}`, config),
-        axios.get(`${API_BASE_URL}/api/workout-logs/date?date=${dateString}`, config)
+        api.get(`/diet/date?date=${dateString}`, config),
+        api.get(`/workout-logs/date?date=${dateString}`, config)
       ]);
 
       let newDietData = null;

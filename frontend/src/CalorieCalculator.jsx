@@ -1,8 +1,8 @@
+import api from "./services/api";
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { Search, Loader2, Plus, Trash2, Info, ChevronRight, Calculator, Clock, Save, Activity } from 'lucide-react';
 
-const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
 const CalorieCalculator = () => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -34,7 +34,7 @@ const CalorieCalculator = () => {
       setIsSuggesting(true);
       try {
         const token = localStorage.getItem("token");
-        const response = await axios.get(`${API_BASE_URL}/api/foods/suggest-food`, {
+        const response = await api.get(`/foods/suggest-food`, {
           params: { query: searchQuery },
           headers: { "Authorization": `Bearer ${token}` }
         });
@@ -83,7 +83,7 @@ const CalorieCalculator = () => {
 
     try {
       const token = localStorage.getItem("token");
-      const response = await axios.get(`${API_BASE_URL}/api/ai/search-food`, {
+      const response = await api.get(`/ai/search-food`, {
         params: { query: queryToSearch }, 
         headers: { "Authorization": `Bearer ${token}` }
       });
@@ -169,7 +169,7 @@ const CalorieCalculator = () => {
         }
       };
 
-      const response = await axios.post(`${API_BASE_URL}/api/diet/log-meal`, payload, {
+      const response = await api.post(`/diet/log-meal`, payload, {
         headers: { "Authorization": `Bearer ${token}` }
       });
 

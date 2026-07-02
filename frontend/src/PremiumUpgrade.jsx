@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Crown, CheckCircle2, Zap, Shield, Loader2 } from 'lucide-react';
@@ -8,13 +9,12 @@ export default function PremiumUpgrade() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingId, setLoadingId] = useState(null);
   const navigate = useNavigate(); // Khởi tạo hook chuyển trang
- const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   useEffect(() => {
     // Gọi API lấy danh sách gói (Chỉ lấy gói đang mở bán)
     const fetchPackages = async () => {
       try {
         const token = localStorage.getItem('token'); // Token của USER
-        const res = await axios.get(`${API_BASE_URL}/api/admin/packages`, {
+        const res = await api.get(`/admin/packages`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         setPackages(res.data.data || []);
@@ -32,7 +32,7 @@ export default function PremiumUpgrade() {
       const token = localStorage.getItem('token');
       
       // Gọi API Thanh toán ảo
-      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-payment`, 
+      const res = await api.post(`/transactions/virtual-payment`, 
         { packageId: pkg._id }, // Gửi ID của gói cước lên
         { headers: { Authorization: `Bearer ${token}` } }
       );

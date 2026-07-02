@@ -4,6 +4,7 @@ const Exercise = require("../models/Exercise");
 const Food = require("../models/Food");
 const MealPlan = require("../models/MealPlan"); 
 const MasterWorkoutPlan = require("../models/WorkoutPlan"); 
+const { escapeRegex } = require("../utils/escapeRegex");
 require('dotenv').config();
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
@@ -536,7 +537,7 @@ exports.searchOrEstimateFood = async (req, res) => {
     if (!query) return res.status(400).json({ message: "Vui lòng nhập tên món ăn." });
 
     // 1. Tìm trong Database trước (Sử dụng Regex không phân biệt hoa thường)
-    let food = await Food.findOne({ name: { $regex: new RegExp(`^${query}$`, 'i') } });
+    let food = await Food.findOne({ name: { $regex: new RegExp(`^${escapeRegex(query.trim())}$`, 'i') } });
 
     // Nếu tìm thấy trong CSDL, trả về luôn để tiết kiệm lượt gọi API AI
     if (food) {

@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -62,7 +63,6 @@ export default function DailyDashboard() {
   const [weightData, setWeightData] = useState([]);
   const [weightPeriod, setWeightPeriod] = useState('month'); 
 
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com'; 
 
   useEffect(() => {
     fetchDashboardData();
@@ -81,10 +81,10 @@ export default function DailyDashboard() {
       const today = new Date().toISOString().split('T')[0];
 
       const [profileRes, dietRes, workoutRes, mealPlanRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/api/users/me`, config),
-        axios.get(`${API_BASE_URL}/api/ai/daily-log?date=${today}`, config), 
-        axios.get(`${API_BASE_URL}/api/workout-plan/today`, config).catch(() => ({ data: {} })),
-        axios.get(`${API_BASE_URL}/api/meal-plan/my-plan`, config).catch(() => ({ data: null }))
+        api.get(`/users/me`, config),
+        api.get(`/ai/daily-log?date=${today}`, config), 
+        api.get(`/workout-plan/today`, config).catch(() => ({ data: {} })),
+        api.get(`/meal-plan/my-plan`, config).catch(() => ({ data: null }))
       ]);
 
       const user = profileRes.data?.data || profileRes.data?.user || profileRes.data || {};
@@ -140,7 +140,7 @@ export default function DailyDashboard() {
     try {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
-      const res = await axios.get(`${API_BASE_URL}/api/weight/history?period=${period}`, config);
+      const res = await api.get(`/weight/history?period=${period}`, config);
       const rawData = res.data.data || [];
       const formattedData = rawData.map(item => {
         const d = new Date(item.date);
@@ -170,7 +170,7 @@ export default function DailyDashboard() {
     setIsLoadingAd(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/transactions/virtual-ad`, {}, { headers: { Authorization: `Bearer ${token}` } });
       alert(res.data.message); 
       fetchDashboardData(); 
       setShowPremiumModal(false); 
@@ -186,7 +186,7 @@ export default function DailyDashboard() {
     setIsSubmittingWeight(true);
     try {
       const token = localStorage.getItem('token');
-      await axios.post(`${API_BASE_URL}/api/weight`, { weight: Number(newWeight), date: new Date().toISOString() }, { headers: { Authorization: `Bearer ${token}` } });
+      await api.post(`/weight`, { weight: Number(newWeight), date: new Date().toISOString() }, { headers: { Authorization: `Bearer ${token}` } });
       setShowWeightPrompt(false); setNewWeight(''); setNeedsWeightUpdate(false);
       await fetchWeightHistory(weightPeriod); await fetchDashboardData(); 
       alert("Cập nhật cân nặng thành công!");
@@ -201,7 +201,7 @@ export default function DailyDashboard() {
     setIsSyncing(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post(`${API_BASE_URL}/api/ai/daily-log/sync-plan`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/ai/daily-log/sync-plan`, {}, { headers: { Authorization: `Bearer ${token}` } });
       alert(res.data.message || "Đồng bộ thành công!");
       await fetchDashboardData();
     } catch (err) { alert(err.response?.data?.message || "Đã xảy ra lỗi khi đồng bộ lịch ăn mới."); } finally { setIsSyncing(false); }
@@ -216,7 +216,7 @@ export default function DailyDashboard() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      await axios.delete(`${API_BASE_URL}/api/ai/daily-log/meal/${mealId}`, { headers: { Authorization: `Bearer ${token}` } });
+      await api.delete(`/ai/daily-log/meal/${mealId}`, { headers: { Authorization: `Bearer ${token}` } });
       await fetchDashboardData(); 
     } catch (err) { alert(err.response?.data?.message || "Đã xảy ra lỗi khi xóa bữa ăn."); setIsLoading(false); }
   };
@@ -249,8 +249,8 @@ export default function DailyDashboard() {
       const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
       const today = new Date().toISOString().split('T')[0];
-      if (logForm.mealId) { await axios.put(`${API_BASE_URL}/api/ai/daily-log/meal/${logForm.mealId}`, { extraFoodText: logForm.extraFoodText }, config); } 
-      else { await axios.post(`${API_BASE_URL}/api/ai/log-meal`, { date: today, mealType: logForm.mealType, logType: logForm.logType, extraFoodText: logForm.extraFoodText }, config); }
+      if (logForm.mealId) { await api.put(`/ai/daily-log/meal/${logForm.mealId}`, { extraFoodText: logForm.extraFoodText }, config); } 
+      else { await api.post(`/ai/log-meal`, { date: today, mealType: logForm.mealType, logType: logForm.logType, extraFoodText: logForm.extraFoodText }, config); }
       setShowLogModal(false); await fetchDashboardData();
     } catch (err) { alert(err.response?.data?.message || "Có lỗi xảy ra khi ghi nhận."); } finally { setIsLogging(false); }
   };
@@ -706,7 +706,7 @@ export default function DailyDashboard() {
                   selectedExercise.videoUrl.includes('youtube') || selectedExercise.videoUrl.includes('youtu.be') ? (
                     <iframe className="w-full h-full" src={getYouTubeEmbedUrl(selectedExercise.videoUrl)} frameBorder="0" allowFullScreen></iframe>
                   ) : (
-                    <video className="w-full h-full object-contain" controls autoPlay src={selectedExercise.videoUrl.startsWith('http') ? selectedExercise.videoUrl : `${API_BASE_URL}${selectedExercise.videoUrl}`}></video>
+                    <video className="w-full h-full object-contain" controls autoPlay src={selectedExercise.videoUrl.startsWith('http') ? selectedExercise.videoUrl : `${import.meta.env.VITE_API_URL || ""}${selectedExercise.videoUrl}`}></video>
                   )
                 ) : (
                   <div className="text-gray-600 flex flex-col items-center">

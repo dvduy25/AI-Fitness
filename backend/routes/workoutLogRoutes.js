@@ -1,27 +1,28 @@
+// routes/workoutLogRoutes.js (VIẾT LẠI)
 const express = require("express");
-const router = express.Router();
+const router  = express.Router();
 const { verifyToken } = require("../middleware/authMiddleware");
-
-// Import các hàm từ Controller
-const { 
-  saveDailyLog, 
-  getPreviousExerciseRecord,
-  getTodayLog,getWorkoutLogByDate // 👈 THÊM HÀM NÀY VÀO ĐÂY
+const {
+  checkIn,
+  updateExerciseMax,
+  getTodayLog,
+  getHistory,
+  getPersonalRecords,
 } = require("../controllers/workoutLogController");
 
-// ==========================================
-// ROUTES CHO LỊCH SỬ TẬP LUYỆN (WORKOUT LOGS)
-// ==========================================
+// Check-in hôm nay (có tập hay không)
+router.post("/checkin", verifyToken, checkIn);
 
-// [GET] Lấy dữ liệu buổi tập ĐANG TẬP DỞ của hôm nay (Để khi vào lại app vẫn giữ số tạ/rep)
-// ⚠️ LUÔN ĐẶT ROUTE NÀY LÊN TRÊN ROUTE CÓ PARAM (/:id)
-router.get("/today", verifyToken, getTodayLog); 
+// Cập nhật kỷ lục 1 bài tập
+router.put("/max", verifyToken, updateExerciseMax);
 
-// [POST] Lưu kết quả của buổi tập ngày hôm nay (Tổng hợp các sets, reps, tạ...)
-router.post("/", verifyToken, saveDailyLog);
+// Lấy log hôm nay
+router.get("/today", verifyToken, getTodayLog);
 
-// [GET] Lấy lịch sử/kỷ lục của buổi tập gần nhất đối với 1 bài tập cụ thể
-// Dùng để hiển thị gợi ý: "Buổi trước bạn đẩy 60kg x 10 reps"
-router.get("/previous/:exerciseId", verifyToken, getPreviousExerciseRecord);
-router.get('/date', verifyToken, getWorkoutLogByDate);
+// Lịch sử theo tháng
+router.get("/history", verifyToken, getHistory);
+
+// Tất cả kỷ lục cá nhân
+router.get("/personal-records", verifyToken, getPersonalRecords);
+
 module.exports = router;

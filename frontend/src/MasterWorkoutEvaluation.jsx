@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState } from 'react';
 import axios from 'axios';
 import { BrainCircuit, AlertTriangle, Sparkles, Loader2, X, Dumbbell, ShieldCheck, Activity, CheckCircle2 } from 'lucide-react';
@@ -6,13 +7,12 @@ export default function MasterWorkoutEvaluation({ onClose }) {
   const [data, setData] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
- const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
   const fetchEvaluation = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const token = localStorage.getItem('token');
-      const response = await axios.get(`${API_BASE_URL}/api/ai/evaluate-workout-plan`, {
+      const response = await api.get(`/ai/evaluate-workout-plan`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(response.data);

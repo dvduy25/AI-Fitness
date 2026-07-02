@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -12,7 +13,6 @@ import PremiumRequireModal from './PremiumRequireModal';
 
 export default function WorkoutPlanManager() {
   const navigate = useNavigate(); 
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
   const [userData, setUserData] = useState(null);
   const [customRequest, setCustomRequest] = useState(""); 
@@ -73,7 +73,7 @@ export default function WorkoutPlanManager() {
   // ==========================================
   const fetchUserData = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/users/me`, getHeaders());
+      const res = await api.get(`/users/me`, getHeaders());
       setUserData(res.data.data || res.data);
     } catch (err) { console.error("Lỗi tải User:", err); }
   };
@@ -81,7 +81,7 @@ export default function WorkoutPlanManager() {
   const fetchCurrentPlan = async () => {
     setIsLoadingPlan(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/workout-plan`, getHeaders());
+      const res = await api.get(`/workout-plan`, getHeaders());
       if (res.data && res.data.plan) {
         setWorkoutPlan(res.data.plan);
       } else { setWorkoutPlan(null); }
@@ -91,7 +91,7 @@ export default function WorkoutPlanManager() {
   const fetchExercises = async () => {
     setIsLoadingExercises(true);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/exercises`, getHeaders());
+      const res = await api.get(`/exercises`, getHeaders());
       const exerciseArray = res.data.data || res.data.exercises || res.data || [];
       setExerciseDatabase(Array.isArray(exerciseArray) ? exerciseArray : []);
     } catch (error) { 
@@ -118,7 +118,7 @@ export default function WorkoutPlanManager() {
     setIsGenerating(true); setError(null); setSuccessMsg("");
     try {
       const payload = { notes: customRequest, customAvailability: customAvailability };
-      await axios.post(`${API_BASE_URL}/api/ai/generate-workout-plan`, payload, getHeaders());
+      await api.post(`/ai/generate-workout-plan`, payload, getHeaders());
       fetchCurrentPlan();
       setSuccessMsg("AI đã tạo thành công lịch tập 7 ngày!");
       fetchUserData(); 
@@ -137,7 +137,7 @@ export default function WorkoutPlanManager() {
         exercises: [],
         isRestDay: true
       }));
-      const res = await axios.put(`${API_BASE_URL}/api/workout-plan`, 
+      const res = await api.put(`/workout-plan`, 
         { weeklySchedule: initialSchedule },
         getHeaders()
       );
@@ -154,7 +154,7 @@ export default function WorkoutPlanManager() {
     if (!window.confirm("Bạn có chắc muốn xóa TOÀN BỘ lịch tập không? Không thể hoàn tác!")) return;
     setIsProcessing(true);
     try {
-      await axios.delete(`${API_BASE_URL}/api/workout-plan`, getHeaders());
+      await api.delete(`/workout-plan`, getHeaders());
       setWorkoutPlan(null);
       setSuccessMsg("Đã xóa toàn bộ lịch tập.");
     } catch (err) {
@@ -173,7 +173,7 @@ export default function WorkoutPlanManager() {
     if (!workoutPlan) return alert("Chưa có lịch để lưu!");
     try {
       setIsProcessing(true);
-      const res = await axios.post(`${API_BASE_URL}/api/library/save-master`, 
+      const res = await api.post(`/library/save-master`, 
         { type: 'workout' }, 
         getHeaders()
       );
@@ -193,7 +193,7 @@ export default function WorkoutPlanManager() {
     try {
       setIsLibraryLoading(true);
       setShowLibraryModal(true);
-      const res = await axios.get(`${API_BASE_URL}/api/library?type=workout`, getHeaders());
+      const res = await api.get(`/library?type=workout`, getHeaders());
       setLibraryItems(res.data.library || []);
     } catch (error) {
       setError("Không thể tải kho lưu trữ!");
@@ -207,7 +207,7 @@ export default function WorkoutPlanManager() {
     if (!window.confirm("Lịch từ kho sẽ GHI ĐÈ lên lịch tập hiện tại. Bạn có chắc chắn?")) return;
     try {
       setIsLibraryLoading(true);
-      const res = await axios.post(`${API_BASE_URL}/api/workout-plan/apply-library`, 
+      const res = await api.post(`/workout-plan/apply-library`, 
         { libraryId }, 
         getHeaders()
       );
@@ -233,7 +233,7 @@ export default function WorkoutPlanManager() {
     if (!newTitle || newTitle === currentTitle) return;
 
     try {
-      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, 
+      await axios.patch(`/api/workout-plan/day`, 
         { dayOfWeek, title: newTitle },
         getHeaders()
       );
@@ -249,7 +249,7 @@ export default function WorkoutPlanManager() {
     if (newTime === null || newTime === currentScheduledTime) return;
 
     try {
-      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, 
+      await axios.patch(`/api/workout-plan/day`, 
         { dayOfWeek, scheduledTime: newTime },
         getHeaders()
       );
@@ -263,7 +263,7 @@ export default function WorkoutPlanManager() {
   const toggleRestDay = async (dayOfWeek, currentStatus) => {
     setIsProcessing(true);
     try {
-      await axios.patch(`${API_BASE_URL}/api/workout-plan/day`, { dayOfWeek, isRestDay: !currentStatus }, getHeaders());
+      await axios.patch(`/api/workout-plan/day`, { dayOfWeek, isRestDay: !currentStatus }, getHeaders());
       fetchCurrentPlan();
     } catch (error) { alert("Lỗi cập nhật ngày tập!"); } finally { setIsProcessing(false); }
   };
@@ -271,7 +271,7 @@ export default function WorkoutPlanManager() {
   const handleAddExerciseToDay = async (exerciseId) => {
     try {
       const payload = { dayOfWeek: targetDayForExercise, exerciseId: exerciseId, sets: 3, reps: "10", restTimeInSeconds: 60 };
-      await axios.post(`${API_BASE_URL}/api/workout-plan/exercise`, payload, getHeaders());
+      await api.post(`/workout-plan/exercise`, payload, getHeaders());
       fetchCurrentPlan();
       setShowAddExModal(false);
       setShowExDetailsModal(false); 
@@ -288,7 +288,7 @@ export default function WorkoutPlanManager() {
         dayOfWeek: editData.dayOfWeek, exerciseId: editData.exerciseId,
         sets: Number(editData.sets), reps: editData.reps, restTimeInSeconds: Number(editData.restTimeInSeconds)
       };
-      await axios.patch(`${API_BASE_URL}/api/workout-plan/exercise`, payload, getHeaders());
+      await axios.patch(`/api/workout-plan/exercise`, payload, getHeaders());
       await fetchCurrentPlan(); 
       setShowEditExModal(false);
     } catch (error) { 
@@ -300,7 +300,7 @@ export default function WorkoutPlanManager() {
     if (!window.confirm("Bạn có chắc muốn xóa bài tập này khỏi lịch?")) return;
     setIsProcessing(true);
     try {
-      await axios.delete(`${API_BASE_URL}/api/workout-plan/exercise`, {
+      await api.delete(`/workout-plan/exercise`, {
         ...getHeaders(), data: { dayOfWeek, exerciseId } 
       });
       await fetchCurrentPlan();
@@ -315,14 +315,14 @@ export default function WorkoutPlanManager() {
   const handleWatchAd = async () => {
     setIsLoadingAd(true);
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, {}, getHeaders());
+      const res = await api.post(`/transactions/virtual-ad`, {}, getHeaders());
       alert(res.data.message); fetchUserData(); setShowPremiumModal(false); 
     } catch (error) { alert("Lỗi xem quảng cáo!"); } finally { setIsLoadingAd(false); }
   };
 
   const handleViewExercise = async (exData) => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/exercises/${exData._id}`, getHeaders());
+      const res = await api.get(`/exercises/${exData._id}`, getHeaders());
       setSelectedEx(res.data.data || res.data.exercise || res.data);
       setShowExDetailsModal(true);
     } catch (error) { setSelectedEx(exData); setShowExDetailsModal(true); }
@@ -620,7 +620,7 @@ export default function WorkoutPlanManager() {
                   selectedEx.videoUrl.includes('youtube') || selectedEx.videoUrl.includes('youtu.be') ? (
                     <iframe className="w-full h-full" src={getYouTubeEmbedUrl(selectedEx.videoUrl)} frameBorder="0" allowFullScreen></iframe>
                   ) : (
-                    <video className="w-full h-full object-contain" controls autoPlay src={selectedEx.videoUrl.startsWith('http') ? selectedEx.videoUrl : `${API_BASE_URL}${selectedEx.videoUrl}`}></video>
+                    <video className="w-full h-full object-contain" controls autoPlay src={selectedEx.videoUrl.startsWith('http') ? selectedEx.videoUrl : `${import.meta.env.VITE_API_URL || ""}${selectedEx.videoUrl}`}></video>
                   )
                 ) : (
                   <div className="text-gray-600 flex flex-col items-center"><Video size={32} className="mb-2 opacity-50"/><span>Chưa có video minh họa</span></div>

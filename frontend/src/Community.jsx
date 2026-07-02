@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
@@ -15,9 +16,7 @@ import PostDetailsModal from './PostDetailsModal';
 import PostItem from './PostItem'; // Đảm bảo đã import
 import NotificationSidebar from './NotificationSidebar'; // Đảm bảo đã import
 
-const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
-// const API_BASE_URL = 'http://localhost:5000';
 export default function Community() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
@@ -77,10 +76,10 @@ export default function Community() {
   const fetchPosts = async (type = activeTab) => {
     setLoading(true);
     try {
-      let endpoint = `${API_BASE_URL}/api/posts/feed`;
-      if (type === 'latest') endpoint = `${API_BASE_URL}/api/posts/latest`;
-      else if (type === 'following') endpoint = `${API_BASE_URL}/api/posts/following`;
-      else if (type === 'liked') endpoint = `${API_BASE_URL}/api/posts/liked`;
+      let endpoint = `/api/posts/feed`;
+      if (type === 'latest') endpoint = `/api/posts/latest`;
+      else if (type === 'following') endpoint = `/api/posts/following`;
+      else if (type === 'liked') endpoint = `/api/posts/liked`;
 
       const response = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
       if (response.data.success) {
@@ -95,7 +94,7 @@ export default function Community() {
 
   const fetchFollowing = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/users/me/following`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.get(`/users/me/following`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) setFollowingList(res.data.following);
     } catch (error) { console.error("Lỗi tải danh sách theo dõi", error); }
   };
@@ -103,7 +102,7 @@ export default function Community() {
   const fetchNotifications = async () => {
     if (!token) return;
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/posts/notifications`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.get(`/posts/notifications`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) setRealNotifications(res.data.notifications);
     } catch (error) { console.error("Lỗi tải danh sách thông báo", error); }
   };
@@ -121,7 +120,7 @@ export default function Community() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/users/${userId}/profile`, {
+      const res = await api.get(`/users/${userId}/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.success) {
@@ -150,7 +149,7 @@ export default function Community() {
 
   const handleToggleFollow = async (userId) => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/users/${userId}/follow`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/users/${userId}/follow`, {}, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         fetchFollowing();
         if (selectedUserFilter && selectedUserFilter.id === userId) {
@@ -175,7 +174,7 @@ export default function Community() {
     setShowArchiveModal(true);
     setLoadingArchive(true);
     try {
-      const response = await axios.get(`${API_BASE_URL}/api/library?type=${type}`, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await api.get(`/library?type=${type}`, { headers: { Authorization: `Bearer ${token}` } });
       if (response.data.success) setArchivedPlansList(response.data.library);
     } catch (error) { alert("Không thể tải kho lưu trữ."); } finally { setLoadingArchive(false); }
   };
@@ -197,13 +196,13 @@ export default function Community() {
     selectedImages.forEach(img => formData.append("images", img));
     if (selectedVideo) formData.append("video", selectedVideo);
 
-    let endpoint = `${API_BASE_URL}/api/posts`;
+    let endpoint = `/api/posts`;
     if (attachPlan) {
       if (attachPlan.source === 'master') {
-        endpoint = `${API_BASE_URL}/api/posts/share-master`;
+        endpoint = `/api/posts/share-master`;
         formData.append("shareType", attachPlan.type);
       } else if (attachPlan.source === 'archive') {
-        endpoint = `${API_BASE_URL}/api/posts/share-library`;
+        endpoint = `/api/posts/share-library`;
         formData.append("libraryId", attachPlan.libraryId);
       }
     }
@@ -223,7 +222,7 @@ export default function Community() {
   const handleSaveEditPost = async (postId) => {
     if (!editingPost.content.trim()) return;
     try {
-      const res = await axios.put(`${API_BASE_URL}/api/posts/${postId}`, { content: editingPost.content }, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.put(`/posts/${postId}`, { content: editingPost.content }, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         setPosts(posts.map(p => p._id === postId ? { ...p, content: editingPost.content } : p));
         setEditingPost(null);
@@ -236,7 +235,7 @@ export default function Community() {
   const handleDeletePost = async (postId) => {
     if (!window.confirm("Bạn có chắc muốn xóa bài viết này? Hành động này không thể hoàn tác.")) return;
     try {
-      await axios.delete(`${API_BASE_URL}/api/posts/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
+      await api.delete(`/posts/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
       setPosts(posts.filter(p => p._id !== postId));
       if (viewingPostDetails?._id === postId) setViewingPostDetails(null);
     } catch (error) {
@@ -247,7 +246,7 @@ export default function Community() {
   const handleSaveToLibrary = async (e, postId, type) => {
     e.stopPropagation();
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/library`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await api.post(`/library`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
       if (response.data.success) {
         alert(`✅ ${response.data.message}`);
         setPosts(posts.map(p => p._id === postId ? { ...p, savesCount: (p.savesCount || 0) + 1 } : p));
@@ -267,14 +266,14 @@ export default function Community() {
 
       setPosts(updatedPosts);
       if (viewingPostDetails?._id === postId) setViewingPostDetails(updatedPosts[postIndex]);
-      await axios.post(`${API_BASE_URL}/api/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      await api.post(`/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
     } catch (error) { fetchPosts(activeTab); }
   };
 
   const handleViewPostDetails = async (post) => {
     setViewingPostDetails(post);
     try {
-      const res = await axios.get(`${API_BASE_URL}/api/posts/${post._id}`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.get(`/posts/${post._id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         setViewingPostDetails(res.data.post);
         setPosts(posts.map(p => p._id === post._id ? res.data.post : p));
@@ -290,7 +289,7 @@ export default function Community() {
 
   const handleCopyLink = async () => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/posts/${sharingPostId}/share`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/posts/${sharingPostId}/share`, {}, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         setPosts(posts.map(p => p._id === sharingPostId ? { ...p, sharesCount: res.data.sharesCount } : p));
         if (viewingPostDetails?._id === sharingPostId) setViewingPostDetails(prev => ({ ...prev, sharesCount: res.data.sharesCount }));
@@ -304,7 +303,7 @@ export default function Community() {
 
   const handleSendToUser = async (targetUserId) => {
     try {
-      const res = await axios.post(`${API_BASE_URL}/api/posts/${sharingPostId}/share-to-user`, { targetUserId }, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await api.post(`/posts/${sharingPostId}/share-to-user`, { targetUserId }, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         alert("Đã gửi bài viết thành công!");
         setShowShareModal(false);
@@ -317,7 +316,7 @@ export default function Community() {
   // ================= XỬ LÝ THÔNG BÁO =================
   const handleNotificationClick = async (noti) => {
     setRealNotifications(prev => prev.map(n => n._id === noti._id ? { ...n, isRead: true } : n));
-    try { await axios.patch(`${API_BASE_URL}/api/posts/notifications/${noti._id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } }); } catch (e) { }
+    try { await axios.patch(`/api/posts/notifications/${noti._id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } }); } catch (e) { }
 
     if (noti.type === 'follow') {
       if (noti.senderId) {
@@ -328,7 +327,7 @@ export default function Community() {
 
     if (noti.postId) {
       try {
-        const res = await axios.get(`${API_BASE_URL}/api/posts/${noti.postId}`, { headers: { Authorization: `Bearer ${token}` } });
+        const res = await api.get(`/posts/${noti.postId}`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.data.success) setViewingPostDetails(res.data.post);
         else alert("Bài viết này không còn tồn tại hoặc đã bị xóa.");
       } catch (error) { alert("Không thể tải bài viết lúc này."); }
@@ -338,7 +337,7 @@ export default function Community() {
   const handleDeleteNotification = async (e, notiId) => {
     e.stopPropagation();
     try {
-      await axios.delete(`${API_BASE_URL}/api/posts/notifications/${notiId}`, { headers: { Authorization: `Bearer ${token}` } });
+      await api.delete(`/posts/notifications/${notiId}`, { headers: { Authorization: `Bearer ${token}` } });
       setRealNotifications(prev => prev.filter(n => n._id !== notiId));
     } catch (error) { console.error("Lỗi xóa thông báo", error); }
   };

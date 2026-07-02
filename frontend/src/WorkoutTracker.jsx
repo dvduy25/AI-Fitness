@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -61,7 +62,6 @@ export default function WorkoutTracker() {
   // GIẢ LẬP SỐ VÉ VÀ TRẠNG THÁI VIP (Bạn có thể lấy từ API lấy thông tin User)
   const [userTickets, setUserTickets] = useState(0); 
   const [isPremium, setIsPremium] = useState(false); 
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
 
   // ==========================================
   // TÍCH HỢP GOOGLE ADSENSE SCRIPT VÀO REACT
@@ -117,7 +117,7 @@ export default function WorkoutTracker() {
 
       try {
         const token = localStorage.getItem('token');
-        const res = await axios.get(`${API_BASE_URL}/api/workout-logs/today`, {
+        const res = await api.get(`/workout-logs/today`, {
           headers: { Authorization: `Bearer ${token}` }
         });
 
@@ -152,7 +152,7 @@ export default function WorkoutTracker() {
   const fetchPrevRecord = async (exerciseId) => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get(`${API_BASE_URL}/api/workout-logs/previous/${exerciseId}`, {
+      const res = await api.get(`/workout-logs/previous/${exerciseId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.data.hasHistory) {
@@ -168,7 +168,7 @@ export default function WorkoutTracker() {
       const token = localStorage.getItem('token');
       const id = typeof exerciseId === 'object' ? exerciseId._id : exerciseId;
 
-      const res = await axios.get(`${API_BASE_URL}/api/exercises/${id}`, {
+      const res = await api.get(`/exercises/${id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -216,7 +216,7 @@ export default function WorkoutTracker() {
       if (exercisesPayload.length > 0) {
         const payload = { planDay: todayPlan.dayOfWeek, exercises: exercisesPayload };
         const token = localStorage.getItem('token');
-        const res = await axios.post(`${API_BASE_URL}/api/workout-logs`, payload, {
+        const res = await api.post(`/workout-logs`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -281,7 +281,7 @@ export default function WorkoutTracker() {
       adRewarded: async () => {
         try {
           const token = localStorage.getItem('token');
-          const res = await axios.post(`${API_BASE_URL}/api/transactions/virtual-ad`, 
+          const res = await api.post(`/transactions/virtual-ad`, 
             {}, 
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -486,7 +486,7 @@ export default function WorkoutTracker() {
                   <video 
                     className="w-full h-full object-cover" 
                     controls autoPlay 
-                    src={`${API_BASE_URL}${infoModal.exercise.videoUrl}`}
+                    src={`${import.meta.env.VITE_API_URL || ""}${infoModal.exercise.videoUrl}`}
                   ></video>
                 )}
               </div>

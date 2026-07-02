@@ -1,3 +1,4 @@
+import api from "./services/api";
 import React, { useState, useEffect } from "react";
 import { 
   Mail, Lock, LogIn, Loader2, AlertTriangle, 
@@ -22,8 +23,6 @@ const AuthPage = ({ onLoginSuccess }) => {
     medicalConditions: "" 
   });
   
-  const API_BASE_URL = 'https://ai-fitness-w6fd.onrender.com';
-// const API_BASE_URL = 'http://localhost:5000';
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
@@ -51,7 +50,7 @@ const AuthPage = ({ onLoginSuccess }) => {
       }
     }
 
-    const endpoint = isLogin ? "/api/users/login" : "/api/users/register";
+    const endpoint = isLogin ? "/users/login" : "/users/register";
     
     const processedMedicalConditions = formData.medicalConditions
       ? formData.medicalConditions.split(",").map(item => item.trim()).filter(item => item !== "")
@@ -68,28 +67,18 @@ const AuthPage = ({ onLoginSuccess }) => {
         };
 
     try {
-      const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setMessage({ text: data.message, type: "success" });
-        localStorage.setItem("token", data.token);
-        
-        setTimeout(() => {
-            if(onLoginSuccess) onLoginSuccess();
-        }, 1500);
-      } else {
-        setMessage({ text: data.message || "Tài khoản bị khóa hoặc thông tin không chính xác!", type: "error" });
-        // Nếu đăng nhập thất bại (bị khóa/sai pass), xóa luôn token cho chắc
-        localStorage.removeItem("token");
-      }
+      const { data } = await api.post(endpoint, payload);
+      setMessage({ text: data.message, type: "success" });
+      localStorage.setItem("token", data.token);
+      setTimeout(() => {
+        if (onLoginSuccess) onLoginSuccess();
+      }, 1500);
     } catch (error) {
-      setMessage({ text: "Lỗi kết nối server! Vui lòng thử lại.", type: "error" });
+      const msg = error.response?.data?.message
+        || error.response?.data?.errors?.[0]
+        || "Lỗi kết nối server! Vui lòng thử lại.";
+      setMessage({ text: msg, type: "error" });
+      localStorage.removeItem("token");
     } finally {
       setLoading(false);
     }
