@@ -62,6 +62,15 @@ export default function ProfileTab() {
         <InfoRow label="Nơi tập" value={user?.workoutLocation ? LOCATION_LABEL[user.workoutLocation] : "—"} last />
       </Card>
 
+      {user?.role === "user" ? (
+        <>
+          <Text style={styles.sectionTitle}>Huấn luyện viên</Text>
+          <Card style={{ marginBottom: 24 }}>
+            <SettingRow icon="calendar-outline" label="Lịch đã đặt với PT" onPress={() => router.push("/pt/my-bookings")} last />
+          </Card>
+        </>
+      ) : null}
+
       <Text style={styles.sectionTitle}>Cài đặt</Text>
       <Card style={{ marginBottom: 24 }}>
         <SettingRow icon="key-outline" label="Đổi mật khẩu" onPress={() => router.push("/profile/change-password")} />

@@ -130,6 +130,7 @@ exports.getPTAvailabilityForUser = async (req, res) => {
     return res.json({
       success: true,
       available: record.isAvailable,
+      availabilityId: record._id, // 🌟 Cần thiết để FE tạo hire request (POST /pt/hire)
       date: record.date,
       location: record.location,
       coordinates: record.coordinates,

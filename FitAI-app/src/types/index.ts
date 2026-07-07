@@ -191,3 +191,95 @@ export interface ApiError {
   message?: string;
   success?: boolean;
 }
+
+// ==========================================
+// CỘNG ĐỒNG (POSTS / FEED)
+// ==========================================
+export type PostType = "text" | "workout_log" | "diet_log" | "master_workout" | "master_diet";
+
+export interface PostAuthor {
+  _id: string;
+  name: string;
+  avatar?: string;
+  role: "user" | "admin" | "trainer";
+  isVerified?: boolean;
+  isLocked?: boolean;
+}
+
+export interface Post {
+  _id: string;
+  userId: PostAuthor;
+  content: string;
+  images: string[];
+  video?: string;
+  postType: PostType;
+  workoutSnapshot?: { weeklySchedule?: WorkoutDay[] } | null;
+  dietSnapshot?: { dailyTotal?: Macros; meals?: Meal[] } | null;
+  likes: string[];
+  commentsCount: number;
+  savesCount: number;
+  viewsCount: number;
+  sharesCount: number;
+  createdAt: string;
+}
+
+export interface PostComment {
+  _id: string;
+  postId: string;
+  userId: { _id: string; name: string; avatar?: string };
+  content: string;
+  createdAt: string;
+}
+
+// ==========================================
+// PT — LỊCH RẢNH / THUÊ PT
+// ==========================================
+export interface PTFreeSlot {
+  _id: string;
+  startTime: string;
+  endTime: string;
+}
+
+export interface NearbyPT {
+  ptId: { _id: string; name: string; avatar?: string; isVerified?: boolean; role: string };
+  date: string;
+  location?: string | null;
+  coordinates?: { lat: number | null; lng: number | null };
+  freeSlots: PTFreeSlot[];
+  distance: number | null;
+}
+
+export interface PTAvailabilityRecord {
+  _id: string;
+  ptId: string;
+  date: string;
+  isAvailable: boolean;
+  location?: string | null;
+  coordinates?: { lat: number | null; lng: number | null };
+  slots: {
+    _id: string;
+    startTime: string;
+    endTime: string;
+    isBooked: boolean;
+    bookedBy?: string | null;
+  }[];
+}
+
+export interface HireRequest {
+  _id: string;
+  userId: { _id: string; name: string; avatar?: string; age?: number; goal?: string } | string;
+  ptId: { _id: string; name: string; avatar?: string; isVerified?: boolean; phone?: string } | string;
+  availabilityId: string;
+  slotId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  goal?: string;
+  price: number;
+  status: "pending" | "confirmed" | "rejected" | "completed" | "cancelled";
+  rejectReason?: string | null;
+  cancelledBy?: "user" | "pt" | null;
+  rating?: number | null;
+  review?: string | null;
+  createdAt: string;
+}

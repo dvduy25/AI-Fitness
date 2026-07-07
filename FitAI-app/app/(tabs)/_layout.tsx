@@ -7,7 +7,8 @@ import { LoadingScreen } from "@/components/ui/Feedback";
 import { color, font, shadow } from "@/theme/tokens";
 
 export default function TabsLayout() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
+  const isTrainer = user?.role === "trainer";
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -34,8 +35,28 @@ export default function TabsLayout() {
         name="index"
         options={{
           title: "Trang chủ",
+          href: isTrainer ? null : undefined,
           tabBarIcon: ({ color: c, focused }) => (
             <Ionicons name={focused ? "home" : "home-outline"} size={22} color={c} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          title: "Dashboard",
+          href: isTrainer ? undefined : null,
+          tabBarIcon: ({ color: c, focused }) => (
+            <Ionicons name={focused ? "grid" : "grid-outline"} size={21} color={c} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="community"
+        options={{
+          title: "Cộng đồng",
+          tabBarIcon: ({ color: c, focused }) => (
+            <Ionicons name={focused ? "people" : "people-outline"} size={22} color={c} />
           ),
         }}
       />
@@ -61,6 +82,7 @@ export default function TabsLayout() {
         name="progress"
         options={{
           title: "Tiến độ",
+          href: isTrainer ? null : undefined,
           tabBarIcon: ({ color: c, focused }) => (
             <Ionicons name={focused ? "trending-up" : "trending-up-outline"} size={22} color={c} />
           ),
