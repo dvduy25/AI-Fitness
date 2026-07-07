@@ -82,7 +82,6 @@ export default function TabsLayout() {
         name="progress"
         options={{
           title: "Tiến độ",
-          href: isTrainer ? null : undefined,
           tabBarIcon: ({ color: c, focused }) => (
             <Ionicons name={focused ? "trending-up" : "trending-up-outline"} size={22} color={c} />
           ),

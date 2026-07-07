@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from "react";
 import { StyleSheet, Text, View, Pressable } from "react-native";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { Screen } from "@/components/ui/Screen";
 import { Card, SectionHeader, Badge } from "@/components/ui/Card";
@@ -97,6 +97,17 @@ export default function ProgressTab() {
     >
       <Text style={styles.header}>Tiến độ</Text>
       <Text style={styles.sub}>Cân nặng &amp; thành tích của bạn</Text>
+
+      <Pressable style={styles.bodyCompCard} onPress={() => router.push("/body-composition")}>
+        <View style={styles.bodyCompIconWrap}>
+          <Ionicons name="body-outline" size={22} color="#fff" />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.bodyCompTitle}>Phân tích tỷ lệ cơ thể</Text>
+          <Text style={styles.bodyCompSub}>Ước tính % mỡ & dựng mô hình 3D theo US Navy Method</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={18} color={color.inkFaint} />
+      </Pressable>
 
       <Card style={{ marginTop: 8, marginBottom: 16 }}>
         <View style={styles.weightHead}>
@@ -196,6 +207,25 @@ function StatRow({ label, value, last }: { label: string; value: string; last?: 
 const styles = StyleSheet.create({
   header: { ...type.display, color: color.ink, marginTop: 8 },
   sub: { ...type.body, color: color.inkFaint, marginTop: 4 },
+  bodyCompCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: color.ink,
+    borderRadius: radius.lg,
+    padding: 14,
+    marginTop: 16,
+  },
+  bodyCompIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 13,
+    backgroundColor: color.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bodyCompTitle: { ...type.body, fontFamily: font.bodySemi, color: "#fff" },
+  bodyCompSub: { ...type.bodySmall, color: "rgba(255,255,255,0.7)", marginTop: 2 },
   weightHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 },
   weightNow: { fontFamily: "Manrope_800ExtraBold", fontSize: 34, color: color.ink },
   weightUnit: { ...type.bodySmall, color: color.inkFaint, marginTop: -2 },
