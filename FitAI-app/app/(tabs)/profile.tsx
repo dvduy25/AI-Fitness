@@ -66,13 +66,15 @@ export default function ProfileTab() {
         <>
           <Text style={styles.sectionTitle}>Huấn luyện viên</Text>
           <Card style={{ marginBottom: 24 }}>
-            <SettingRow icon="calendar-outline" label="Lịch đã đặt với PT" onPress={() => router.push("/pt/my-bookings")} last />
+            <SettingRow icon="calendar-outline" label="Lịch đã đặt với PT" onPress={() => router.push("/pt/my-bookings")} />
+            <SettingRow icon="bookmark-outline" label="Kho lưu trữ của tôi" onPress={() => router.push("/library")} last />
           </Card>
         </>
       ) : null}
 
       <Text style={styles.sectionTitle}>Cài đặt</Text>
       <Card style={{ marginBottom: 24 }}>
+        <SettingRow icon="notifications-outline" label="Thông báo" onPress={() => router.push("/notifications")} />
         <SettingRow icon="key-outline" label="Đổi mật khẩu" onPress={() => router.push("/profile/change-password")} />
         <SettingRow icon="server-outline" label="Địa chỉ máy chủ" onPress={() => router.push("/(auth)/server-settings")} />
         <SettingRow

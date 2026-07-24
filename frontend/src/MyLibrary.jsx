@@ -40,8 +40,8 @@ export default function MyLibrary() {
     setApplyingId(item._id);
     try {
       // Gọi API apply bạn đã viết ở Backend
-      const response = await axios.post(
-        `/api/library/${item._id}/apply`, 
+      const response = await api.post(
+        `/library/${item._id}/apply`, 
         {}, 
         { headers: { Authorization: `Bearer ${token}` } }
       );

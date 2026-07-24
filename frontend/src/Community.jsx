@@ -76,12 +76,12 @@ export default function Community() {
   const fetchPosts = async (type = activeTab) => {
     setLoading(true);
     try {
-      let endpoint = `/api/posts/feed`;
-      if (type === 'latest') endpoint = `/api/posts/latest`;
-      else if (type === 'following') endpoint = `/api/posts/following`;
-      else if (type === 'liked') endpoint = `/api/posts/liked`;
+      let endpoint = `/posts/feed`;
+      if (type === 'latest') endpoint = `/posts/latest`;
+      else if (type === 'following') endpoint = `/posts/following`;
+      else if (type === 'liked') endpoint = `/posts/liked`;
 
-      const response = await axios.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      const response = await api.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
       if (response.data.success) {
         setPosts(response.data.posts);
       }
@@ -196,19 +196,19 @@ export default function Community() {
     selectedImages.forEach(img => formData.append("images", img));
     if (selectedVideo) formData.append("video", selectedVideo);
 
-    let endpoint = `/api/posts`;
+    let endpoint = `/posts`;
     if (attachPlan) {
       if (attachPlan.source === 'master') {
-        endpoint = `/api/posts/share-master`;
+        endpoint = `/posts/share-master`;
         formData.append("shareType", attachPlan.type);
       } else if (attachPlan.source === 'archive') {
-        endpoint = `/api/posts/share-library`;
+        endpoint = `/posts/share-library`;
         formData.append("libraryId", attachPlan.libraryId);
       }
     }
 
     try {
-      const response = await axios.post(endpoint, formData, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } });
+      const response = await api.post(endpoint, formData, { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'multipart/form-data' } });
       if (response.data.success) {
         setNewPostContent(""); setSelectedImages([]); setSelectedVideo(null); setAttachPlan(null);
         if (imageInputRef.current) imageInputRef.current.value = "";
@@ -316,7 +316,7 @@ export default function Community() {
   // ================= XỬ LÝ THÔNG BÁO =================
   const handleNotificationClick = async (noti) => {
     setRealNotifications(prev => prev.map(n => n._id === noti._id ? { ...n, isRead: true } : n));
-    try { await axios.patch(`/api/posts/notifications/${noti._id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } }); } catch (e) { }
+    try { await api.patch(`/posts/notifications/${noti._id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } }); } catch (e) { }
 
     if (noti.type === 'follow') {
       if (noti.senderId) {

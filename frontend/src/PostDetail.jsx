@@ -211,8 +211,8 @@ export default function PostDetail() {
       return;
     }
     try {
-      await axios.post(
-        `/api/posts/${postId}/report`,
+      await api.post(
+        `/posts/${postId}/report`,
         { reason: reportReason },
         { headers: { Authorization: `Bearer ${token}` } }
       );

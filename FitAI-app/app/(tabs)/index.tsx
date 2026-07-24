@@ -11,6 +11,7 @@ import { FlameStreak } from "@/components/ui/FlameStreak";
 import { Avatar } from "@/components/ui/Feedback";
 import { useAuth } from "@/context/AuthContext";
 import { dietLogApi, gamificationApi } from "@/api/tracking";
+import { notificationsApi } from "@/api/notifications";
 import { workoutApi } from "@/api/workout";
 import type { GamificationStats, PeriodStats, TodayStatus } from "@/types";
 import type { WorkoutDay } from "@/types";
@@ -29,6 +30,7 @@ export default function Home() {
   const [todayStatus, setTodayStatus] = useState<TodayStatus | null>(null);
   const [todayWorkout, setTodayWorkout] = useState<WorkoutDay | null>(null);
   const [hasWorkoutPlan, setHasWorkoutPlan] = useState(true);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const load = useCallback(async () => {
     try {
@@ -38,6 +40,7 @@ export default function Home() {
         gamificationApi.stats(),
         workoutApi.getToday(),
       ]);
+      notificationsApi.unreadCount().then(setUnreadCount).catch(() => {});
       setMacros(todayMacros || { calories: 0, protein: 0, carbs: 0, fat: 0 });
       setCompletedDietDays(
         weekHistory.filter((d) => d.isDayCompleted).map((d) => jsDayToKey(new Date(d.date)))
@@ -79,7 +82,17 @@ export default function Home() {
             <Text style={styles.greeting}>Chào buổi sáng,</Text>
             <Text style={styles.name}>{user?.name?.split(" ").slice(-1)[0] || "bạn"} 👋</Text>
           </View>
-          <Avatar uri={user?.avatar} name={user?.name} size={46} />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
+            <Pressable style={styles.bellBtn} onPress={() => router.push("/notifications")}>
+              <Ionicons name="notifications-outline" size={20} color="#fff" />
+              {unreadCount > 0 ? (
+                <View style={styles.bellBadge}>
+                  <Text style={styles.bellBadgeText}>{unreadCount > 9 ? "9+" : unreadCount}</Text>
+                </View>
+              ) : null}
+            </Pressable>
+            <Avatar uri={user?.avatar} name={user?.name} size={46} />
+          </View>
         </View>
         <FlameStreak completedDays={completedDietDays} streak={stats?.streak ?? 0} />
       </LinearGradient>
@@ -210,6 +223,27 @@ const styles = StyleSheet.create({
   hero: { paddingTop: 60, paddingBottom: 26, paddingHorizontal: 20, borderBottomLeftRadius: 32, borderBottomRightRadius: 32 },
   heroTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
   greeting: { ...type.body, color: "rgba(255,249,242,0.85)" },
+  bellBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bellBadge: {
+    position: "absolute",
+    top: -2,
+    right: -2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: "#fff",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 3,
+  },
+  bellBadgeText: { fontSize: 9, fontFamily: "Inter_700Bold", color: color.primary },
   name: { ...type.h1, color: "#FFFFFF", marginTop: 2 },
   body: { paddingHorizontal: 20, marginTop: -18 },
   ringCard: { marginBottom: 16 },

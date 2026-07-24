@@ -233,7 +233,7 @@ export default function WorkoutPlanManager() {
     if (!newTitle || newTitle === currentTitle) return;
 
     try {
-      await axios.patch(`/api/workout-plan/day`, 
+      await api.patch(`/workout-plan/day`, 
         { dayOfWeek, title: newTitle },
         getHeaders()
       );
@@ -249,7 +249,7 @@ export default function WorkoutPlanManager() {
     if (newTime === null || newTime === currentScheduledTime) return;
 
     try {
-      await axios.patch(`/api/workout-plan/day`, 
+      await api.patch(`/workout-plan/day`, 
         { dayOfWeek, scheduledTime: newTime },
         getHeaders()
       );
@@ -263,7 +263,7 @@ export default function WorkoutPlanManager() {
   const toggleRestDay = async (dayOfWeek, currentStatus) => {
     setIsProcessing(true);
     try {
-      await axios.patch(`/api/workout-plan/day`, { dayOfWeek, isRestDay: !currentStatus }, getHeaders());
+      await api.patch(`/workout-plan/day`, { dayOfWeek, isRestDay: !currentStatus }, getHeaders());
       fetchCurrentPlan();
     } catch (error) { alert("Lỗi cập nhật ngày tập!"); } finally { setIsProcessing(false); }
   };
@@ -288,7 +288,7 @@ export default function WorkoutPlanManager() {
         dayOfWeek: editData.dayOfWeek, exerciseId: editData.exerciseId,
         sets: Number(editData.sets), reps: editData.reps, restTimeInSeconds: Number(editData.restTimeInSeconds)
       };
-      await axios.patch(`/api/workout-plan/exercise`, payload, getHeaders());
+      await api.patch(`/workout-plan/exercise`, payload, getHeaders());
       await fetchCurrentPlan(); 
       setShowEditExModal(false);
     } catch (error) { 

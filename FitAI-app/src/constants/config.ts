@@ -8,7 +8,7 @@
  * or change it later from Hồ sơ > Kết nối máy chủ inside the app.
  */
 export const DEFAULT_API_URL =
-  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") || "http://localhost:5000/api";
+  process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, "") || "https://ai-fitness-w6fd.onrender.com/api";
 
 export const STORAGE_KEYS = {
   token: "fitai_token",

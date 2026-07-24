@@ -21,7 +21,7 @@ export default function FloatingBot() {
       const token = localStorage.getItem('token'); 
       if (!token) return;
 
-      const response = await axios.get('/api/gamification/stats', {
+      const response = await api.get('/gamification/stats', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -43,7 +43,7 @@ export default function FloatingBot() {
     setClosing(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.post('/api/gamification/manual-close', {}, {
+      const response = await api.post('/gamification/manual-close', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert(response.data.message);

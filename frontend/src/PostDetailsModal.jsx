@@ -64,9 +64,9 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
       return;
     }
     try {
-      await axios.post(
-        `/api/posts/${post._id}/report`, 
-        { reason: reportReason }, 
+      await api.post(
+        `/posts/${post._id}/report`,
+        { reason: reportReason },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       alert("Cảm ơn đóng góp của bạn. Báo cáo đã được gửi tới đội ngũ kiểm duyệt.");

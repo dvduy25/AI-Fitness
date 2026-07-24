@@ -319,7 +319,7 @@ export default function MealPlanManager() {
   const handleUpdateGrams = async () => {
     setIsProcessing(true);
     try {
-      const res = await axios.patch(`/api/meal-plan/item`, {
+      const res = await api.patch(`/meal-plan/item`, {
         mealId: editItemData.mealId, itemId: editItemData.itemId, newQuantity: Number(editItemData.grams)
       }, getHeaders());
       setGeneratedPlan(res.data.masterMealPlan); setShowEditGramModal(false);
