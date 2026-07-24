@@ -1,37 +1,53 @@
-import api from "./services/api";
+// components/FloatingBot.jsx
+
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Activity, Star, CheckCircle, Shield } from 'lucide-react';
-import axios from 'axios';
+import api from "../services/api";
+import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Shield, MessageSquare, CheckCircle } from 'lucide-react';
 
 export default function FloatingBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [periodStats, setPeriodStats] = useState(null); 
-  const [todayStatus, setTodayStatus] = useState({ didWorkout: false, didEatRight: false });
   
+  const [todayStatus, setTodayStatus] = useState({
+    workout: { didWorkout: false, isOverdue: false },
+    diet: { didEatRight: false, isCaloriesMet: false, isMealOverdue: false, overdueMealName: null }
+  });
+  
+  const [todayLogs, setTodayLogs] = useState([]);
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
   const [updatingStyle, setUpdatingStyle] = useState(false);
   const [resolving, setResolving] = useState(false);
   
-  // Quản lý tọa độ kéo thả bằng chuột/tay
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const draggingRef = useRef(false);
 
+  // Lấy dữ liệu từ Backend
   const fetchGamificationStats = async () => {
     setLoading(true);
     try {
       const token = localStorage.getItem('token'); 
       if (!token) return;
 
-      const response = await api.get('/api/gamification/stats', {
+      const response = await api.get('/gamification/stats', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (response.data.success) {
         setStats(response.data.stats);
-        setPeriodStats(response.data.periodStats); 
-        setTodayStatus(response.data.todayStatus || { didWorkout: false, didEatRight: false });
+        if (response.data.periodStats) setPeriodStats(response.data.periodStats); 
+        
+        const status = response.data.todayStatus || {
+          workout: { didWorkout: false, isOverdue: false },
+          diet: { didEatRight: false, isCaloriesMet: false, isMealOverdue: false }
+        };
+        setTodayStatus(status);
+
+        // Nhận trực tiếp danh sách chỉ trích/thông báo từ Backend
+        if (response.data.notifications) {
+          setTodayLogs(response.data.notifications);
+        }
       }
     } catch (error) {
       console.error("Lỗi khi lấy dữ liệu Bot:", error);
@@ -40,16 +56,16 @@ export default function FloatingBot() {
     }
   };
 
-  // BỔ SUNG: Hàm đổi tính cách AI
   const handleStyleChange = async (style) => {
     setUpdatingStyle(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await api.put('/api/gamification/coaching-style', { style }, {
+      const response = await api.put('/gamification/coaching-style', { style }, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
         setStats(prev => ({ ...prev, coachingStyle: style }));
+        fetchGamificationStats(); 
       }
     } catch (error) {
       alert(error.response?.data?.message || "Lỗi khi cập nhật tính cách.");
@@ -58,17 +74,16 @@ export default function FloatingBot() {
     }
   };
 
-  // BỔ SUNG: Hàm cam kết sửa sai (Tắt cảnh báo vi phạm STRICT mode)
   const handleResolveViolation = async () => {
     setResolving(true);
     try {
       const token = localStorage.getItem('token');
-      const response = await api.post('/api/gamification/resolve-violation', {}, {
+      const response = await api.post('/gamification/resolve-violation', {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
         alert(response.data.message);
-        fetchGamificationStats(); // Refresh để ẩn thông báo đỏ
+        fetchGamificationStats(); 
       }
     } catch (error) {
       alert(error.response?.data?.message || "Không thể xử lý vi phạm lúc này.");
@@ -78,7 +93,7 @@ export default function FloatingBot() {
   };
 
   const handleManualClose = async () => {
-    if (!window.confirm("Chúc mừng bạn đã hoàn thành ngày xuất sắc! Bấm xác nhận để chốt sổ nhận 10 điểm Rank và tăng chuỗi ngày nhé!")) return;
+    if (!window.confirm("Bấm xác nhận để chốt sổ hoàn thành ngày!")) return;
     setClosing(true);
     try {
       const token = localStorage.getItem('token');
@@ -100,23 +115,20 @@ export default function FloatingBot() {
 
   const toggleBot = () => {
     if (draggingRef.current) return;
-    const willOpen = !isOpen;
-    setIsOpen(willOpen);
-    if (willOpen) fetchGamificationStats();
+    setIsOpen(!isOpen);
+    if (!isOpen) fetchGamificationStats();
   };
 
-  // --- LOGIC DI CHUYỂN CHUỘT (DESKTOP) ---
+  // Logic Kéo thả Bot
   const handleMouseDown = (e) => {
     if (e.button !== 0) return;
     const startX = e.clientX - position.x;
     const startY = e.clientY - position.y;
-    let hasMoved = false;
 
     const handleMouseMove = (moveEvent) => {
       const dx = moveEvent.clientX - startX;
       const dy = moveEvent.clientY - startY;
       if (Math.abs(dx - position.x) > 4 || Math.abs(dy - position.y) > 4) {
-        hasMoved = true;
         draggingRef.current = true;
       }
       setPosition({ x: dx, y: dy });
@@ -125,59 +137,58 @@ export default function FloatingBot() {
     const handleMouseUp = () => {
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
-      if (hasMoved) {
-        setTimeout(() => { draggingRef.current = false; }, 50);
-      } else {
-        draggingRef.current = false;
-      }
+      setTimeout(() => { draggingRef.current = false; }, 50);
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  // --- LOGIC DI CHUYỂN CẢM ỨNG (MOBILE) ---
   const handleTouchStart = (e) => {
     const touch = e.touches[0];
     const startX = touch.clientX - position.x;
     const startY = touch.clientY - position.y;
-    let hasMoved = false;
 
     const handleTouchMove = (moveEvent) => {
-      const t = moveEvent.touches[0];
-      const dx = t.clientX - startX;
-      const dy = t.clientY - startY;
-      hasMoved = true;
       draggingRef.current = true;
-      setPosition({ x: dx, y: dy });
+      setPosition({ x: moveEvent.touches[0].clientX - startX, y: moveEvent.touches[0].clientY - startY });
     };
 
     const handleTouchEnd = () => {
       document.removeEventListener('touchmove', handleTouchMove);
       document.removeEventListener('touchend', handleTouchEnd);
-      if (hasMoved) {
-        setTimeout(() => { draggingRef.current = false; }, 50);
-      } else {
-        draggingRef.current = false;
-      }
+      setTimeout(() => { draggingRef.current = false; }, 50);
     };
     document.addEventListener('touchmove', handleTouchMove, { passive: false });
     document.addEventListener('touchend', handleTouchEnd);
   };
 
   const displayStats = stats || {
-    rankPoints: 0, streak: 0, totalWorkoutSessions: 0,
+    rankPoints: 0, streak: 0,
     currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 },
     coachingStyle: 'SERIOUS',
     activeViolation: { isViolating: false }
   };
-  const { totalWorkoutSessions, coachingStyle, activeViolation } = displayStats;
+  
+  const { coachingStyle, activeViolation } = displayStats;
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers;
 
-  const displayPeriod = periodStats || { workoutsThisWeek: 0, workoutsThisMonth: 0, dietThisWeek: 0, dietThisMonth: 0 };
-
-  const isFullyCompleted = todayStatus.didWorkout && todayStatus.didEatRight; 
+  const isFullyCompleted = todayStatus?.workout?.didWorkout && (todayStatus?.diet?.didEatRight || todayStatus?.diet?.isCaloriesMet); 
   const isAlreadyClosed = stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0)); 
   const showCloseButton = isFullyCompleted && !isAlreadyClosed;
+
+  // Cấu hình Nội dung & Style Bong Bóng Hội thoại ngoài
+  let bubbleMessage = todayLogs.length > 0 ? todayLogs[0].text : null;
+  let bubbleStyle = "bg-gray-800 border-gray-700 text-gray-200"; 
+  
+  if (activeViolation?.isViolating) {
+    bubbleStyle = "bg-red-950 border-red-500 text-red-200";
+  } else if (showCloseButton) {
+    bubbleStyle = "bg-emerald-950 border-emerald-500 text-emerald-200";
+  } else if (todayStatus?.workout?.isOverdue || todayStatus?.diet?.isMealOverdue) {
+    bubbleStyle = "bg-orange-950 border-orange-500 text-orange-200";
+  } else if (coachingStyle === 'STRICT') {
+    bubbleStyle = "bg-orange-950 border-orange-500 text-orange-200";
+  }
 
   return (
     <div 
@@ -188,11 +199,11 @@ export default function FloatingBot() {
       }}
     >
       {isOpen && (
-        <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl mb-4 w-[320px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className="bg-gray-900 border border-gray-700 rounded-2xl shadow-2xl mb-4 w-[330px] overflow-hidden animate-in fade-in zoom-in-95 duration-150">
           {/* Header */}
           <div className="flex justify-between items-center border-b border-gray-800 p-4 bg-gray-950/50">
             <h3 className="text-emerald-400 font-bold flex items-center gap-2">
-              <Bot className="w-5 h-5" /> Trợ lý Cá Nhân
+              <Bot className="w-5 h-5" /> Trợ lý HLV AI
             </h3>
             <div className="flex items-center gap-2">
               <button onClick={fetchGamificationStats} className="text-gray-500 hover:text-emerald-400 transition-colors">
@@ -205,25 +216,23 @@ export default function FloatingBot() {
           </div>
 
           {/* Body */}
-          <div className="p-4 space-y-3 text-sm">
-
-            {/* BỔ SUNG 1: CẢNH BÁO VI PHẠM TRẠNG THÁI STRICT */}
+          <div className="p-4 space-y-3 text-sm max-h-[70vh] overflow-y-auto">
             {activeViolation?.isViolating && (
               <div className="bg-red-950/80 border border-red-500 p-3 rounded-xl mb-3 text-center animate-pulse">
                 <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-1" />
                 <p className="text-red-400 font-bold text-sm mb-1 uppercase">CẢNH BÁO KỶ LUẬT!</p>
-                <p className="text-red-300 text-xs mb-3">Bạn đang lười biếng hoặc ăn sai chế độ. AI sẽ liên tục nhắc nhở cho đến khi bạn sửa đổi!</p>
+                <p className="text-red-300 text-xs mb-3">Bạn đang lười biếng hoặc ăn sai chế độ liên tục!</p>
                 <button
                   onClick={handleResolveViolation}
                   disabled={resolving}
                   className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition-all active:scale-95"
                 >
-                  {resolving ? "Đang ghi nhận..." : "Tôi cam kết sẽ sửa sai ngay!"}
+                  {resolving ? "Đang ghi nhận..." : "Tôi cam kết sửa sai ngay!"}
                 </button>
               </div>
             )}
 
-            {/* BỔ SUNG 2: CHỌN TÍNH CÁCH HLV */}
+            {/* Đổi Tính Cách AI */}
             <div className="bg-gray-800/30 p-2.5 rounded-xl border border-gray-800 flex items-center justify-between">
               <span className="text-xs text-gray-400 font-semibold flex items-center gap-1.5">
                  <Shield className="w-4 h-4 text-blue-400"/> Tính cách AI:
@@ -240,111 +249,92 @@ export default function FloatingBot() {
               </select>
             </div>
 
+            {/* Chỉ số */}
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 flex flex-col items-center">
                 <Trophy className="w-5 h-5 text-yellow-400 mb-1" />
                 <span className="text-xs text-gray-400">Điểm Rank</span>
-                <span className="font-bold text-yellow-400 text-lg">{loading ? '...' : displayStats.rankPoints}</span>
+                <span className="font-bold text-yellow-400 text-lg">{displayStats.rankPoints}</span>
               </div>
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 flex flex-col items-center">
                 <Flame className={`w-5 h-5 mb-1 ${displayStats.streak > 0 ? 'text-orange-500' : 'text-gray-600'}`} />
-                <span className="text-xs text-gray-400">Chuỗi ngày</span>
-                <span className="font-bold text-orange-500 text-lg">{loading ? '...' : displayStats.streak}</span>
+                <span className="text-xs text-gray-400">Chuỗi Ngày</span>
+                <span className="font-bold text-orange-500 text-lg">{displayStats.streak}</span>
               </div>
             </div>
 
-            {/* Bảng Tiến độ hôm nay */}
-            <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 text-xs flex justify-around text-center">
-              <div>
-                <span className="text-gray-400 block mb-0.5">Tập luyện</span>
-                <span className={`font-bold ${todayStatus.didWorkout ? "text-emerald-400" : "text-gray-500"}`}>
-                  {todayStatus.didWorkout ? "✓ Đã xong" : "○ Chưa xong"}
-                </span>
-              </div>
-              <div className="border-r border-gray-800"></div>
-              <div>
-                <span className="text-gray-400 block mb-0.5">Ăn uống</span>
-                <span className={`font-bold ${todayStatus.didEatRight ? "text-emerald-400" : "text-gray-500"}`}>
-                  {todayStatus.didEatRight ? "✓ Đã xong" : "○ Chưa xong"}
-                </span>
-              </div>
-            </div>
-
-            {/* Thống kê hiệu suất */}
-            <div className="bg-gray-800/30 p-3 rounded-lg border border-gray-800 space-y-2 text-xs">
-               <div className="flex justify-between items-center pb-2 border-b border-gray-700/50">
-                  <span className="text-emerald-400 font-semibold">Tập trọn đời:</span>
-                  <span className="text-gray-200 font-bold">{loading ? '-' : totalWorkoutSessions} buổi</span>
-               </div>
-               <div className="flex justify-between items-center">
-                  <span className="text-gray-400 font-semibold">Tuần này:</span>
-                  <div className="flex gap-3">
-                     <span className="flex items-center gap-0.5 text-blue-400"><Activity className="w-3 h-3"/> {displayPeriod.workoutsThisWeek}</span>
-                     <span className="flex items-center gap-0.5 text-purple-400"><Star className="w-3 h-3"/> {displayPeriod.dietThisWeek}</span>
-                  </div>
-               </div>
-               <div className="flex justify-between items-center pt-2 border-t border-gray-700/50">
-                  <span className="text-gray-400 font-semibold">Tháng này:</span>
-                  <div className="flex gap-3">
-                     <span className="flex items-center gap-0.5 text-blue-400"><Activity className="w-3 h-3"/> {displayPeriod.workoutsThisMonth}</span>
-                     <span className="flex items-center gap-0.5 text-purple-400"><Star className="w-3 h-3"/> {displayPeriod.dietThisMonth}</span>
-                  </div>
-               </div>
-            </div>
-
-            {/* Hạn mức vi phạm */}
-            <div className="bg-gray-950 p-3 rounded-xl border border-red-500/20 text-xs">
-              <p className="font-bold text-red-400 mb-1.5 flex items-center gap-1 uppercase tracking-wider text-[11px]">
-                <AlertTriangle className="w-3.5 h-3.5" /> Hạn mức tuần này
-              </p>
-              <div className="space-y-1.5">
-                <div className="flex justify-between"><span className="text-gray-400">Ăn sai:</span><span className={eatWrong > 1 ? "text-red-500 font-bold" : "text-emerald-400"}>{eatWrong} / 1 ngày</span></div>
-                <div className="flex justify-between"><span className="text-gray-400">Không tập:</span><span className={noWorkout > 3 ? "text-red-500 font-bold" : "text-emerald-400"}>{noWorkout} / 3 ngày</span></div>
-                <div className="flex justify-between pt-1 border-t border-gray-800"><span className="text-gray-400">Lười cả ăn & tập:</span><span className={bothFail > 1 ? "text-red-500 font-bold" : "text-emerald-400"}>{bothFail} / 1 ngày</span></div>
+            {/* BẢNG CHÁT / CHỈ TRÍCH TỪ AI */}
+            <div className="mt-4 border-t border-gray-800 pt-3">
+              <h4 className="text-xs font-bold text-gray-400 mb-2 flex items-center gap-1.5 uppercase">
+                <MessageSquare className="w-3.5 h-3.5" /> Thông báo hôm nay
+              </h4>
+              <div className="bg-gray-950/50 border border-gray-800 rounded-xl p-2.5 space-y-2.5 max-h-48 overflow-y-auto custom-scrollbar">
+                {todayLogs.length > 0 ? (
+                  todayLogs.map(log => (
+                    <div key={log.id} className="flex gap-2 items-start">
+                      <div className="bg-gray-800 rounded-full p-1 mt-0.5 shrink-0">
+                        <Bot className="w-3.5 h-3.5 text-emerald-500" />
+                      </div>
+                      <div className={`text-xs p-2 rounded-lg rounded-tl-none w-full ${
+                        log.type === 'error' ? 'bg-red-950/40 border border-red-500/30 text-red-200' :
+                        log.type === 'warning' ? 'bg-orange-950/40 border border-orange-500/30 text-orange-200' :
+                        log.type === 'success' ? 'bg-emerald-950/40 border border-emerald-500/30 text-emerald-200' :
+                        'bg-gray-800 text-gray-300'
+                      }`}>
+                        <p className="mb-0.5 leading-relaxed">{log.text}</p>
+                        <span className="text-[9px] text-gray-500 opacity-80">{log.time}</span>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-xs text-gray-500 py-2">Chưa có thông báo nào.</p>
+                )}
               </div>
             </div>
 
-            {/* NÚT CHỐT SỔ */}
+            {/* Nút Chốt Sổ */}
             {showCloseButton && (
               <button 
                 onClick={handleManualClose}
                 disabled={closing}
-                className="w-full mt-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce"
+                className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce"
               >
                 <CheckCircle className="w-4 h-4" />
                 {closing ? "Đang xử lý..." : "Chốt Sổ Hoàn Thành Ngày!"}
               </button>
             )}
-
-            {/* Trạng thái chốt sổ */}
-            {isAlreadyClosed && (
-              <div className="text-center py-2 bg-gray-950 text-gray-500 font-semibold rounded-xl border border-gray-800 text-xs">
-                🔒 Ngày hôm nay đã được chốt sổ
-              </div>
-            )}
           </div>
         </div>
       )}
 
-      {/* ICON TRÒN ĐỂ DI CHUYỂN */}
-      <div 
-        onClick={toggleBot}
-        onMouseDown={handleMouseDown}
-        onTouchStart={handleTouchStart}
-        role="button"
-        tabIndex={0}
-        className="relative flex items-center justify-center w-14 h-14 bg-gray-900 border-2 border-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-105 transition-transform duration-200 z-50 cursor-grab active:cursor-grabbing"
-      >
-        {isOpen ? <ChevronUp className="w-6 h-6 text-emerald-400 pointer-events-none" /> : <Bot className="w-7 h-7 text-emerald-400 pointer-events-none" />}
-        
-        {/* Cập nhật đèn báo đỏ: Thêm điều kiện activeViolation */}
-        {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0 || activeViolation?.isViolating) && (
-          <span className="absolute top-0 right-0 flex h-3 w-3 pointer-events-none">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-gray-900"></span>
-          </span>
+      {/* BONG BÓNG HỘI THOẠI NGOÀI */}
+      <div className="relative flex flex-col items-end">
+        {!isOpen && bubbleMessage && (
+          <div className={`absolute bottom-[115%] right-0 mb-2 w-52 p-3 text-xs font-medium rounded-2xl rounded-br-none shadow-lg border animate-bounce ${bubbleStyle}`}>
+            {bubbleMessage}
+            <div className={`absolute -bottom-[5px] right-4 w-2.5 h-2.5 border-b border-r transform rotate-45 ${bubbleStyle.split(' ')[0]} ${bubbleStyle.split(' ')[1]}`}></div>
+          </div>
         )}
+
+        <div 
+          onClick={toggleBot}
+          onMouseDown={handleMouseDown}
+          onTouchStart={handleTouchStart}
+          role="button"
+          tabIndex={0}
+          className="relative flex items-center justify-center w-14 h-14 bg-gray-900 border-2 border-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-105 transition-transform duration-200 cursor-grab active:cursor-grabbing"
+        >
+          {isOpen ? <ChevronUp className="w-6 h-6 text-emerald-400 pointer-events-none" /> : <Bot className="w-7 h-7 text-emerald-400 pointer-events-none" />}
+          
+          {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0 || activeViolation?.isViolating || todayStatus?.workout?.isOverdue || todayStatus?.diet?.isMealOverdue) && (
+            <span className="absolute top-0 right-0 flex h-3 w-3 pointer-events-none">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-gray-900"></span>
+            </span>
+          )}
+        </div>
       </div>
+      
     </div>
   );
 }
