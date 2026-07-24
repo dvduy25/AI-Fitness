@@ -1,15 +1,18 @@
 import api from "./services/api";
 import React, { useState, useEffect, useRef } from 'react';
-import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Activity, Star, CheckCircle } from 'lucide-react';
+import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Activity, Star, CheckCircle, Shield } from 'lucide-react';
 import axios from 'axios';
 
 export default function FloatingBot() {
   const [isOpen, setIsOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [periodStats, setPeriodStats] = useState(null); 
-  const [todayStatus, setTodayStatus] = useState({ didWorkout: false, didEatRight: false }); // Trạng thái hôm nay
+  const [todayStatus, setTodayStatus] = useState({ didWorkout: false, didEatRight: false });
+  
   const [loading, setLoading] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [updatingStyle, setUpdatingStyle] = useState(false);
+  const [resolving, setResolving] = useState(false);
   
   // Quản lý tọa độ kéo thả bằng chuột/tay
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -21,14 +24,14 @@ export default function FloatingBot() {
       const token = localStorage.getItem('token'); 
       if (!token) return;
 
-      const response = await api.get('/gamification/stats', {
+      const response = await api.get('/api/gamification/stats', {
         headers: { Authorization: `Bearer ${token}` }
       });
 
       if (response.data.success) {
         setStats(response.data.stats);
         setPeriodStats(response.data.periodStats); 
-        setTodayStatus(response.data.todayStatus || { didWorkout: false, didEatRight: false }); // Nhận dữ liệu trạng thái từ API
+        setTodayStatus(response.data.todayStatus || { didWorkout: false, didEatRight: false });
       }
     } catch (error) {
       console.error("Lỗi khi lấy dữ liệu Bot:", error);
@@ -37,7 +40,43 @@ export default function FloatingBot() {
     }
   };
 
-  // Hàm kích hoạt Chốt sổ ngay lập tức
+  // BỔ SUNG: Hàm đổi tính cách AI
+  const handleStyleChange = async (style) => {
+    setUpdatingStyle(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.put('/api/gamification/coaching-style', { style }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) {
+        setStats(prev => ({ ...prev, coachingStyle: style }));
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || "Lỗi khi cập nhật tính cách.");
+    } finally {
+      setUpdatingStyle(false);
+    }
+  };
+
+  // BỔ SUNG: Hàm cam kết sửa sai (Tắt cảnh báo vi phạm STRICT mode)
+  const handleResolveViolation = async () => {
+    setResolving(true);
+    try {
+      const token = localStorage.getItem('token');
+      const response = await api.post('/api/gamification/resolve-violation', {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success) {
+        alert(response.data.message);
+        fetchGamificationStats(); // Refresh để ẩn thông báo đỏ
+      }
+    } catch (error) {
+      alert(error.response?.data?.message || "Không thể xử lý vi phạm lúc này.");
+    } finally {
+      setResolving(false);
+    }
+  };
+
   const handleManualClose = async () => {
     if (!window.confirm("Chúc mừng bạn đã hoàn thành ngày xuất sắc! Bấm xác nhận để chốt sổ nhận 10 điểm Rank và tăng chuỗi ngày nhé!")) return;
     setClosing(true);
@@ -47,7 +86,7 @@ export default function FloatingBot() {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert(response.data.message);
-      fetchGamificationStats(); // Tải lại số liệu mới sau khi chốt
+      fetchGamificationStats();
     } catch (error) {
       alert(error.response?.data?.message || "Không thể chốt sổ lúc này.");
     } finally {
@@ -60,7 +99,7 @@ export default function FloatingBot() {
   }, []);
 
   const toggleBot = () => {
-    if (draggingRef.current) return; // Nếu đang kéo chuột di chuyển thì không mở bảng
+    if (draggingRef.current) return;
     const willOpen = !isOpen;
     setIsOpen(willOpen);
     if (willOpen) fetchGamificationStats();
@@ -127,16 +166,17 @@ export default function FloatingBot() {
 
   const displayStats = stats || {
     rankPoints: 0, streak: 0, totalWorkoutSessions: 0,
-    currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 }
+    currentWeekTrackers: { eatWrong: 0, noWorkout: 0, bothFail: 0 },
+    coachingStyle: 'SERIOUS',
+    activeViolation: { isViolating: false }
   };
-  const { totalWorkoutSessions } = displayStats;
+  const { totalWorkoutSessions, coachingStyle, activeViolation } = displayStats;
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers;
 
   const displayPeriod = periodStats || { workoutsThisWeek: 0, workoutsThisMonth: 0, dietThisWeek: 0, dietThisMonth: 0 };
 
-  // ĐIỀU KIỆN ẨN/HIỆN NÚT CHỐT SỔ
-  const isFullyCompleted = todayStatus.didWorkout && todayStatus.didEatRight; // Đã xong cả tập + ăn
-  const isAlreadyClosed = stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0)); // Đã chốt hôm nay rồi
+  const isFullyCompleted = todayStatus.didWorkout && todayStatus.didEatRight; 
+  const isAlreadyClosed = stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0)); 
   const showCloseButton = isFullyCompleted && !isAlreadyClosed;
 
   return (
@@ -152,7 +192,7 @@ export default function FloatingBot() {
           {/* Header */}
           <div className="flex justify-between items-center border-b border-gray-800 p-4 bg-gray-950/50">
             <h3 className="text-emerald-400 font-bold flex items-center gap-2">
-              <Bot className="w-5 h-5" /> Trợ lý Kỷ Luật
+              <Bot className="w-5 h-5" /> Trợ lý Cá Nhân
             </h3>
             <div className="flex items-center gap-2">
               <button onClick={fetchGamificationStats} className="text-gray-500 hover:text-emerald-400 transition-colors">
@@ -166,6 +206,40 @@ export default function FloatingBot() {
 
           {/* Body */}
           <div className="p-4 space-y-3 text-sm">
+
+            {/* BỔ SUNG 1: CẢNH BÁO VI PHẠM TRẠNG THÁI STRICT */}
+            {activeViolation?.isViolating && (
+              <div className="bg-red-950/80 border border-red-500 p-3 rounded-xl mb-3 text-center animate-pulse">
+                <AlertTriangle className="w-6 h-6 text-red-500 mx-auto mb-1" />
+                <p className="text-red-400 font-bold text-sm mb-1 uppercase">CẢNH BÁO KỶ LUẬT!</p>
+                <p className="text-red-300 text-xs mb-3">Bạn đang lười biếng hoặc ăn sai chế độ. AI sẽ liên tục nhắc nhở cho đến khi bạn sửa đổi!</p>
+                <button
+                  onClick={handleResolveViolation}
+                  disabled={resolving}
+                  className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-3 rounded-lg text-xs transition-all active:scale-95"
+                >
+                  {resolving ? "Đang ghi nhận..." : "Tôi cam kết sẽ sửa sai ngay!"}
+                </button>
+              </div>
+            )}
+
+            {/* BỔ SUNG 2: CHỌN TÍNH CÁCH HLV */}
+            <div className="bg-gray-800/30 p-2.5 rounded-xl border border-gray-800 flex items-center justify-between">
+              <span className="text-xs text-gray-400 font-semibold flex items-center gap-1.5">
+                 <Shield className="w-4 h-4 text-blue-400"/> Tính cách AI:
+              </span>
+              <select
+                value={coachingStyle}
+                onChange={(e) => handleStyleChange(e.target.value)}
+                disabled={updatingStyle}
+                className="bg-gray-900 text-xs text-emerald-400 font-semibold border border-gray-700 rounded-md p-1.5 outline-none cursor-pointer"
+              >
+                <option value="EASY">😊 Dễ dãi</option>
+                <option value="SERIOUS">🧐 Nghiêm túc</option>
+                <option value="STRICT">🔥 Kỷ luật thép</option>
+              </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-2">
               <div className="bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 flex flex-col items-center">
                 <Trophy className="w-5 h-5 text-yellow-400 mb-1" />
@@ -179,7 +253,7 @@ export default function FloatingBot() {
               </div>
             </div>
 
-            {/* Bảng Tiến độ hôm nay (Giúp trực quan lý do ẩn/hiện nút) */}
+            {/* Bảng Tiến độ hôm nay */}
             <div className="bg-gray-950 p-2.5 rounded-lg border border-gray-800 text-xs flex justify-around text-center">
               <div>
                 <span className="text-gray-400 block mb-0.5">Tập luyện</span>
@@ -230,7 +304,7 @@ export default function FloatingBot() {
               </div>
             </div>
 
-            {/* NÚT CHỐT SỔ (CHỈ XUẤT HIỆN KHI ĐỦ 100% ĐIỀU KIỆN KỶ LUẬT) */}
+            {/* NÚT CHỐT SỔ */}
             {showCloseButton && (
               <button 
                 onClick={handleManualClose}
@@ -242,7 +316,7 @@ export default function FloatingBot() {
               </button>
             )}
 
-            {/* Trạng thái thông báo nếu đã được chốt sổ (bằng tay hoặc qua ngày do cron tự quét) */}
+            {/* Trạng thái chốt sổ */}
             {isAlreadyClosed && (
               <div className="text-center py-2 bg-gray-950 text-gray-500 font-semibold rounded-xl border border-gray-800 text-xs">
                 🔒 Ngày hôm nay đã được chốt sổ
@@ -262,7 +336,9 @@ export default function FloatingBot() {
         className="relative flex items-center justify-center w-14 h-14 bg-gray-900 border-2 border-emerald-500 rounded-full shadow-[0_0_15px_rgba(16,185,129,0.3)] hover:scale-105 transition-transform duration-200 z-50 cursor-grab active:cursor-grabbing"
       >
         {isOpen ? <ChevronUp className="w-6 h-6 text-emerald-400 pointer-events-none" /> : <Bot className="w-7 h-7 text-emerald-400 pointer-events-none" />}
-        {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0) && (
+        
+        {/* Cập nhật đèn báo đỏ: Thêm điều kiện activeViolation */}
+        {!isOpen && (eatWrong > 0 || noWorkout > 1 || bothFail > 0 || activeViolation?.isViolating) && (
           <span className="absolute top-0 right-0 flex h-3 w-3 pointer-events-none">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500 border border-gray-900"></span>
