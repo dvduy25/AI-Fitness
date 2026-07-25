@@ -1,7 +1,7 @@
 // components/FloatingBot.jsx
 
 import React, { useState, useEffect, useRef } from 'react';
-import api from "../services/api";
+import api from "./services/api";
 import { Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, RefreshCw, Shield, MessageSquare, CheckCircle } from 'lucide-react';
 
 export default function FloatingBot() {
