@@ -1,23 +1,29 @@
-// controllers/workoutLogController.js (VIẾT LẠI)
+// controllers/workoutLogController.js
 // =====================================================
-// Chỉ 2 chức năng:
-//   1. Check-in hôm nay có tập không
-//   2. Cập nhật kỷ lục max tạ / max rep từng bài
+// Chức năng: Check-in tập luyện & Cập nhật Kỷ lục bài tập
 // =====================================================
 const WorkoutLog = require("../models/WorkoutLog");
-const Exercise   = require("../models/Exercise");
+const Exercise = require("../models/Exercise");
 
-const toDateStr = () => new Date().toISOString().split("T")[0];
+/**
+ * Hàm hỗ trợ lấy chuỗi Date YYYY-MM-DD theo giờ địa phương (Local Time)
+ * Tránh lỗi lệch múi giờ của toISOString()
+ */
+const toLocalDateStr = (dateObj = new Date()) => {
+  const yyyy = dateObj.getFullYear();
+  const mm = String(dateObj.getMonth() + 1).padStart(2, "0");
+  const dd = String(dateObj.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
 
 // ─────────────────────────────────────────────────
 // POST /api/workout-logs/checkin
 // Body: { didWorkout: true | false, note? }
-// Tạo hoặc cập nhật record ngày hôm nay
 // ─────────────────────────────────────────────────
 exports.checkIn = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { didWorkout, note = "" } = req.body;
+    const userId = req.user._id || req.user.id;
+    const { didWorkout, note } = req.body;
 
     if (typeof didWorkout !== "boolean") {
       return res.status(400).json({
@@ -26,18 +32,15 @@ exports.checkIn = async (req, res) => {
       });
     }
 
-    const today = toDateStr();
+    const today = toLocalDateStr();
+
+    // Chuẩn bị object update
+    const updateData = { didWorkout };
+    if (note !== undefined) updateData.note = note;
 
     const log = await WorkoutLog.findOneAndUpdate(
       { userId, date: today },
-      {
-        $set: {
-          didWorkout,
-          note,
-          // Nếu đổi sang nghỉ → xóa exerciseMaxes
-          ...(!didWorkout ? { exerciseMaxes: [] } : {}),
-        },
-      },
+      { $set: updateData },
       { upsert: true, new: true, setDefaultsOnInsert: true }
     );
 
@@ -55,11 +58,10 @@ exports.checkIn = async (req, res) => {
 // ─────────────────────────────────────────────────
 // PUT /api/workout-logs/max
 // Body: { exerciseId, maxWeight, maxReps }
-// Cập nhật kỷ lục 1 bài tập hôm nay
 // ─────────────────────────────────────────────────
 exports.updateExerciseMax = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user._id || req.user.id;
     const { exerciseId, maxWeight, maxReps } = req.body;
 
     if (!exerciseId || maxWeight == null || maxReps == null) {
@@ -68,11 +70,15 @@ exports.updateExerciseMax = async (req, res) => {
         message: "Thiếu exerciseId, maxWeight hoặc maxReps!",
       });
     }
-    if (Number(maxWeight) < 0 || Number(maxReps) < 0) {
+
+    const inputWeight = Number(maxWeight);
+    const inputReps = Number(maxReps);
+
+    if (inputWeight < 0 || inputReps < 0) {
       return res.status(400).json({ success: false, message: "Giá trị không thể âm!" });
     }
 
-    const today = toDateStr();
+    const today = toLocalDateStr();
 
     // Kiểm tra đã check-in tập hôm nay chưa
     const todayLog = await WorkoutLog.findOne({ userId, date: today });
@@ -85,36 +91,39 @@ exports.updateExerciseMax = async (req, res) => {
 
     // Lấy tên bài tập để cache
     const exercise = await Exercise.findById(exerciseId).select("name");
-    const exerciseName = exercise?.name || "Không rõ";
+    const exerciseName = exercise?.name || "Bài tập";
 
-    // Lấy kỷ lục cũ để lưu prev
+    // Tìm kỷ lục đã ghi nhận trong ngày (nếu có)
     const existing = todayLog.exerciseMaxes.find(
       (e) => e.exerciseId.toString() === exerciseId.toString()
     );
 
     const prevMaxWeight = existing?.maxWeight ?? 0;
-    const prevMaxReps   = existing?.maxReps ?? 0;
+    const prevMaxReps = existing?.maxReps ?? 0;
 
-    // Chỉ cập nhật nếu cao hơn kỷ lục cũ
-    const newMaxWeight = Math.max(Number(maxWeight), prevMaxWeight);
-    const newMaxReps   = Math.max(Number(maxReps), prevMaxReps);
+    // --- LOGIC SO SÁNH KỶ LỤC CHUẨN GYM ---
+    // Thành tích mới vượt kỷ lục nếu: Tạ nặng hơn OR (Tạ bằng AND Reps nhiều hơn)
+    const isWeightHigher = inputWeight > prevMaxWeight;
+    const isRepsHigher = inputWeight === prevMaxWeight && inputReps > prevMaxReps;
+    const improved = isWeightHigher || isRepsHigher;
 
-    // Upsert vào mảng exerciseMaxes
-    const existsInArray = todayLog.exerciseMaxes.some(
-      (e) => e.exerciseId.toString() === exerciseId.toString()
-    );
+    // Nếu không vượt kỷ lục cũ trong ngày thì giữ nguyên kỷ lục cũ
+    const finalWeight = improved ? inputWeight : prevMaxWeight;
+    const finalReps = improved ? inputReps : prevMaxReps;
 
+    const existsInArray = !!existing;
     let updatedLog;
+
     if (existsInArray) {
       updatedLog = await WorkoutLog.findOneAndUpdate(
         { userId, date: today, "exerciseMaxes.exerciseId": exerciseId },
         {
           $set: {
-            "exerciseMaxes.$.maxWeight":    newMaxWeight,
-            "exerciseMaxes.$.maxReps":      newMaxReps,
+            "exerciseMaxes.$.maxWeight": finalWeight,
+            "exerciseMaxes.$.maxReps": finalReps,
             "exerciseMaxes.$.prevMaxWeight": prevMaxWeight,
-            "exerciseMaxes.$.prevMaxReps":   prevMaxReps,
-            "exerciseMaxes.$.exerciseName":  exerciseName,
+            "exerciseMaxes.$.prevMaxReps": prevMaxReps,
+            "exerciseMaxes.$.exerciseName": exerciseName,
           },
         },
         { new: true }
@@ -127,8 +136,8 @@ exports.updateExerciseMax = async (req, res) => {
             exerciseMaxes: {
               exerciseId,
               exerciseName,
-              maxWeight: newMaxWeight,
-              maxReps:   newMaxReps,
+              maxWeight: finalWeight,
+              maxReps: finalReps,
               prevMaxWeight,
               prevMaxReps,
             },
@@ -138,14 +147,11 @@ exports.updateExerciseMax = async (req, res) => {
       );
     }
 
-    const improved =
-      newMaxWeight > prevMaxWeight || newMaxReps > prevMaxReps;
-
     return res.json({
       success: true,
-      message: improved ? "Kỷ lục mới!" : "Đã cập nhật (không vượt kỷ lục cũ).",
+      message: improved ? "Kỷ lục mới!" : "Đã ghi nhận (chưa vượt kỷ lục cũ trong ngày).",
       improved,
-      current: { exerciseName, maxWeight: newMaxWeight, maxReps: newMaxReps },
+      current: { exerciseName, maxWeight: finalWeight, maxReps: finalReps },
       previous: { maxWeight: prevMaxWeight, maxReps: prevMaxReps },
       log: updatedLog,
     });
@@ -156,12 +162,12 @@ exports.updateExerciseMax = async (req, res) => {
 };
 
 // ─────────────────────────────────────────────────
-// GET /api/workout-logs/today  — Lấy log hôm nay
+// GET /api/workout-logs/today
 // ─────────────────────────────────────────────────
 exports.getTodayLog = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const today = toDateStr();
+    const userId = req.user._id || req.user.id;
+    const today = toLocalDateStr();
 
     const log = await WorkoutLog.findOne({ userId, date: today }).populate(
       "exerciseMaxes.exerciseId",
@@ -175,18 +181,18 @@ exports.getTodayLog = async (req, res) => {
       didWorkout: log?.didWorkout ?? null,
     });
   } catch (error) {
+    console.error("[getTodayLog]", error.message);
     res.status(500).json({ success: false, message: "Lỗi server!" });
   }
 };
 
 // ─────────────────────────────────────────────────
-// GET /api/workout-logs/history?month=2025-07
-// Lịch sử tập trong tháng (dùng cho calendar UI)
+// GET /api/workout-logs/history?month=YYYY-MM
 // ─────────────────────────────────────────────────
 exports.getHistory = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const { month } = req.query; // "2025-07"
+    const userId = req.user._id || req.user.id;
+    const { month } = req.query;
 
     const filter = { userId };
     if (month) filter.date = { $regex: `^${month}` };
@@ -195,21 +201,30 @@ exports.getHistory = async (req, res) => {
       .sort({ date: 1 })
       .select("date didWorkout exerciseMaxes note");
 
-    // Tính streak liên tiếp
-    const workedOutDates = logs
-      .filter((l) => l.didWorkout)
-      .map((l) => l.date)
-      .sort();
+    // --- LÍNH TÍNH STREAK CHUẨN TỪ TOÀN BỘ LỊCH SỬ ---
+    const allWorkedOutLogs = await WorkoutLog.find({ userId, didWorkout: true })
+      .select("date")
+      .sort({ date: -1 });
+
+    const workedOutSet = new Set(allWorkedOutLogs.map((l) => l.date));
 
     let streak = 0;
-    const today = toDateStr();
-    let checkDate = new Date(today);
+    const checkDate = new Date();
+    const todayStr = toLocalDateStr(checkDate);
+
+    // Nếu hôm nay chưa tập, kiểm tra xem hôm qua có tập không để nối chuỗi
+    if (!workedOutSet.has(todayStr)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
 
     while (true) {
-      const dateStr = checkDate.toISOString().split("T")[0];
-      if (!workedOutDates.includes(dateStr)) break;
-      streak++;
-      checkDate.setDate(checkDate.getDate() - 1);
+      const dateStr = toLocalDateStr(checkDate);
+      if (workedOutSet.has(dateStr)) {
+        streak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
     }
 
     return res.json({
@@ -217,34 +232,43 @@ exports.getHistory = async (req, res) => {
       logs,
       stats: {
         totalDays: logs.length,
-        workedOutDays: workedOutDates.length,
+        workedOutDays: logs.filter((l) => l.didWorkout).length,
         restDays: logs.filter((l) => !l.didWorkout).length,
         currentStreak: streak,
       },
     });
   } catch (error) {
+    console.error("[getHistory]", error.message);
     res.status(500).json({ success: false, message: "Lỗi server!" });
   }
 };
 
 // ─────────────────────────────────────────────────
 // GET /api/workout-logs/personal-records
-// Tất cả kỷ lục cá nhân của user (max mọi thời gian)
+// Kỷ lục cá nhân (All-time PRs)
 // ─────────────────────────────────────────────────
 exports.getPersonalRecords = async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user._id || req.user.id;
 
     const records = await WorkoutLog.aggregate([
       { $match: { userId, didWorkout: true } },
       { $unwind: "$exerciseMaxes" },
+      // Sắp xếp theo tạ giảm dần, reps giảm dần trước khi group
+      {
+        $sort: {
+          "exerciseMaxes.maxWeight": -1,
+          "exerciseMaxes.maxReps": -1,
+          date: -1,
+        },
+      },
       {
         $group: {
           _id: "$exerciseMaxes.exerciseId",
-          exerciseName:  { $last: "$exerciseMaxes.exerciseName" },
-          allTimeWeight: { $max: "$exerciseMaxes.maxWeight" },
-          allTimeReps:   { $max: "$exerciseMaxes.maxReps" },
-          lastUpdated:   { $max: "$date" },
+          exerciseName: { $first: "$exerciseMaxes.exerciseName" },
+          allTimeWeight: { $first: "$exerciseMaxes.maxWeight" },
+          allTimeReps: { $first: "$exerciseMaxes.maxReps" },
+          achievedDate: { $first: "$date" },
         },
       },
       { $sort: { allTimeWeight: -1 } },
@@ -252,6 +276,7 @@ exports.getPersonalRecords = async (req, res) => {
 
     return res.json({ success: true, records });
   } catch (error) {
+    console.error("[getPersonalRecords]", error.message);
     res.status(500).json({ success: false, message: "Lỗi server!" });
   }
 };

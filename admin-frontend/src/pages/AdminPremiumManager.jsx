@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { Edit2, Plus, Trash2, ShieldCheck, CheckCircle2, X, Loader2 } from 'lucide-react';
 
 export default function AdminPremiumManager() {
@@ -13,11 +13,7 @@ export default function AdminPremiumManager() {
 
   const fetchPackages = async () => {
     try {
-      const token = localStorage.getItem('adminToken');
-      // Tùy chỉnh URL lấy list packages của admin nếu cần
-      const res = await axios.get(`${API_BASE_URL}/admin/packages`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/admin/packages');
       setPackages(res.data.data);
     } catch (error) {
       console.error("Lỗi lấy danh sách gói:", error);
@@ -32,13 +28,10 @@ export default function AdminPremiumManager() {
     e.preventDefault();
     setIsLoading(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      const config = { headers: { Authorization: `Bearer ${token}` } };
-      
       if (editId) {
-        await axios.put(`${API_BASE_URL}/admin/packages/${editId}`, formData, config);
+        await api.put(`/admin/packages/${editId}`, formData);
       } else {
-        await axios.post(`${API_BASE_URL}/admin/packages`, formData, config);
+        await api.post(`/admin/packages`, formData);
       }
       
       setShowModal(false);
@@ -61,10 +54,7 @@ export default function AdminPremiumManager() {
   const handleDelete = async (id) => {
     if (!window.confirm("Bạn có chắc muốn xóa gói này?")) return;
     try {
-      const token = localStorage.getItem('adminToken');
-      await axios.delete(`${API_BASE_URL}/admin/packages/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await api.delete(`/admin/packages/${id}`);
       fetchPackages();
     } catch (error) {
       alert("Xóa thất bại!");

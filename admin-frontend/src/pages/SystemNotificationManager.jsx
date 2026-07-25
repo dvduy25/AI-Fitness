@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import api from '../services/api';
 import { Save, Bell, AlertTriangle, Settings, Activity, CheckCircle, XCircle } from 'lucide-react';
 
 const SystemNotificationManager = () => {
@@ -16,8 +17,8 @@ const SystemNotificationManager = () => {
   useEffect(() => {
     const fetchCurrentStatus = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/system/maintenance");
-        const result = await res.json();
+        const res = await api.get('/system/maintenance');
+        const result = res.data;
         if (result.success && result.data) {
           setConfig({
             isActive: result.data.isActive || false,
@@ -40,28 +41,16 @@ const SystemNotificationManager = () => {
     setFeedback({ show: false, type: '', text: '' });
 
     try {
-      // Lấy Token của Admin (đảm bảo bạn đang lưu token này trong localStorage)
-     // Đổi dòng đó thành:
-const token = localStorage.getItem("adminToken") || localStorage.getItem("token");
+      const res = await api.post('/system/maintenance', config);
+      const result = res.data;
 
-      const res = await fetch("http://localhost:5000/api/system/maintenance", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` // Gửi kèm Token để qua ải middleware
-        },
-        body: JSON.stringify(config),
-      });
-
-      const result = await res.json();
-
-      if (res.ok && result.success) {
+      if (result.success) {
         setFeedback({ show: true, type: 'success', text: "Đã cập nhật hệ thống thành công!" });
       } else {
         setFeedback({ show: true, type: 'error', text: result.message || "Không thể cập nhật cấu hình!" });
       }
     } catch (error) {
-      setFeedback({ show: true, type: 'error', text: "Lỗi kết nối đến máy chủ!" });
+      setFeedback({ show: true, type: 'error', text: error.response?.data?.message || "Lỗi kết nối đến máy chủ!" });
     } finally {
       setIsLoading(false);
       // Ẩn thông báo sau 3 giây

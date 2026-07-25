@@ -253,9 +253,23 @@ const RevenueDashboard = () => {
                       <ShieldAlert className="w-7 h-7 text-red-600" />
                     </div>
                     <h3 className="text-sm font-black text-red-800 uppercase tracking-wide">Phát Hiện Vi Phạm Hoạt Động!</h3>
-                    <p className="text-[11px] font-bold text-red-600 bg-red-50 py-1 px-3 rounded-lg w-max mx-auto mt-1 mb-4">
-                      Tìm thấy {auditResult.hackers?.length || 0} tài khoản VIP lậu (bị tiêm dữ liệu bypass)
-                    </p>
+                    <div className="flex flex-wrap justify-center gap-1.5 mt-2 mb-4">
+                      {auditResult.hackers?.length > 0 && (
+                        <span className="text-[11px] font-bold text-red-600 bg-red-50 py-1 px-3 rounded-lg">
+                          {auditResult.hackers.length} VIP lậu
+                        </span>
+                      )}
+                      {auditResult.adminHackers?.length > 0 && (
+                        <span className="text-[11px] font-bold text-purple-700 bg-purple-50 py-1 px-3 rounded-lg">
+                          {auditResult.adminHackers.length} admin lạ (đã tự khóa)
+                        </span>
+                      )}
+                      {auditResult.incompleteTrainers?.length > 0 && (
+                        <span className="text-[11px] font-bold text-amber-700 bg-amber-50 py-1 px-3 rounded-lg">
+                          {auditResult.incompleteTrainers.length} PT thiếu hồ sơ (đã tự khóa)
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   {/* DANH SÁCH USER LẬU & BẢNG ĐIỀU KHIỂN TRỪNG PHẠT */}
@@ -290,6 +304,26 @@ const RevenueDashboard = () => {
                           >
                             <UserMinus size={12} /> Hạ Cấp/Tước VIP
                           </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {auditResult.adminHackers?.map((intruder) => (
+                      <div key={intruder._id} className="flex items-center gap-2 p-3 bg-white border border-purple-100 rounded-xl shadow-sm">
+                        <div className="p-1.5 bg-purple-50 text-purple-600 rounded-lg"><ShieldAlert className="w-4 h-4"/></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-800 truncate">{intruder.name || 'Tài khoản admin lạ'}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{intruder.email} • đã tự động khóa</p>
+                        </div>
+                      </div>
+                    ))}
+
+                    {auditResult.incompleteTrainers?.map((trainer) => (
+                      <div key={trainer._id} className="flex items-center gap-2 p-3 bg-white border border-amber-100 rounded-xl shadow-sm">
+                        <div className="p-1.5 bg-amber-50 text-amber-700 rounded-lg"><AlertTriangle className="w-4 h-4"/></div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-gray-800 truncate">{trainer.name || 'PT'}</p>
+                          <p className="text-[10px] text-gray-400 truncate">{trainer.email} • thiếu SĐT/CCCD/địa chỉ • đã tự động khóa</p>
                         </div>
                       </div>
                     ))}

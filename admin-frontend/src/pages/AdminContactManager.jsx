@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { Search, MessageSquare, CheckCircle2, Clock, X, Send, User } from 'lucide-react';
 
 const AdminContactManager = () => {
@@ -18,11 +18,7 @@ const AdminContactManager = () => {
   const fetchContacts = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('adminToken');
-      // ⚠️ Đảm bảo bạn đã tạo API này ở Backend
-      const res = await axios.get('https://ai-fitness-w6fd.onrender.com/api/contact/admin/all', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await api.get('/contact/admin/all');
       if (res.data.success) {
         setContacts(res.data.data);
       }
@@ -58,12 +54,7 @@ const AdminContactManager = () => {
     
     setIsSubmitting(true);
     try {
-      const token = localStorage.getItem('adminToken');
-      // ⚠️ Đảm bảo bạn đã tạo API này ở Backend
-      await axios.put(`https://ai-fitness-w6fd.onrender.com/api/contact/admin/${selectedContact._id}/reply`, 
-        { adminReply: replyContent },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      await api.put(`/contact/admin/${selectedContact._id}/reply`, { adminReply: replyContent });
       
       setIsReplyModalOpen(false);
       setReplyContent('');

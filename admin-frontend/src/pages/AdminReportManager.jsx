@@ -1,6 +1,6 @@
 // 📄 src/pages/AdminReportManager.jsx
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { 
   AlertTriangle, Check, Trash2, Eye, ShieldAlert, 
   Clock, MessageSquare, Heart, Mail, User, Ban 
@@ -14,23 +14,16 @@ const AdminReportManager = () => {
   const [activeTab, setActiveTab] = useState('queue'); 
   const [selectedReports, setSelectedReports] = useState(null);
 
-  const API_BASE_URL = 'http://localhost:5000/api/admin'; 
-
-  const getAuthHeader = () => {
-    const token = localStorage.getItem('adminToken');
-    return { headers: { Authorization: `Bearer ${token}` } };
-  };
-
   // 1. FETCH DỮ LIỆU
   const fetchReportedPosts = async () => {
     setLoading(true);
     setError(null);
     try {
       const url = activeTab === 'queue' 
-        ? `${API_BASE_URL}/posts/queue` 
-        : `${API_BASE_URL}/posts/queue?status=${activeTab}`;
+        ? `/admin/posts/queue` 
+        : `/admin/posts/queue?status=${activeTab}`;
 
-      const response = await axios.get(url, getAuthHeader());
+      const response = await api.get(url);
       
       if (response.data.success) {
         setPosts(response.data.data);
@@ -54,10 +47,9 @@ const AdminReportManager = () => {
     if (note === null) return; 
 
     try {
-      const response = await axios.patch(
-        `${API_BASE_URL}/posts/${postId}/resolve`, 
-        { action: 'allow', note }, 
-        getAuthHeader()
+      const response = await api.patch(
+        `/admin/posts/${postId}/resolve`, 
+        { action: 'allow', note }
       );
 
       if (response.data.success) {
@@ -77,10 +69,9 @@ const AdminReportManager = () => {
     }
 
     try {
-      const response = await axios.patch(
-        `${API_BASE_URL}/posts/${postId}/resolve`, 
-        { action: 'delete' }, 
-        getAuthHeader()
+      const response = await api.patch(
+        `/admin/posts/${postId}/resolve`, 
+        { action: 'delete' }
       );
 
       if (response.data.success) {
@@ -107,10 +98,9 @@ const AdminReportManager = () => {
     if (reason === null) return;
 
     try {
-      const response = await axios.put(
-        `${API_BASE_URL}/users/${userId}/toggle-lock`, 
-        { reason }, 
-        getAuthHeader()
+      const response = await api.put(
+        `/admin/users/${userId}/toggle-lock`, 
+        { reason }
       );
 
       if (response.data.success) {
