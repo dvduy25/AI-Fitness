@@ -3,6 +3,9 @@ const mongoose = require("mongoose");
 const gamificationSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, unique: true },
   
+  // --- TẮT/BẬT CHẾ ĐỘ HUẤN LUYỆN VIÊN ---
+  isCoachingEnabled: { type: Boolean, default: false },
+
   // --- TÍNH CÁCH CỦA HUẤN LUYỆN VIÊN ---
   coachingStyle: { 
     type: String, 
@@ -13,14 +16,14 @@ const gamificationSchema = new mongoose.Schema({
 
   // --- TRẠNG THÁI VI PHẠM (Dùng cho chế độ STRICT) ---
   activeViolation: {
-    isViolating: { type: Boolean, default: false }, // Đang trong trạng thái vi phạm chưa khắc phục?
+    isViolating: { type: Boolean, default: false }, 
     violationType: { 
       type: String, 
       enum: ['OVER_CALORIES', 'UNDER_CALORIES', 'MISSED_MEAL', 'MISSED_WORKOUT', null], 
       default: null 
     },
-    lastNotifiedAt: { type: Date, default: null }, // Thời điểm gửi thông báo "chửi" gần nhất
-    nagCount: { type: Number, default: 0 } // Số lần đã nhắc/chửi liên tục
+    lastNotifiedAt: { type: Date, default: null }, 
+    nagCount: { type: Number, default: 0 } 
   },
 
   // --- CHỈ SỐ RANK (Reset hàng tháng) ---

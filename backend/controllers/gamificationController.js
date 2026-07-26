@@ -56,13 +56,18 @@ const getUserStats = async (req, res) => {
       DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } })
     ]);
 
-    // --- 3. Kiểm tra trạng thái Workout ---
+    // --- 3. Kiểm tra trạng thái Workout & Ngày nghỉ ---
     const hasWorkoutLog = !!todayWorkoutDoc;
     const didWorkout = hasWorkoutLog ? todayWorkoutDoc.didWorkout : false;
+    
+    // Nếu không có lịch tập (hoặc có record đánh dấu isRestDay) thì là ngày nghỉ
+    const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : true; 
+    
     const currentHour = now.getHours();
-    const isWorkoutOverdue = !didWorkout && (currentHour >= 20);
+    // Bỏ qua cảnh báo "Overdue" nếu hôm nay là ngày nghỉ
+    const isWorkoutOverdue = !didWorkout && !isRestDay && (currentHour >= 20);
 
-    // --- 4. Kiểm tra trạng thái Diet ---
+    // --- 4. Kiểm tra trạng thái Diet & Tính Calo ---
     const hasDietPlan = !!todayDietDoc;
     let didEatRight = false;
     let isMealOverdue = false;
@@ -70,6 +75,10 @@ const getUserStats = async (req, res) => {
     let consumedCalories = 0;
     let targetCalories = 0;
     let isCaloriesMet = false;
+    
+    // Biến lưu trữ đánh giá calo
+    let calorieStatus = 'PERFECT'; // Có thể là 'UNDER', 'OVER', 'PERFECT'
+    let calorieDiff = 0;
 
     if (hasDietPlan) {
       didEatRight = todayDietDoc.isDayCompleted;
@@ -81,6 +90,11 @@ const getUserStats = async (req, res) => {
       if (targetCalories > 0) {
         const calRatio = consumedCalories / targetCalories;
         isCaloriesMet = didEatRight || (calRatio >= 0.9 && calRatio <= 1.1);
+        
+        // Đánh giá Thừa/Thiếu Calo (chênh lệch > 10% xem như sai lệch)
+        calorieDiff = Math.abs(targetCalories - consumedCalories);
+        if (calRatio < 0.9) calorieStatus = 'UNDER';
+        else if (calRatio > 1.1) calorieStatus = 'OVER';
       }
 
       if (todayDietDoc.adjustedUpcomingMeals && todayDietDoc.adjustedUpcomingMeals.length > 0) {
@@ -99,21 +113,30 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 5. TẠO THÔNG BÁO CHỈ TRÍCH ĐỘNG TỪ SERVICE ---
+    // --- ĐIỀU KIỆN CHỐT SỔ ---
+    // Được phép chốt sổ nếu: Đã tập xong HOẶC hôm nay là ngày nghỉ
+    const canCloseDay = didWorkout || isRestDay;
+
     const todayStatus = {
-      workout: { hasLog: hasWorkoutLog, didWorkout, isOverdue: isWorkoutOverdue },
+      canCloseDay: canCloseDay,
+      workout: { hasLog: hasWorkoutLog, didWorkout, isOverdue: isWorkoutOverdue, isRestDay },
       diet: {
         hasPlan: hasDietPlan, didEatRight, targetCalories, consumedCalories,
-        isCaloriesMet, isMealOverdue, overdueMealName
+        isCaloriesMet, isMealOverdue, overdueMealName, calorieStatus, calorieDiff
       }
     };
 
-    const notifications = generateCoachingNotifications({
-      style: stats.coachingStyle,
-      isViolating: stats.activeViolation?.isViolating,
-      workout: todayStatus.workout,
-      diet: todayStatus.diet
-    });
+    // --- 5. TẠO THÔNG BÁO TỪ HLV AI (CHỈ KHI CHẾ ĐỘ ĐƯỢC BẬT) ---
+    let notifications = [];
+    if (stats.isCoachingEnabled) {
+      // Vì logic thông báo đã được dời hết sang service, controller chỉ việc gọi hàm
+      notifications = generateCoachingNotifications({
+        style: stats.coachingStyle,
+        isViolating: stats.activeViolation?.isViolating,
+        workout: todayStatus.workout,
+        diet: todayStatus.diet
+      });
+    }
 
     // --- 6. TRẢ VỀ RESPONSE ---
     const responseStats = stats.toObject();
@@ -125,7 +148,7 @@ const getUserStats = async (req, res) => {
       stats: responseStats, 
       periodStats: { workoutsThisWeek, workoutsThisMonth, dietThisWeek, dietThisMonth },
       todayStatus: todayStatus,
-      notifications: notifications // Trả danh sách chỉ trích động về Frontend
+      notifications: notifications // Trả danh sách chỉ trích động về Frontend (rỗng nếu AI tắt)
     });
 
   } catch (error) {
@@ -149,21 +172,40 @@ const manualCloseDay = async (req, res) => {
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { style } = req.body; 
+    const { isEnabled, style } = req.body; 
 
-    if (!['EASY', 'SERIOUS', 'STRICT'].includes(style)) {
-      return res.status(400).json({ success: false, message: "Tính cách không hợp lệ." });
+    let updateData = {};
+
+    // 1. Cập nhật trạng thái Bật/Tắt nếu Frontend có gửi
+    if (typeof isEnabled === 'boolean') {
+      updateData.isCoachingEnabled = isEnabled;
+    }
+
+    // 2. Cập nhật tính cách
+    if (style) {
+      if (!['EASY', 'SERIOUS', 'STRICT'].includes(style)) {
+        return res.status(400).json({ success: false, message: "Tính cách không hợp lệ." });
+      }
+      updateData.coachingStyle = style;
+    }
+
+    // Kiểm tra xem có gửi data lên không
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật." });
     }
 
     const stats = await Gamification.findOneAndUpdate(
       { userId },
-      { coachingStyle: style },
+      { $set: updateData },
       { new: true, upsert: true }
     );
 
+    const statusMsg = stats.isCoachingEnabled ? "Đã BẬT" : "Đã TẮT";
+    
     res.status(200).json({ 
       success: true, 
-      message: `Đã cập nhật tính cách AI thành ${style}`, 
+      message: `${statusMsg} chế độ huấn luyện viên AI.`, 
+      isCoachingEnabled: stats.isCoachingEnabled,
       coachingStyle: stats.coachingStyle 
     });
   } catch (error) {

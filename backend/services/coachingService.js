@@ -48,6 +48,27 @@ const MESSAGES = {
     EASY: "Chào ngày mới! Cùng nhau hoàn thành mục tiêu hôm nay thật vui nhé! 😊",
     SERIOUS: "Bắt đầu ngày mới. Hệ thống đã sẵn sàng theo dõi chỉ số của bạn.",
     STRICT: "⏰ Ngày mới rồi! Đừng tìm lý do biện hộ nữa, bắt tay vào kỷ luật ngay!"
+  },
+
+  // 8. Cảnh báo THIẾU Calo
+  CALORIE_UNDER: (diff) => ({
+    EASY: `Hình như bạn ăn chưa đủ (thiếu ~${diff} kcal). Nhớ ăn thêm một chút nha. 🍲`,
+    SERIOUS: `Bạn chưa nạp đủ lượng calo (thiếu ${diff} kcal). Hãy bổ sung đúng kế hoạch nhé.`,
+    STRICT: `🚨 Báo động! Bạn đang thiếu ${diff} kcal. Mau nạp năng lượng nếu không muốn cơ bắp bị dị hóa! 📉`
+  }),
+
+  // 9. Cảnh báo THỪA Calo
+  CALORIE_OVER: (diff) => ({
+    EASY: `Bạn ăn hơi lố ${diff} kcal rồi đó, ngày mai rút kinh nghiệm nhé. 😅`,
+    SERIOUS: `Bạn đã vượt mức mục tiêu ${diff} kcal. Hãy điều chỉnh lượng ăn ngay.`,
+    STRICT: `🛑 Dừng lại ngay! Bạn đã ăn lố ${diff} kcal rồi. Kỷ luật của bạn để đi đâu? 🐷`
+  }),
+
+  // 10. Ngày nghỉ ngơi (Rest Day)
+  REST_DAY: {
+    EASY: "Hôm nay là ngày nghỉ ngơi. Bạn có thể nhấn Chốt Sổ bất cứ lúc nào để tận hưởng ngày thảnh thơi nha! 🛋️",
+    SERIOUS: "Hôm nay là ngày nghỉ ngơi. Bạn có thể chốt sổ hệ thống bất cứ lúc nào.",
+    STRICT: "🛌 Nay là ngày nghỉ. Phục hồi cơ bắp để mai chiến tiếp! Bạn có thể nhấn Chốt Sổ sớm nhưng nhớ giữ kỷ luật ăn uống!"
   }
 };
 
@@ -70,8 +91,16 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     });
   }
 
-  // 2. Trạng thái Tập luyện
-  if (workout?.didWorkout) {
+  // 2. Trạng thái Tập luyện & Ngày nghỉ
+  if (workout?.isRestDay && !workout?.didWorkout) {
+    // Nếu là ngày nghỉ và chưa tập (bạn có thể có bài tập nhẹ vào ngày nghỉ, nếu đã tập rồi thì hiện WORKOUT_DONE)
+    notifications.push({
+      id: 'rest_day',
+      time: '08:00', // Giờ giả định cho lời nhắc đầu ngày
+      text: MESSAGES.REST_DAY[selectedStyle],
+      type: 'info'
+    });
+  } else if (workout?.didWorkout) {
     notifications.push({
       id: 'workout_done',
       time: timeStr,
@@ -87,26 +116,54 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     });
   }
 
-  // 3. Trạng thái Dinh dưỡng
-  if (diet?.didEatRight || diet?.isCaloriesMet) {
-    notifications.push({
-      id: 'diet_done',
-      time: timeStr,
-      text: MESSAGES.DIET_DONE[selectedStyle],
-      type: 'success'
-    });
-  } else if (diet?.isMealOverdue) {
-    const meal = diet.overdueMealName ? diet.overdueMealName.toUpperCase() : "một bữa";
-    notifications.push({
-      id: 'meal_overdue',
-      time: timeStr,
-      text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle],
-      type: 'warning'
-    });
+  // 3. Trạng thái Dinh dưỡng & Calo
+  if (diet?.hasPlan) {
+    if (diet.didEatRight || diet.isCaloriesMet) {
+      notifications.push({
+        id: 'diet_done',
+        time: timeStr,
+        text: MESSAGES.DIET_DONE[selectedStyle],
+        type: 'success'
+      });
+    } else {
+      // Kiểm tra trễ bữa
+      if (diet.isMealOverdue) {
+        const meal = diet.overdueMealName ? diet.overdueMealName.toUpperCase() : "một bữa";
+        notifications.push({
+          id: 'meal_overdue',
+          time: timeStr,
+          text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle],
+          type: 'warning'
+        });
+      }
+
+      // Kiểm tra thừa/thiếu calo
+      if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
+        const diffStr = diet.calorieDiff.toFixed(0);
+        notifications.push({
+          id: 'calorie_under',
+          time: timeStr,
+          text: MESSAGES.CALORIE_UNDER(diffStr)[selectedStyle],
+          type: 'warning' // hoặc 'error' tuỳ mức độ bạn muốn
+        });
+      } else if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
+        const diffStr = diet.calorieDiff.toFixed(0);
+        notifications.push({
+          id: 'calorie_over',
+          time: timeStr,
+          text: MESSAGES.CALORIE_OVER(diffStr)[selectedStyle],
+          type: 'error'
+        });
+      }
+    }
   }
 
-  // 4. Nếu xong tất cả
-  if (workout?.didWorkout && (diet?.didEatRight || diet?.isCaloriesMet)) {
+  // 4. Nếu xong tất cả (Tập xong / Ngày nghỉ VÀ Ăn đúng)
+  const isWorkoutClear = workout?.didWorkout || workout?.isRestDay;
+  const isDietClear = !diet?.hasPlan || diet?.didEatRight || diet?.isCaloriesMet;
+
+  if (isWorkoutClear && isDietClear && (workout?.didWorkout || diet?.didEatRight)) {
+    // Chỉ báo hoàn thành khi có ít nhất một hành động (tập hoặc ăn) đã được hoàn thành
     notifications.push({
       id: 'all_completed',
       time: timeStr,
@@ -115,7 +172,7 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     });
   }
 
-  // 5. Mặc định nếu chưa có thông báo đặc biệt
+  // 5. Mặc định nếu chưa có thông báo đặc biệt (và không có vi phạm gì)
   if (notifications.length === 0) {
     notifications.push({
       id: 'welcome',
