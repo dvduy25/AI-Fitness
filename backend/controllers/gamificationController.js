@@ -160,9 +160,11 @@ const getUserStats = async (req, res) => {
       }
     };
 
-    // --- 4. TẠO THÔNG BÁO TỪ SERVICE ---
+    // --- 4. TẠO THÔNG BÁO TỪ SERVICE (CHỈ CHO PREMIUM) ---
     let notifications = [];
-    if (stats.isCoachingEnabled) {
+    const isPremiumUser = userDoc?.isPremium === true; // Kiểm tra tài khoản Premium
+
+    if (stats.isCoachingEnabled && isPremiumUser) {
       notifications = generateCoachingNotifications({
         style: stats.coachingStyle,
         isViolating: stats.activeViolation?.isViolating,
@@ -215,20 +217,47 @@ const manualCloseDay = async (req, res) => {
   }
 };
 
+// ==========================================
+// API: PUT /api/gamification/coaching-style
+// (CHỈ CHO PHÉP TÀI KHOẢN PREMIUM)
+// ==========================================
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
     const { isEnabled, style } = req.body; 
+
+    // --- KIỂM TRA QUYỀN PREMIUM ---
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
+    }
+
+    if (!user.isPremium) {
+      return res.status(403).json({ 
+        success: false, 
+        message: "Tính năng Huấn luyện viên AI chỉ dành cho tài khoản Premium. Vui lòng nâng cấp gói!" 
+      });
+    }
+
     let updateData = {};
 
     if (typeof isEnabled === 'boolean') updateData.isCoachingEnabled = isEnabled;
     if (style) {
-      if (!['EASY', 'SERIOUS', 'STRICT'].includes(style)) return res.status(400).json({ success: false, message: "Tính cách không hợp lệ." });
+      if (!['EASY', 'SERIOUS', 'STRICT'].includes(style)) {
+        return res.status(400).json({ success: false, message: "Tính cách không hợp lệ." });
+      }
       updateData.coachingStyle = style;
     }
-    if (Object.keys(updateData).length === 0) return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật." });
+    
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật." });
+    }
 
-    const stats = await Gamification.findOneAndUpdate({ userId }, { $set: updateData }, { new: true, upsert: true });
+    const stats = await Gamification.findOneAndUpdate(
+      { userId }, 
+      { $set: updateData }, 
+      { new: true, upsert: true }
+    );
     
     res.status(200).json({ 
       success: true, 
