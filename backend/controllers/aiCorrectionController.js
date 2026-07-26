@@ -356,6 +356,11 @@ exports.deleteConsumedMeal = async (req, res) => {
     const dietLog = await DailyDietLog.findOne({ userId, "consumedMeals._id": mealId });
     if (!dietLog) return res.status(404).json({ message: "Không tìm thấy bữa ăn này!" });
 
+    // --- CHẶN KHÔNG CHO XÓA NẾU ĐÃ CHỐT SỔ ---
+    if (dietLog.isDayCompleted) {
+      return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể xóa bữa ăn." });
+    }
+
     const deletedMeal = dietLog.consumedMeals.find(m => m._id.toString() === mealId);
     dietLog.consumedMeals = dietLog.consumedMeals.filter((meal) => meal._id.toString() !== mealId);
 
@@ -368,10 +373,13 @@ exports.deleteConsumedMeal = async (req, res) => {
     });
     
     dietLog.actualDailyTotal = {
-      calories: formatToInt(newActualTotal.calories), protein: formatToInt(newActualTotal.protein),
-      carbs: formatToInt(newActualTotal.carbs), fat: formatToInt(newActualTotal.fat)
+      calories: formatToInt(newActualTotal.calories), 
+      protein: formatToInt(newActualTotal.protein),
+      carbs: formatToInt(newActualTotal.carbs), 
+      fat: formatToInt(newActualTotal.fat)
     };
-    dietLog.isDayCompleted = false; dietLog.dailyAiSummary = "";
+    dietLog.isDayCompleted = false; 
+    dietLog.dailyAiSummary = "";
 
     const masterPlan = await MealPlan.findOne({ userId });
     const user = await User.findById(userId);
@@ -407,11 +415,25 @@ exports.deleteConsumedMeal = async (req, res) => {
              dietLog.adjustedUpcomingMeals = parsedAdjustData.adjustedUpcomingMeals.map(meal => {
                 let mCal = 0, mPro = 0, mCarb = 0, mFat = 0;
                 const formattedItems = meal.items.map(item => {
-                  mCal += formatToInt(item.calories); mPro += formatToInt(item.protein); mCarb += formatToInt(item.carbs); mFat += formatToInt(item.fat);
-                  return { ...item, quantityInGrams: formatToInt(item.quantityInGrams), calories: formatToInt(item.calories), protein: formatToInt(item.protein), carbs: formatToInt(item.carbs), fat: formatToInt(item.fat) };
+                  mCal += formatToInt(item.calories); 
+                  mPro += formatToInt(item.protein); 
+                  mCarb += formatToInt(item.carbs); 
+                  mFat += formatToInt(item.fat);
+                  return { 
+                    ...item, 
+                    quantityInGrams: formatToInt(item.quantityInGrams), 
+                    calories: formatToInt(item.calories), 
+                    protein: formatToInt(item.protein), 
+                    carbs: formatToInt(item.carbs), 
+                    fat: formatToInt(item.fat) 
+                  };
                 });
-                return { mealType: meal.mealType, items: formattedItems, mealTotal: { calories: formatToInt(mCal), protein: formatToInt(mPro), carbs: formatToInt(mCarb), fat: formatToInt(mFat) } };
-              });
+                return { 
+                  mealType: meal.mealType, 
+                  items: formattedItems, 
+                  mealTotal: { calories: formatToInt(mCal), protein: formatToInt(mPro), carbs: formatToInt(mCarb), fat: formatToInt(mFat) } 
+                };
+             });
           }
         } catch (err) { 
           console.error("Lỗi AI Auto-adjust khi xóa:", err.message); 
@@ -425,8 +447,10 @@ exports.deleteConsumedMeal = async (req, res) => {
     await dietLog.save();
 
     res.status(200).json({
-      message: `Đã xóa ${deletedMeal.mealType} thành công!`, adjustmentNote,
-      actualDailyTotal: dietLog.actualDailyTotal, adjustedUpcomingMeals: dietLog.adjustedUpcomingMeals,
+      message: `Đã xóa ${deletedMeal.mealType} thành công!`, 
+      adjustmentNote,
+      actualDailyTotal: dietLog.actualDailyTotal, 
+      adjustedUpcomingMeals: dietLog.adjustedUpcomingMeals,
       isDayCompleted: dietLog.isDayCompleted
     });
 
@@ -448,6 +472,11 @@ exports.editConsumedMeal = async (req, res) => {
 
     const dietLog = await DailyDietLog.findOne({ userId, "consumedMeals._id": mealId });
     if (!dietLog) return res.status(404).json({ message: "Không tìm thấy bữa ăn này trong nhật ký!" });
+
+    // --- CHẶN KHÔNG CHO SỬA NẾU ĐÃ CHỐT SỔ ---
+    if (dietLog.isDayCompleted) {
+      return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể chỉnh sửa bữa ăn." });
+    }
 
     const mealIndex = dietLog.consumedMeals.findIndex(m => m._id.toString() === mealId);
     if (mealIndex === -1) return res.status(404).json({ message: "Không tìm thấy bữa ăn." });
