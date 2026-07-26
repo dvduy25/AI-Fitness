@@ -72,8 +72,10 @@ const MESSAGES = {
 const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout, diet, canCloseDay }) => {
   const selectedStyle = ['EASY', 'SERIOUS', 'STRICT'].includes(style) ? style : 'SERIOUS';
   const notifications = [];
-  const now = new Date();
-  const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  
+  // Lấy giờ chuẩn theo múi giờ Việt Nam
+  const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+  const timeStr = `${vnTime.getHours().toString().padStart(2, '0')}:${vnTime.getMinutes().toString().padStart(2, '0')}`;
 
   // 1. Vi phạm nghiêm trọng
   if (isViolating) {
@@ -92,7 +94,7 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
         notifications.push({ id: 'diet_done', time: timeStr, text: MESSAGES.DIET_DONE[selectedStyle], type: 'success' });
       }
     } else {
-      // Chưa ăn xong, cảnh báo nếu quá bữa / sắp tới bữa / ăn lố calo
+      // Chưa ăn xong, cảnh báo nếu quá bữa / sắp tới bữa
       if (diet.isMealOverdue) {
         const meal = diet.overdueMealName?.toUpperCase();
         notifications.push({ id: 'meal_overdue', time: timeStr, text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle], type: 'error' });
@@ -101,9 +103,11 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
         notifications.push({ id: 'meal_upcoming', time: timeStr, text: MESSAGES.MEAL_UPCOMING(meal)[selectedStyle], type: 'warning' });
       }
       
-      // Nếu chưa hết ngày mà đã lố calo
+      // Nếu chưa hết ngày mà đã lố calo / hụt calo
       if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
         notifications.push({ id: 'calorie_over_current', time: timeStr, text: MESSAGES.CALORIE_OVER(diet.calorieDiff.toFixed(0), false)[selectedStyle], type: 'error' });
+      } else if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
+        notifications.push({ id: 'calorie_under_current', time: timeStr, text: MESSAGES.CALORIE_UNDER(diet.calorieDiff.toFixed(0), false)[selectedStyle], type: 'warning' });
       }
     }
   }

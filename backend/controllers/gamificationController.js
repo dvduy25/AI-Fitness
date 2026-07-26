@@ -50,6 +50,10 @@ const getUserStats = async (req, res) => {
       DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } })
     ]);
 
+    // Lấy thời gian chuẩn theo múi giờ Việt Nam để tính toán giờ nhắc nhở chính xác
+    const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    const currentTotalMins = vnTime.getHours() * 60 + vnTime.getMinutes();
+
     // --- 1. Workout Status ---
     const hasWorkoutLog = !!todayWorkoutDoc;
     const didWorkout = hasWorkoutLog ? todayWorkoutDoc.didWorkout : false;
@@ -61,13 +65,13 @@ const getUserStats = async (req, res) => {
     if (!didWorkout && !isRestDay) {
       if (todayWorkoutDoc?.scheduledTime) {
         const [wHours, wMinutes] = todayWorkoutDoc.scheduledTime.split(':').map(Number);
-        const workoutDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), wHours, wMinutes, 0);
-        const diffMs = workoutDate - now;
+        const workoutTotalMins = wHours * 60 + wMinutes;
+        const diffMins = workoutTotalMins - currentTotalMins;
         
-        if (diffMs < 0) isWorkoutOverdue = true;
-        else if (diffMs <= 30 * 60 * 1000) isWorkoutUpcoming = true; // Sắp tới giờ tập (<= 30p)
+        if (diffMins < 0) isWorkoutOverdue = true;
+        else if (diffMins <= 30) isWorkoutUpcoming = true; // Sắp tới giờ tập (<= 30p)
       } else {
-        const currentHour = now.getHours();
+        const currentHour = vnTime.getHours();
         if (currentHour >= 20) isWorkoutOverdue = true;
         else if (currentHour === 19) isWorkoutUpcoming = true;
       }
@@ -104,19 +108,21 @@ const getUserStats = async (req, res) => {
       }
 
       // Kiểm tra Bữa ăn (Quá giờ / Sắp tới)
-      if (!didEatRight && todayDietDoc.adjustedUpcomingMeals?.length > 0) {
-        for (const meal of todayDietDoc.adjustedUpcomingMeals) {
+      // Dùng .meals dự phòng nếu không có .adjustedUpcomingMeals
+      const mealsToCheck = todayDietDoc.adjustedUpcomingMeals || todayDietDoc.meals || [];
+      if (!didEatRight && mealsToCheck.length > 0) {
+        for (const meal of mealsToCheck) {
           if (meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED') continue;
           if (meal.scheduledTime) {
             const [mHours, mMinutes] = meal.scheduledTime.split(':').map(Number);
-            const mealDate = new Date(now.getFullYear(), now.getMonth(), now.getDate(), mHours, mMinutes, 0);
-            const diffMs = mealDate - now;
+            const mealTotalMins = mHours * 60 + mMinutes;
+            const diffMins = mealTotalMins - currentTotalMins;
 
-            if (diffMs < 0) {
+            if (diffMins < 0) {
               isMealOverdue = true;
               overdueMealName = meal.mealType || meal.name || "Bữa ăn";
               break; 
-            } else if (diffMs <= 30 * 60 * 1000) { // Sắp tới giờ ăn (<= 30p)
+            } else if (diffMins <= 30) { // Sắp tới giờ ăn (<= 30p)
               isMealUpcoming = true;
               upcomingMealName = meal.mealType || meal.name || "Bữa ăn";
             }
