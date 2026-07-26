@@ -1,13 +1,23 @@
+// services/cronService.js
+
 const cron = require('node-cron');
 const User = require('../models/User');
 const Gamification = require('../models/Gamification');
 const WorkoutLog = require('../models/WorkoutLog');
 const DailyDietLog = require('../models/DailyDietLog');
 
-const generateDailyReview = (didWorkout, didEatRight) => {
-  if (didWorkout && didEatRight) return "Tuyệt vời! Bạn đã có một ngày kỷ luật 100%.";
-  if (didWorkout && !didEatRight) return "Hôm nay bạn tập rất chăm, nhưng phần ăn uống chưa tuân thủ đúng kế hoạch.";
-  if (!didWorkout && didEatRight) return "Bạn đã kiểm soát ăn uống tốt, nhưng lại quên tập luyện rồi.";
+// Hàm chuyển Date sang chuỗi YYYY-MM-DD (Đồng bộ với WorkoutLog)
+const toYYYYMMDD = (dateObj) => {
+  const yyyy = dateObj.getFullYear();
+  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const dd = String(dateObj.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+const generateDailyReview = (didWorkoutValid, didEatRightValid) => {
+  if (didWorkoutValid && didEatRightValid) return "Tuyệt vời! Bạn đã có một ngày kỷ luật 100%.";
+  if (didWorkoutValid && !didEatRightValid) return "Hôm nay bạn đã hoàn thành việc tập, nhưng phần ăn uống chưa tuân thủ đúng kế hoạch.";
+  if (!didWorkoutValid && didEatRightValid) return "Bạn đã kiểm soát ăn uống tốt, nhưng lại quên tập luyện rồi.";
   return "Hôm nay là một ngày lười biếng. Xốc lại tinh thần vào ngày mai nhé!";
 };
 
@@ -17,6 +27,7 @@ const closeDayForUser = async (userId) => {
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
   const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
   const isMonday = now.getDay() === 1;
+  const todayStr = toYYYYMMDD(now); // Định dạng chuẩn cho WorkoutLog
 
   let gamification = await Gamification.findOne({ userId });
   if (!gamification) gamification = new Gamification({ userId });
@@ -31,28 +42,38 @@ const closeDayForUser = async (userId) => {
     gamification.currentWeekTrackers = { eatWrong: 0, noWorkout: 0, bothFail: 0 };
   }
 
-  // Kiểm tra nhật ký thực tế trong ngày
-  const workout = await WorkoutLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay }, isCompleted: true });
-  let diet = await DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } });
+  // 1. Kiểm tra nhật ký Tập luyện (Dùng todayStr và kiểm tra didWorkout / isRestDay)
+  const workoutDoc = await WorkoutLog.findOne({ userId, date: todayStr });
+  const hasWorkoutLog = !!workoutDoc;
+  const isRestDay = hasWorkoutLog ? (workoutDoc.isRestDay === true) : true;
+  const actualWorkout = hasWorkoutLog ? (workoutDoc.didWorkout === true) : false;
+  
+  // Hợp lệ tập luyện: Đã tập HOẶC là ngày nghỉ
+  const didWorkoutValid = actualWorkout || isRestDay;
 
-  const didWorkout = !!workout;
-  const didEatRight = !!(diet && diet.isDayCompleted);
+  // 2. Kiểm tra nhật ký Dinh dưỡng (Dùng khoảng thời gian Date object)
+  let dietDoc = await DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } });
+  const didEatRightValid = !!(dietDoc && dietDoc.isDayCompleted);
 
-  // XỬ LÝ ĐIỂM SỐ & CHUỖI (Không cộng dồn Total tại đây để tránh lệch số)
-  if (didWorkout && didEatRight) {
+  // XỬ LÝ ĐIỂM SỐ & CHUỖI 
+  if (didWorkoutValid && didEatRightValid) {
+    // 🌟 HOÀN HẢO: Cộng điểm, cộng chuỗi
     gamification.rankPoints += 10;
     gamification.streak += 1;
   } 
-  else if (didWorkout && !didEatRight) {
+  else if (didWorkoutValid && !didEatRightValid) {
+    // TẬP CHUẨN, ĂN LỆCH
     gamification.rankPoints += 5;
     gamification.failStats.eatWrongDays += 1; 
     gamification.currentWeekTrackers.eatWrong += 1; 
   } 
-  else if (!didWorkout && didEatRight) {
+  else if (!didWorkoutValid && didEatRightValid) {
+    // ĂN CHUẨN, KHÔNG TẬP
     gamification.failStats.noWorkoutDays += 1; 
     gamification.currentWeekTrackers.noWorkout += 1;
   } 
   else {
+    // TỆ CẢ HAI: HỦY CHUỖI, GHI NHẬN THẤT BẠI
     gamification.failStats.totalFailsDays += 1; 
     gamification.currentWeekTrackers.bothFail += 1;
   }
@@ -68,6 +89,7 @@ const closeDayForUser = async (userId) => {
     gamification.streak = 0;
   }
 
+  // Rank không được nhỏ hơn 0
   if (gamification.rankPoints < 0) gamification.rankPoints = 0;
 
   // Đánh dấu ngày chốt sổ gần nhất
@@ -75,20 +97,20 @@ const closeDayForUser = async (userId) => {
   await gamification.save();
 
   // CẬP NHẬT HOẶC TẠO NHẬT KÝ REVIEW
-  if (diet) {
-    diet.isDayCompleted = true;
-    diet.dailyAiSummary = generateDailyReview(didWorkout, didEatRight);
-    await diet.save();
+  if (dietDoc) {
+    dietDoc.isDayCompleted = true;
+    dietDoc.dailyAiSummary = generateDailyReview(didWorkoutValid, didEatRightValid);
+    await dietDoc.save();
   } else {
     await DailyDietLog.create({
       userId,
       date: now,
       isDayCompleted: true,
-      dailyAiSummary: generateDailyReview(didWorkout, didEatRight)
+      dailyAiSummary: generateDailyReview(didWorkoutValid, didEatRightValid)
     });
   }
 
-  return { success: true, message: "Chốt sổ ngày thành công!" };
+  return { success: true, message: "Chốt sổ ngày thành công! Điểm và chuỗi đã được cập nhật." };
 };
 
 // --- HỆ THỐNG CRON TỰ ĐỘNG CHẠY NGẦM ---
@@ -100,7 +122,6 @@ const startDailyClosingJob = () => {
     try {
       const users = await User.find({});
       for (const user of users) {
-        // Hàm closeDayForUser đã chặn trùng lặp, ai chốt rồi cron sẽ tự bỏ qua
         await closeDayForUser(user._id);
       }
       console.log("✅ [CRON] Quét vét chốt sổ cuối ngày hoàn tất!");
