@@ -82,10 +82,10 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     notifications.push({ id: 'violation', time: timeStr, text: MESSAGES.VIOLATION[selectedStyle], type: 'error' });
   }
 
-  // 2. Xét trạng thái Dinh dưỡng & Calo (Quan trọng kể cả ngày nghỉ)
+  // 2. Xét trạng thái Dinh dưỡng & Calo
   if (diet?.hasPlan) {
     if (diet.didEatRight) {
-      // Đã báo hoàn thành ăn, nhưng kiểm tra xem có hụt/thừa calo không
+      // ĐÃ HOÀN THÀNH ĂN: Mới bắt đầu check xem tổng kết ngày là dư hay thiếu calo
       if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
         notifications.push({ id: 'calorie_under_done', time: timeStr, text: MESSAGES.CALORIE_UNDER(diet.calorieDiff.toFixed(0), true)[selectedStyle], type: 'warning' });
       } else if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
@@ -94,20 +94,13 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
         notifications.push({ id: 'diet_done', time: timeStr, text: MESSAGES.DIET_DONE[selectedStyle], type: 'success' });
       }
     } else {
-      // Chưa ăn xong, cảnh báo nếu quá bữa / sắp tới bữa
+      // CHƯA HOÀN THÀNH ĂN (Đang trong ngày): Chỉ báo quá giờ/sắp tới giờ bữa ăn, không soi mói calo
       if (diet.isMealOverdue) {
         const meal = diet.overdueMealName?.toUpperCase();
         notifications.push({ id: 'meal_overdue', time: timeStr, text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle], type: 'error' });
       } else if (diet.isMealUpcoming) {
         const meal = diet.upcomingMealName?.toUpperCase();
         notifications.push({ id: 'meal_upcoming', time: timeStr, text: MESSAGES.MEAL_UPCOMING(meal)[selectedStyle], type: 'warning' });
-      }
-      
-      // Nếu chưa hết ngày mà đã lố calo / hụt calo
-      if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
-        notifications.push({ id: 'calorie_over_current', time: timeStr, text: MESSAGES.CALORIE_OVER(diet.calorieDiff.toFixed(0), false)[selectedStyle], type: 'error' });
-      } else if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
-        notifications.push({ id: 'calorie_under_current', time: timeStr, text: MESSAGES.CALORIE_UNDER(diet.calorieDiff.toFixed(0), false)[selectedStyle], type: 'warning' });
       }
     }
   }
@@ -130,12 +123,11 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     notifications.push({ id: 'all_completed', time: timeStr, text: MESSAGES.ALL_COMPLETED[selectedStyle], type: 'success' });
   }
 
-  // 5. Mặc định
+  // 5. Mặc định (Chào buổi sáng nếu không có thông báo nào khác)
   if (notifications.length === 0) {
     notifications.push({ id: 'welcome', time: '07:00', text: MESSAGES.WELCOME[selectedStyle], type: 'info' });
   }
 
-  // Trả về, thông báo nào push sau cùng sẽ có ID đè ưu tiên nếu cần ở UI
   return notifications;
 };
 
