@@ -50,7 +50,7 @@ const getUserStats = async (req, res) => {
       DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } })
     ]);
 
-    // Lấy thời gian chuẩn theo múi giờ Việt Nam để tính toán giờ nhắc nhở chính xác
+    // Lấy thời gian chuẩn theo múi giờ Việt Nam
     const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     const currentTotalMins = vnTime.getHours() * 60 + vnTime.getMinutes();
 
@@ -69,7 +69,7 @@ const getUserStats = async (req, res) => {
         const diffMins = workoutTotalMins - currentTotalMins;
         
         if (diffMins < 0) isWorkoutOverdue = true;
-        else if (diffMins <= 30) isWorkoutUpcoming = true; // Sắp tới giờ tập (<= 30p)
+        else if (diffMins <= 30) isWorkoutUpcoming = true; 
       } else {
         const currentHour = vnTime.getHours();
         if (currentHour >= 20) isWorkoutOverdue = true;
@@ -90,20 +90,29 @@ const getUserStats = async (req, res) => {
     let isCaloriesMet = false;
     let calorieStatus = 'PERFECT'; 
     let calorieDiff = 0;
-    let areAllMealsCompleted = false; // Biến kiểm tra đã ăn hết các bữa chưa
+    let areAllMealsCompleted = false;
 
     if (hasDietPlan) {
       didEatRight = todayDietDoc.isDayCompleted;
+      
+      // 1. Lượng calo thực tế đã nạp
       consumedCalories = todayDietDoc.actualDailyTotal?.calories || 0;
 
-      const upcomingCalories = todayDietDoc.adjustedUpcomingMeals?.reduce((sum, meal) => sum + (meal.mealTotal?.calories || 0), 0) || 0;
-      targetCalories = consumedCalories + upcomingCalories;
+      // 2. [SỬA LỖI Ở ĐÂY]: Lượng calo mục tiêu (Target) cố định trong ngày
+      // Cố gắng lấy từ các field thường dùng trong DB để đảm bảo target không bị đổi khi ăn xong
+      targetCalories = todayDietDoc.targetDailyTotal?.calories 
+                    || todayDietDoc.dailyTarget?.calories 
+                    || todayDietDoc.targetCalories 
+                    || todayDietDoc.meals?.reduce((sum, meal) => sum + (meal.targetCalories || meal.plannedCalories || meal.mealTotal?.calories || 0), 0) 
+                    || 0;
 
+      // 3. Tính toán độ chênh lệch (Dư/Thiếu)
       if (targetCalories > 0) {
         const calRatio = consumedCalories / targetCalories;
         isCaloriesMet = didEatRight || (calRatio >= 0.9 && calRatio <= 1.1);
         
         calorieDiff = Math.abs(targetCalories - consumedCalories);
+        
         if (calRatio < 0.9) calorieStatus = 'UNDER';
         else if (calRatio > 1.1) calorieStatus = 'OVER';
       }
@@ -111,11 +120,10 @@ const getUserStats = async (req, res) => {
       // Kiểm tra Bữa ăn (Quá giờ / Sắp tới / Đã ăn hết chưa)
       const mealsToCheck = todayDietDoc.adjustedUpcomingMeals || todayDietDoc.meals || [];
       
-      // Kiểm tra xem đã tick hoàn thành TẤT CẢ các bữa ăn chưa
       if (mealsToCheck.length > 0) {
         areAllMealsCompleted = mealsToCheck.every(meal => meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED');
       } else {
-        areAllMealsCompleted = didEatRight; // Nếu không có bữa nào thì phụ thuộc vào chốt sổ
+        areAllMealsCompleted = didEatRight; 
       }
 
       // Chỉ báo quá giờ / sắp tới nếu chưa chốt sổ VÀ chưa tick hoàn thành hết các bữa
@@ -131,7 +139,7 @@ const getUserStats = async (req, res) => {
               isMealOverdue = true;
               overdueMealName = meal.mealType || meal.name || "Bữa ăn";
               break; 
-            } else if (diffMins <= 30) { // Sắp tới giờ ăn (<= 30p)
+            } else if (diffMins <= 30) { 
               isMealUpcoming = true;
               upcomingMealName = meal.mealType || meal.name || "Bữa ăn";
             }
@@ -143,7 +151,7 @@ const getUserStats = async (req, res) => {
     // --- 3. ĐIỀU KIỆN CHỐT SỔ (STRICT) ---
     const workoutConditionMet = didWorkout || isRestDay;
     const dietConditionMet = hasDietPlan ? didEatRight : true;
-    const canCloseDay = workoutConditionMet && dietConditionMet; // Dù nghỉ tập vẫn phải hoàn thành dinh dưỡng
+    const canCloseDay = workoutConditionMet && dietConditionMet; 
 
     const todayStatus = {
       canCloseDay,
