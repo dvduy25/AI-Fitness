@@ -90,6 +90,7 @@ const getUserStats = async (req, res) => {
     let isCaloriesMet = false;
     let calorieStatus = 'PERFECT'; 
     let calorieDiff = 0;
+    let areAllMealsCompleted = false; // Biến kiểm tra đã ăn hết các bữa chưa
 
     if (hasDietPlan) {
       didEatRight = todayDietDoc.isDayCompleted;
@@ -107,10 +108,18 @@ const getUserStats = async (req, res) => {
         else if (calRatio > 1.1) calorieStatus = 'OVER';
       }
 
-      // Kiểm tra Bữa ăn (Quá giờ / Sắp tới)
-      // Dùng .meals dự phòng nếu không có .adjustedUpcomingMeals
+      // Kiểm tra Bữa ăn (Quá giờ / Sắp tới / Đã ăn hết chưa)
       const mealsToCheck = todayDietDoc.adjustedUpcomingMeals || todayDietDoc.meals || [];
-      if (!didEatRight && mealsToCheck.length > 0) {
+      
+      // Kiểm tra xem đã tick hoàn thành TẤT CẢ các bữa ăn chưa
+      if (mealsToCheck.length > 0) {
+        areAllMealsCompleted = mealsToCheck.every(meal => meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED');
+      } else {
+        areAllMealsCompleted = didEatRight; // Nếu không có bữa nào thì phụ thuộc vào chốt sổ
+      }
+
+      // Chỉ báo quá giờ / sắp tới nếu chưa chốt sổ VÀ chưa tick hoàn thành hết các bữa
+      if (!didEatRight && !areAllMealsCompleted && mealsToCheck.length > 0) {
         for (const meal of mealsToCheck) {
           if (meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED') continue;
           if (meal.scheduledTime) {
@@ -140,7 +149,7 @@ const getUserStats = async (req, res) => {
       canCloseDay,
       workout: { hasLog: hasWorkoutLog, didWorkout, isOverdue: isWorkoutOverdue, isUpcoming: isWorkoutUpcoming, isRestDay },
       diet: {
-        hasPlan: hasDietPlan, didEatRight, targetCalories, consumedCalories,
+        hasPlan: hasDietPlan, didEatRight, targetCalories, consumedCalories, areAllMealsCompleted,
         isCaloriesMet, isMealOverdue, isMealUpcoming, overdueMealName, upcomingMealName, calorieStatus, calorieDiff
       }
     };

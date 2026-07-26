@@ -84,17 +84,22 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
 
   // 2. Xét trạng thái Dinh dưỡng & Calo
   if (diet?.hasPlan) {
-    if (diet.didEatRight) {
-      // ĐÃ HOÀN THÀNH ĂN: Mới bắt đầu check xem tổng kết ngày là dư hay thiếu calo
+    // Nếu đã Chốt Sổ (didEatRight) HOẶC Đã tick xong tất cả các bữa (areAllMealsCompleted) thì mới soi Calo
+    if (diet.didEatRight || diet.areAllMealsCompleted) {
+      
+      const isClosed = diet.didEatRight; // isClosed = true nếu đã bấm chốt sổ hoàn toàn ngày
+      
       if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
-        notifications.push({ id: 'calorie_under_done', time: timeStr, text: MESSAGES.CALORIE_UNDER(diet.calorieDiff.toFixed(0), true)[selectedStyle], type: 'warning' });
+        notifications.push({ id: 'calorie_under_done', time: timeStr, text: MESSAGES.CALORIE_UNDER(diet.calorieDiff.toFixed(0), isClosed)[selectedStyle], type: 'warning' });
       } else if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
-        notifications.push({ id: 'calorie_over_done', time: timeStr, text: MESSAGES.CALORIE_OVER(diet.calorieDiff.toFixed(0), true)[selectedStyle], type: 'error' });
-      } else {
+        notifications.push({ id: 'calorie_over_done', time: timeStr, text: MESSAGES.CALORIE_OVER(diet.calorieDiff.toFixed(0), isClosed)[selectedStyle], type: 'error' });
+      } else if (diet.didEatRight) {
+        // Nếu vừa đủ calo và đã chốt sổ
         notifications.push({ id: 'diet_done', time: timeStr, text: MESSAGES.DIET_DONE[selectedStyle], type: 'success' });
       }
+      
     } else {
-      // CHƯA HOÀN THÀNH ĂN (Đang trong ngày): Chỉ báo quá giờ/sắp tới giờ bữa ăn, không soi mói calo
+      // NẾU VẪN ĐANG TRONG NGÀY (Chưa tick xong hết các bữa): Chỉ báo bữa tới/quá bữa, KHÔNG soi calo
       if (diet.isMealOverdue) {
         const meal = diet.overdueMealName?.toUpperCase();
         notifications.push({ id: 'meal_overdue', time: timeStr, text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle], type: 'error' });
