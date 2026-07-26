@@ -3,6 +3,7 @@
 const Gamification = require('../models/Gamification');
 const WorkoutLog = require('../models/WorkoutLog');
 const DailyDietLog = require('../models/DailyDietLog');
+const User = require('../models/User'); // Gọi model User
 const { closeDayForUser } = require('../services/cronService');
 const { generateCoachingNotifications } = require('../services/coachingService');
 
@@ -38,7 +39,8 @@ const getUserStats = async (req, res) => {
       realWorkouts, realDietDays,
       workoutsThisWeek, workoutsThisMonth,
       dietThisWeek, dietThisMonth,
-      todayWorkoutDoc, todayDietDoc
+      todayWorkoutDoc, todayDietDoc,
+      userDoc // Fetch Data User
     ] = await Promise.all([
       WorkoutLog.countDocuments({ userId, didWorkout: true }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true }), 
@@ -47,7 +49,8 @@ const getUserStats = async (req, res) => {
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }),
       WorkoutLog.findOne({ userId, date: todayStr }),
-      DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } })
+      DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } }),
+      User.findById(userId) // Tìm User
     ]);
 
     // Lấy thời gian chuẩn theo múi giờ Việt Nam
@@ -95,16 +98,11 @@ const getUserStats = async (req, res) => {
     if (hasDietPlan) {
       didEatRight = todayDietDoc.isDayCompleted;
       
-      // 1. Lượng calo thực tế đã nạp
+      // 1. Lượng calo thực tế đã nạp (Tổng các bữa đã ăn)
       consumedCalories = todayDietDoc.actualDailyTotal?.calories || 0;
 
-      // 2. [SỬA LỖI Ở ĐÂY]: Lượng calo mục tiêu (Target) cố định trong ngày
-      // Cố gắng lấy từ các field thường dùng trong DB để đảm bảo target không bị đổi khi ăn xong
-      targetCalories = todayDietDoc.targetDailyTotal?.calories 
-                    || todayDietDoc.dailyTarget?.calories 
-                    || todayDietDoc.targetCalories 
-                    || todayDietDoc.meals?.reduce((sum, meal) => sum + (meal.targetCalories || meal.plannedCalories || meal.mealTotal?.calories || 0), 0) 
-                    || 0;
+      // 2. Lượng calo mục tiêu (Lấy chuẩn từ User Schema)
+      targetCalories = userDoc?.targetMacros?.calories || 0;
 
       // 3. Tính toán độ chênh lệch (Dư/Thiếu)
       if (targetCalories > 0) {
