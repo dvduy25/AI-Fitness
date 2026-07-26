@@ -22,14 +22,11 @@ exports.getDietHistory = async (req, res) => {
       startDate.setDate(startDate.getDate() - 7); // Mặc định hiển thị 7 ngày gần nhất
     }
 
-    // TỐI ƯU: Ép MongoDB lọc theo userId và mốc thời gian ngay tại tầng database
-    // Đồng thời sắp xếp tăng dần theo ngày (Cũ -> Mới) để Frontend vẽ chart chính xác
     const userLogs = await DailyDietLog.find({
       userId,
       date: { $gte: startDate }
     }).sort({ date: 1 });
 
-    // Định dạng cấu trúc dữ liệu gọn nhẹ để trả ra Frontend
     const formattedHistory = userLogs.map(log => ({
       date: log.date,
       calories: log.actualDailyTotal?.calories || 0,
@@ -39,7 +36,6 @@ exports.getDietHistory = async (req, res) => {
       isDayCompleted: log.isDayCompleted || false
     }));
 
-    // Phản hồi dữ liệu (Giữ cả hai key 'data' và 'pastRecords' để tương thích tốt với code FE cũ)
     return res.status(200).json({ 
       message: "Lấy lịch sử thành công",
       data: formattedHistory,        
@@ -64,14 +60,12 @@ exports.getDietByDate = async (req, res) => {
       return res.status(400).json({ message: "Vui lòng cung cấp ngày (date)!" });
     }
 
-    // TỐI ƯU: Tạo khoảng thời gian giới hạn trọn vẹn trong ngày cần tìm (00:00:00 -> 23:59:59)
     const startOfDay = new Date(date);
     startOfDay.setHours(0, 0, 0, 0);
 
     const endOfDay = new Date(date);
     endOfDay.setHours(23, 59, 59, 999);
 
-    // Tìm duy nhất 1 bản ghi nằm trong khoảng thời gian của ngày đó
     const log = await DailyDietLog.findOne({
       userId,
       date: { $gte: startOfDay, $lte: endOfDay }
@@ -84,12 +78,12 @@ exports.getDietByDate = async (req, res) => {
       });
     }
 
-    // Trích xuất đóng gói dữ liệu dinh dưỡng cốt lõi
     const foundRecord = {
       calories: log.actualDailyTotal?.calories || 0,
       protein: log.actualDailyTotal?.protein || 0,
       carbs: log.actualDailyTotal?.carbs || 0,
       fat: log.actualDailyTotal?.fat || 0,
+      isDayCompleted: log.isDayCompleted || false
     };
 
     return res.status(200).json({ data: foundRecord });
@@ -99,11 +93,9 @@ exports.getDietByDate = async (req, res) => {
     return res.status(500).json({ message: "Lỗi hệ thống khi lấy dữ liệu ngày" });
   }
 };
+
 // ==========================================
-// CẬP NHẬT BỮA ĂN HÔM NAY (THÊM HOẶC GHI ĐÈ)
-// ==========================================
-// ==========================================
-// CẬP NHẬT BỮA ĂN HÔM NAY (THÊM HOẶC GHI ĐÈ)
+// 3. CẬP NHẬT BỮA ĂN HÔM NAY (THÊM HOẶC GHI ĐÈ)
 // ==========================================
 exports.logMeal = async (req, res) => {
   try {
@@ -124,6 +116,13 @@ exports.logMeal = async (req, res) => {
       date: { $gte: startOfDay, $lte: endOfDay }
     });
 
+    // ⛔ CHẶN TẬN GỐC: Nếu đã chốt sổ ngày hôm nay thì KHÔNG ĐƯỢC sửa đổi
+    if (log && log.isDayCompleted) {
+      return res.status(400).json({ 
+        message: "Hôm nay bạn đã chốt sổ rồi! Không thể thêm, sửa hoặc xóa bữa ăn nữa." 
+      });
+    }
+
     if (!log) {
       log = new DailyDietLog({
         userId,
@@ -141,26 +140,16 @@ exports.logMeal = async (req, res) => {
       mealTotal
     };
 
-    // ==========================================
-    // ĐOẠN FIX LỖI GHI ĐÈ Ở ĐÂY
-    // ==========================================
     if (mode === 'replace') {
-      // 1. Dùng filter để giữ lại các bữa KHÁC loại bữa hiện tại
       const filteredMeals = log.consumedMeals.filter(meal => meal.mealType !== mealType);
-      
-      // 2. Clear mảng cũ đi và thay bằng mảng đã lọc
       log.consumedMeals = [];
       log.consumedMeals.push(...filteredMeals);
     }
     
-    // Đẩy bữa ăn mới vào
     log.consumedMeals.push(newMealRecord);
-
-    // 3. ÉP BUỘC Mongoose ghi nhận mảng này đã bị thay đổi để nó Update Database
     log.markModified('consumedMeals');
-    // ==========================================
 
-    // TÍNH LẠI TỔNG CALO & MACROS TRONG NGÀY
+    // Tính lại tổng Calo & Macros trong ngày
     log.actualDailyTotal = log.consumedMeals.reduce((acc, meal) => {
       return {
         calories: acc.calories + (meal.mealTotal?.calories || 0),
