@@ -194,8 +194,21 @@ const manualCloseDay = async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await closeDayForUser(userId);
-    if (!result.success) return res.status(400).json({ success: false, message: result.message });
-    return res.status(200).json({ success: true, message: result.message });
+    
+    if (!result.success) {
+      return res.status(400).json({ success: false, message: result.message });
+    }
+
+    // Lấy dữ liệu Gamification mới nhất đã cộng điểm từ DB
+    const updatedStats = await Gamification.findOne({ userId });
+
+    return res.status(200).json({ 
+      success: true, 
+      message: result.message,
+      stats: updatedStats, // Trả dữ liệu mới về cho App/Web
+      rankPoints: result.rankPoints,
+      streak: result.streak
+    });
   } catch (error) {
     console.error("Lỗi API chốt sổ thủ công:", error);
     res.status(500).json({ success: false, message: "Lỗi hệ thống khi chốt sổ." });
