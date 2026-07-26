@@ -69,7 +69,7 @@ const MESSAGES = {
   }
 };
 
-const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout, diet, canCloseDay }) => {
+const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout, diet }) => {
   const selectedStyle = ['EASY', 'SERIOUS', 'STRICT'].includes(style) ? style : 'SERIOUS';
   const notifications = [];
   
@@ -84,22 +84,21 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
 
   // 2. Xét trạng thái Dinh dưỡng & Calo
   if (diet?.hasPlan) {
-    // Nếu đã Chốt Sổ (didEatRight) HOẶC Đã tick xong tất cả các bữa (areAllMealsCompleted) thì mới soi Calo
     if (diet.didEatRight || diet.areAllMealsCompleted) {
       
-      const isClosed = diet.didEatRight; // isClosed = true nếu đã bấm chốt sổ hoàn toàn ngày
+      const isClosed = diet.didEatRight;
       
       if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
         notifications.push({ id: 'calorie_under_done', time: timeStr, text: MESSAGES.CALORIE_UNDER(diet.calorieDiff.toFixed(0), isClosed)[selectedStyle], type: 'warning' });
       } else if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
         notifications.push({ id: 'calorie_over_done', time: timeStr, text: MESSAGES.CALORIE_OVER(diet.calorieDiff.toFixed(0), isClosed)[selectedStyle], type: 'error' });
       } else if (diet.didEatRight) {
-        // Nếu vừa đủ calo và đã chốt sổ
+        // Đã chốt sổ và ăn hoàn hảo
         notifications.push({ id: 'diet_done', time: timeStr, text: MESSAGES.DIET_DONE[selectedStyle], type: 'success' });
       }
       
     } else {
-      // NẾU VẪN ĐANG TRONG NGÀY (Chưa tick xong hết các bữa): Chỉ báo bữa tới/quá bữa, KHÔNG soi calo
+      // VẪN ĐANG TRONG NGÀY (Chưa tick xong hết các bữa): Báo bữa tới/quá bữa
       if (diet.isMealOverdue) {
         const meal = diet.overdueMealName?.toUpperCase();
         notifications.push({ id: 'meal_overdue', time: timeStr, text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle], type: 'error' });
@@ -123,8 +122,14 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     }
   }
 
-  // 4. Nếu đủ mọi điều kiện Chốt Sổ (Tập xong + Ăn xong)
-  if (canCloseDay) {
+  // ==========================================
+  // 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%
+  // ==========================================
+  const isWorkoutPerfect = workout ? (workout.didWorkout || workout.isRestDay) : true;
+  const isDietPerfect = diet?.hasPlan ? (diet.areAllMealsCompleted && diet.calorieStatus === 'PERFECT') : true;
+
+  // Nếu TẤT CẢ đều hoàn hảo và CHƯA BẤM CHỐT SỔ -> Giục bấm chốt sổ
+  if (isWorkoutPerfect && isDietPerfect && !diet?.didEatRight) {
     notifications.push({ id: 'all_completed', time: timeStr, text: MESSAGES.ALL_COMPLETED[selectedStyle], type: 'success' });
   }
 
