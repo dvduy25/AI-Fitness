@@ -128,20 +128,15 @@ exports.logActualMealWithAI = async (req, res) => {
         dietLog.actualDailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
         dietLog.isDayCompleted = false; dietLog.dailyAiSummary = "";
       } else if (targetTime < logTime) {
-        return res.status(400).json({ message: "Dữ liệu của ngày này đã thuộc về quá khứ." });
+        return res.status(400).json({ message: "Dữ liệu của ngày này đã chốt sổ. Vui lòng ghi nhận cho hôm nay." });
       }
-    }
-
-    // 🔒 BẢO VỆ: Nếu ngày hôm nay ĐÃ BẤM CHỐT SỔ CHÍNH THỨC thì không cho nạp thêm
-    if (dietLog.isDayCompleted) {
-      return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể thêm bữa ăn mới." });
     }
 
     // --- B. KHỞI TẠO BIẾN ---
     const masterPlan = await MealPlan.findOne({ userId }); 
     const user = await User.findById(userId);
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
-    const medicalContext = getMedicalPrompt(user); 
+    const medicalContext = getMedicalPrompt(user); // Gắn Bệnh lý
 
     let processedItems = [];
     let newItemsTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
@@ -327,14 +322,12 @@ exports.logActualMealWithAI = async (req, res) => {
           dietLog.adjustedUpcomingMeals = currentUpcoming.length > 0 ? currentUpcoming : upcomingMeals;
         }
       } else {
-        // ĐÃ ĂN HẾT CÁC BỮA TRONG NGÀY:
         const excessCalories = formatToInt(dietLog.actualDailyTotal.calories - target.calories);
         if (excessCalories > 0) dietLog.dailyAiSummary = `Bạn đã ăn lố ${excessCalories} kcal. Hãy tích cực vận động nhé.`;
         else if (excessCalories < 0) dietLog.dailyAiSummary = `Bạn còn dư ${Math.abs(excessCalories)} kcal. Bám sát mục tiêu rất tốt.`;
         else dietLog.dailyAiSummary = `Đạt chuẩn 100%. Quá xuất sắc!`;
         
-        // 🟢 ĐÃ SỬA: KHÔNG gán isDayCompleted = true ở đây nữa!
-        dietLog.adjustedUpcomingMeals = []; 
+        dietLog.isDayCompleted = true; dietLog.adjustedUpcomingMeals = []; 
       }
     }
 
