@@ -27,6 +27,9 @@ const closeDayForUser = async (userId) => {
   const isMonday = now.getDay() === 1;
   const todayStr = toYYYYMMDD(now);
 
+  // Lấy thông tin User để lấy targetMacros chuẩn nếu dietDoc bị thiếu
+  const user = await User.findById(userId);
+
   let gamification = await Gamification.findOne({ userId });
   if (!gamification) gamification = new Gamification({ userId });
 
@@ -40,23 +43,25 @@ const closeDayForUser = async (userId) => {
     gamification.currentWeekTrackers = { eatWrong: 0, noWorkout: 0, bothFail: 0, isPenalizedThisWeek: false };
   }
 
-  // 2. Kiểm tra Tập luyện
+  // 2. Kiểm tra Tập luyện (SỬA LỖI: Không tự gán isRestDay = true khi chưa tạo Log)
   const workoutDoc = await WorkoutLog.findOne({ 
     userId, 
     $or: [{ date: todayStr }, { date: { $gte: startOfDay, $lte: endOfDay } }] 
   });
   
   const hasWorkoutLog = !!workoutDoc;
-  const isRestDay = hasWorkoutLog ? (workoutDoc.isRestDay === true) : true;
+  const isRestDay = hasWorkoutLog ? (workoutDoc.isRestDay === true) : false;
   const actualWorkout = hasWorkoutLog ? (workoutDoc.didWorkout === true || workoutDoc.isCompleted === true) : false;
-  const didWorkoutValid = actualWorkout || isRestDay;
+  
+  // Bắt buộc phải CÓ LOG TẬP và (Đã tập HOẶC đúng là ngày nghỉ)
+  const didWorkoutValid = hasWorkoutLog && (actualWorkout || isRestDay);
 
-  // 3. Kiểm tra Dinh dưỡng (Đã cập nhật kiểm tra Calo chuẩn)
+  // 3. Kiểm tra Dinh dưỡng & Calo (SỬA LỖI ĐỘC LẬP TẤT CẢ FIELD CALO)
   let dietDoc = await DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } });
   let didEatRightValid = false;
 
   if (dietDoc) {
-    // A. Kiểm tra hoàn thành các bữa ăn
+    // A. Kiểm tra xem các bữa ăn đã hoàn thành hết chưa
     const mealsToCheck = dietDoc.adjustedUpcomingMeals || dietDoc.meals || [];
     const areAllMealsCompleted = mealsToCheck.length > 0 
       ? mealsToCheck.every(m => m.isCompleted || m.isEaten || m.status === 'COMPLETED')
@@ -64,21 +69,39 @@ const closeDayForUser = async (userId) => {
 
     const isMealFinished = dietDoc.isDayCompleted || areAllMealsCompleted;
 
-    // B. Kiểm tra Calo tiêu thụ so với mục tiêu
-    const targetCalories = dietDoc.targetCalories || dietDoc.dailyCalorieTarget || 0;
-    const actualCalories = dietDoc.totalCaloriesConsumed || dietDoc.totalCalories || 0;
+    // B. Lấy Calo Mục Tiêu (Quét qua tất cả vị trí lưu)
+    const targetCalories = dietDoc.targetCalories 
+      || dietDoc.dailyCalorieTarget 
+      || dietDoc.targetMacros?.calories 
+      || user?.targetMacros?.calories 
+      || 0;
 
-    // Cho phép ăn trong khoảng tối thiểu 80% và không vượt quá 105% Calo mục tiêu (mức dung sai 5%)
-    let isCalorieInBudget = true;
-    if (targetCalories > 0) {
-      isCalorieInBudget = actualCalories >= (targetCalories * 0.8) && actualCalories <= (targetCalories * 1.05);
+    // C. Lấy Calo Thực Tế Đã Nạp (Quét qua tất cả vị trí lưu)
+    let actualCalories = dietDoc.actualDailyTotal?.calories 
+      || dietDoc.totalCaloriesConsumed 
+      || dietDoc.totalCalories 
+      || 0;
+
+    // Trường hợp chưa tính tổng ở root, tự cộng tổng calo từ các bữa đã ăn
+    if (actualCalories === 0 && mealsToCheck.length > 0) {
+      actualCalories = mealsToCheck.reduce((sum, meal) => {
+        if (meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED') {
+          return sum + (meal.calories || meal.totalCalories || 0);
+        }
+        return sum;
+      }, 0);
     }
 
-    // Chỉ tính ăn đúng khi ĐÃ BẤM HOÀN THÀNH BỮA ĂN + CALO NẰM TRONG NGƯỠNG CHO PHÉP
+    // D. Kiểm tra dung sai Calo (Chuẩn trong khoảng 80% đến 105% Calo mục tiêu)
+    let isCalorieInBudget = false;
+    if (targetCalories > 0) {
+      isCalorieInBudget = (actualCalories >= targetCalories * 0.8) && (actualCalories <= targetCalories * 1.05);
+    }
+
+    // CHỈ CHẤP NHẬN ĐÚNG KHI: Đã ăn đủ các bữa VÀ Calo nằm đúng ngưỡng
     didEatRightValid = isMealFinished && isCalorieInBudget;
 
   } else {
-    // Không ghi nhật ký ăn uống => Tính là sai chế độ (ngăn tích điểm khống)
     didEatRightValid = false; 
   }
 
@@ -91,13 +114,11 @@ const closeDayForUser = async (userId) => {
     gamification.streak += 1;
   } 
   else {
-    // ⚠️ HÔM NAY CÓ VI PHẠM
-    
-    // Đã làm sai thì chuỗi Streak bị gãy về 0 ngay lập tức
+    // ⚠️ HÔM NAY CÓ VI PHẠM (Gãy Streak)
     gamification.streak = 0; 
 
     if (didWorkoutValid && !didEatRightValid) {
-      gamification.rankPoints += 5; // Tập tốt nhưng Ăn sai: Thưởng nhẹ +5
+      gamification.rankPoints += 5; // Tập tốt nhưng Ăn sai calo: Thưởng nhẹ +5
       gamification.failStats.eatWrongDays += 1; 
       gamification.currentWeekTrackers.eatWrong += 1; 
     } 
@@ -110,7 +131,7 @@ const closeDayForUser = async (userId) => {
       gamification.currentWeekTrackers.bothFail += 1;
     }
 
-    // 5. LOGIC PHẠT TUẦN (Chỉ kích hoạt VÀO NGÀY SAI và CHỈ PHẠT 1 LẦN / TUẦN)
+    // 5. LOGIC PHẠT TUẦN
     const alreadyPenalized = gamification.currentWeekTrackers.isPenalizedThisWeek || false;
 
     if (!alreadyPenalized) {
