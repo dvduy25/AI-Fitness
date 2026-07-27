@@ -60,8 +60,6 @@ const getUserStats = async (req, res) => {
     // --- 1. Workout Status ---
     const hasWorkoutLog = !!todayWorkoutDoc;
     const didWorkout = hasWorkoutLog ? (todayWorkoutDoc.didWorkout || todayWorkoutDoc.isCompleted) : false;
-    
-    // SỬA LỖI 1: Nếu chưa tạo log tập -> Mặc định isRestDay = FALSE (Không được tự coi là nghỉ)
     const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : false; 
     
     let isWorkoutOverdue = false;
@@ -84,7 +82,8 @@ const getUserStats = async (req, res) => {
 
     // --- 2. Diet Status ---
     const hasDietPlan = !!todayDietDoc;
-    let didEatRight = false;
+    const isDayCompleted = todayDietDoc?.isDayCompleted || false;
+    let didEatRight = isDayCompleted;
     let isMealOverdue = false;
     let isMealUpcoming = false;
     let overdueMealName = null;
@@ -98,7 +97,6 @@ const getUserStats = async (req, res) => {
     let areAllMealsCompleted = false;
 
     if (hasDietPlan) {
-      didEatRight = todayDietDoc.isDayCompleted;
       consumedCalories = todayDietDoc.actualDailyTotal?.calories || todayDietDoc.totalCaloriesConsumed || 0;
       targetCalories = userDoc?.targetMacros?.calories || todayDietDoc.targetCalories || 0;
 
@@ -111,16 +109,20 @@ const getUserStats = async (req, res) => {
         else if (calRatio > 1.05) calorieStatus = 'OVER';
       }
 
-      const mealsToCheck = todayDietDoc.adjustedUpcomingMeals || todayDietDoc.meals || [];
-      if (mealsToCheck.length > 0) {
-        areAllMealsCompleted = mealsToCheck.every(meal => meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED');
+      // Kiểm tra xem đã ăn hết các bữa chưa
+      const hasConsumed = todayDietDoc.consumedMeals && todayDietDoc.consumedMeals.length > 0;
+      const hasUpcoming = todayDietDoc.adjustedUpcomingMeals && todayDietDoc.adjustedUpcomingMeals.length > 0;
+      
+      // Nếu đã ăn ít nhất 1 bữa và không còn bữa sắp tới nào -> Đã hoàn thành toàn bộ bữa ăn
+      if (hasConsumed && !hasUpcoming) {
+        areAllMealsCompleted = true;
       } else {
-        areAllMealsCompleted = didEatRight; 
+        areAllMealsCompleted = isDayCompleted; 
       }
 
-      if (!didEatRight && !areAllMealsCompleted && mealsToCheck.length > 0) {
-        for (const meal of mealsToCheck) {
-          if (meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED') continue;
+      const upcomingList = todayDietDoc.adjustedUpcomingMeals || [];
+      if (!isDayCompleted && !areAllMealsCompleted && upcomingList.length > 0) {
+        for (const meal of upcomingList) {
           if (meal.scheduledTime) {
             const [mHours, mMinutes] = meal.scheduledTime.split(':').map(Number);
             const mealTotalMins = mHours * 60 + mMinutes;
@@ -139,15 +141,13 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 3. ĐIỀU KIỆN CHỐT SỔ (STRICT) ---
-    // SỬA LỖI 2: Phải có Log tập (Đã tập HOẶC đúng ngày nghỉ) VÀ phải có Plan ăn (Đã tick hết các bữa hoặc chốt ngày)
-    const workoutConditionMet = hasWorkoutLog && (didWorkout || isRestDay);
-    const dietConditionMet = hasDietPlan && (didEatRight || areAllMealsCompleted);
-    
-    const canCloseDay = workoutConditionMet && dietConditionMet; 
+    // --- 3. ĐIỀU KIỆN HIỂN THỊ NÚT CHỐT SỔ ---
+    // Nút "Chốt sổ" LUÔN LUÔN HIỆN (canCloseDay = true) miễn là ngày hôm nay CHƯA CHỐT SỔ (isDayCompleted = false).
+    const canCloseDay = !isDayCompleted; 
 
     const todayStatus = {
       canCloseDay,
+      isDayCompleted,
       workout: { hasLog: hasWorkoutLog, didWorkout, isOverdue: isWorkoutOverdue, isUpcoming: isWorkoutUpcoming, isRestDay },
       diet: {
         hasPlan: hasDietPlan, didEatRight, targetCalories, consumedCalories, areAllMealsCompleted,
