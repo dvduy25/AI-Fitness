@@ -51,23 +51,35 @@ const closeDayForUser = async (userId) => {
   const actualWorkout = hasWorkoutLog ? (workoutDoc.didWorkout === true || workoutDoc.isCompleted === true) : false;
   const didWorkoutValid = actualWorkout || isRestDay;
 
-  // 3. Kiểm tra Dinh dưỡng
+  // 3. Kiểm tra Dinh dưỡng (Đã cập nhật kiểm tra Calo chuẩn)
   let dietDoc = await DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } });
   let didEatRightValid = false;
 
   if (dietDoc) {
-    if (dietDoc.isDayCompleted) {
-      didEatRightValid = true;
-    } else {
-      const mealsToCheck = dietDoc.adjustedUpcomingMeals || dietDoc.meals || [];
-      const areAllMealsCompleted = mealsToCheck.length > 0 
-        ? mealsToCheck.every(m => m.isCompleted || m.isEaten || m.status === 'COMPLETED')
-        : true;
+    // A. Kiểm tra hoàn thành các bữa ăn
+    const mealsToCheck = dietDoc.adjustedUpcomingMeals || dietDoc.meals || [];
+    const areAllMealsCompleted = mealsToCheck.length > 0 
+      ? mealsToCheck.every(m => m.isCompleted || m.isEaten || m.status === 'COMPLETED')
+      : false;
 
-      didEatRightValid = areAllMealsCompleted; 
+    const isMealFinished = dietDoc.isDayCompleted || areAllMealsCompleted;
+
+    // B. Kiểm tra Calo tiêu thụ so với mục tiêu
+    const targetCalories = dietDoc.targetCalories || dietDoc.dailyCalorieTarget || 0;
+    const actualCalories = dietDoc.totalCaloriesConsumed || dietDoc.totalCalories || 0;
+
+    // Cho phép ăn trong khoảng tối thiểu 80% và không vượt quá 105% Calo mục tiêu (mức dung sai 5%)
+    let isCalorieInBudget = true;
+    if (targetCalories > 0) {
+      isCalorieInBudget = actualCalories >= (targetCalories * 0.8) && actualCalories <= (targetCalories * 1.05);
     }
+
+    // Chỉ tính ăn đúng khi ĐÃ BẤM HOÀN THÀNH BỮA ĂN + CALO NẰM TRONG NGƯỠNG CHO PHÉP
+    didEatRightValid = isMealFinished && isCalorieInBudget;
+
   } else {
-    didEatRightValid = true; 
+    // Không ghi nhật ký ăn uống => Tính là sai chế độ (ngăn tích điểm khống)
+    didEatRightValid = false; 
   }
 
   // 4. CỘNG ĐIỂM / TĂNG BỘ ĐẾM VI PHẠM
@@ -79,7 +91,7 @@ const closeDayForUser = async (userId) => {
     gamification.streak += 1;
   } 
   else {
-    // ⚠️ HÔM NAY CÓ VI PHẠM (Chỉ xử lý phạt khi hôm nay BỊ LỖI)
+    // ⚠️ HÔM NAY CÓ VI PHẠM
     
     // Đã làm sai thì chuỗi Streak bị gãy về 0 ngay lập tức
     gamification.streak = 0; 
@@ -146,12 +158,17 @@ const startDailyClosingJob = () => {
     try {
       const users = await User.find({});
       for (const user of users) await closeDayForUser(user._id);
-    } catch (error) { console.error(error); }
+    } catch (error) { 
+      console.error("Lỗi Cron Job chốt ngày:", error); 
+    }
   });
 
   cron.schedule('0 0 1 * *', async () => {
-    try { await Gamification.updateMany({}, { $set: { rankPoints: 0, lastRankResetDate: new Date() } }); } 
-    catch (error) {}
+    try { 
+      await Gamification.updateMany({}, { $set: { rankPoints: 0, lastRankResetDate: new Date() } }); 
+    } catch (error) {
+      console.error("Lỗi Cron Job reset điểm Rank hàng tháng:", error);
+    }
   });
 };
 
