@@ -128,15 +128,20 @@ exports.logActualMealWithAI = async (req, res) => {
         dietLog.actualDailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
         dietLog.isDayCompleted = false; dietLog.dailyAiSummary = "";
       } else if (targetTime < logTime) {
-        return res.status(400).json({ message: "Dữ liệu của ngày này đã chốt sổ. Vui lòng ghi nhận cho hôm nay." });
+        return res.status(400).json({ message: "Dữ liệu của ngày này đã thuộc về quá khứ." });
       }
+    }
+
+    // 🔒 BẢO VỆ: Nếu ngày hôm nay ĐÃ BẤM CHỐT SỔ CHÍNH THỨC thì không cho nạp thêm
+    if (dietLog.isDayCompleted) {
+      return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể thêm bữa ăn mới." });
     }
 
     // --- B. KHỞI TẠO BIẾN ---
     const masterPlan = await MealPlan.findOne({ userId }); 
     const user = await User.findById(userId);
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
-    const medicalContext = getMedicalPrompt(user); // Gắn Bệnh lý
+    const medicalContext = getMedicalPrompt(user); 
 
     let processedItems = [];
     let newItemsTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
@@ -322,12 +327,14 @@ exports.logActualMealWithAI = async (req, res) => {
           dietLog.adjustedUpcomingMeals = currentUpcoming.length > 0 ? currentUpcoming : upcomingMeals;
         }
       } else {
+        // ĐÃ ĂN HẾT CÁC BỮA TRONG NGÀY:
         const excessCalories = formatToInt(dietLog.actualDailyTotal.calories - target.calories);
         if (excessCalories > 0) dietLog.dailyAiSummary = `Bạn đã ăn lố ${excessCalories} kcal. Hãy tích cực vận động nhé.`;
         else if (excessCalories < 0) dietLog.dailyAiSummary = `Bạn còn dư ${Math.abs(excessCalories)} kcal. Bám sát mục tiêu rất tốt.`;
         else dietLog.dailyAiSummary = `Đạt chuẩn 100%. Quá xuất sắc!`;
         
-        dietLog.isDayCompleted = true; dietLog.adjustedUpcomingMeals = []; 
+        // 🟢 ĐÃ SỬA: KHÔNG gán isDayCompleted = true ở đây nữa!
+        dietLog.adjustedUpcomingMeals = []; 
       }
     }
 
@@ -346,7 +353,7 @@ exports.logActualMealWithAI = async (req, res) => {
 
 
 // ==========================================
-// 1. XÓA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
+// 3. XÓA BỮA ĂN ĐÃ NẠP VÀ TÍNH TOÁN LẠI LỊCH
 // ==========================================
 exports.deleteConsumedMeal = async (req, res) => {
   try {
@@ -356,7 +363,7 @@ exports.deleteConsumedMeal = async (req, res) => {
     const dietLog = await DailyDietLog.findOne({ userId, "consumedMeals._id": mealId });
     if (!dietLog) return res.status(404).json({ message: "Không tìm thấy bữa ăn này!" });
 
-    // 🔒 CHẶN KHÔNG CHO XÓA NẾU ĐÃ BẤM CHỐT SỔ CHÍNH THỨC
+    // --- CHẶN KHÔNG CHO XÓA NẾU ĐÃ CHỐT SỔ ---
     if (dietLog.isDayCompleted) {
       return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể xóa bữa ăn." });
     }
@@ -364,7 +371,6 @@ exports.deleteConsumedMeal = async (req, res) => {
     const deletedMeal = dietLog.consumedMeals.find(m => m._id.toString() === mealId);
     dietLog.consumedMeals = dietLog.consumedMeals.filter((meal) => meal._id.toString() !== mealId);
 
-    // Tính toán lại tổng Calo & Macros thực tế
     let newActualTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     dietLog.consumedMeals.forEach(meal => {
       newActualTotal.calories += meal.mealTotal.calories;
@@ -379,8 +385,9 @@ exports.deleteConsumedMeal = async (req, res) => {
       carbs: formatToInt(newActualTotal.carbs), 
       fat: formatToInt(newActualTotal.fat)
     };
+    dietLog.isDayCompleted = false; 
+    dietLog.dailyAiSummary = "";
 
-    // AI AUTO-ADJUST LẠI CÁC BỮA CÒN LẠI
     const masterPlan = await MealPlan.findOne({ userId });
     const user = await User.findById(userId);
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
@@ -447,7 +454,7 @@ exports.deleteConsumedMeal = async (req, res) => {
     await dietLog.save();
 
     res.status(200).json({
-      message: `Đã xóa ${deletedMeal?.mealType || "bữa ăn"} thành công!`, 
+      message: `Đã xóa ${deletedMeal.mealType} thành công!`, 
       adjustmentNote,
       actualDailyTotal: dietLog.actualDailyTotal, 
       adjustedUpcomingMeals: dietLog.adjustedUpcomingMeals,
@@ -462,7 +469,7 @@ exports.deleteConsumedMeal = async (req, res) => {
 
 
 // ==========================================
-// 2. SỬA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
+// 4. SỬA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
 // ==========================================
 exports.editConsumedMeal = async (req, res) => {
   try {
@@ -473,7 +480,7 @@ exports.editConsumedMeal = async (req, res) => {
     const dietLog = await DailyDietLog.findOne({ userId, "consumedMeals._id": mealId });
     if (!dietLog) return res.status(404).json({ message: "Không tìm thấy bữa ăn này trong nhật ký!" });
 
-    // 🔒 CHẶN KHÔNG CHO SỬA NẾU ĐÃ BẤM CHỐT SỔ CHÍNH THỨC
+    // --- CHẶN KHÔNG CHO SỬA NẾU ĐÃ CHỐT SỔ ---
     if (dietLog.isDayCompleted) {
       return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể chỉnh sửa bữa ăn." });
     }
@@ -556,7 +563,6 @@ exports.editConsumedMeal = async (req, res) => {
     dietLog.consumedMeals[mealIndex].isExactlyAsPlanned = false;
     dietLog.consumedMeals[mealIndex].aiNote = aiNote;
 
-    // Tính toán lại tổng Calo & Macros thực tế
     let newActualTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     dietLog.consumedMeals.forEach(meal => {
       newActualTotal.calories += meal.mealTotal.calories; newActualTotal.protein += meal.mealTotal.protein;
@@ -567,8 +573,9 @@ exports.editConsumedMeal = async (req, res) => {
       calories: formatToInt(newActualTotal.calories), protein: formatToInt(newActualTotal.protein),
       carbs: formatToInt(newActualTotal.carbs), fat: formatToInt(newActualTotal.fat)
     };
+    dietLog.isDayCompleted = false;
 
-    // AI AUTO-ADJUST LẠI LỊCH SẮP TỚI
+    // --- C. AI AUTO-ADJUST LẠI LỊCH SẮP TỚI ---
     const masterPlan = await MealPlan.findOne({ userId });
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
     let adjustmentNote = "Đã cập nhật bữa ăn. Lịch trình sắp tới đã được điều chỉnh theo lượng calo mới.";
