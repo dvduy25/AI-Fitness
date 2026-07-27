@@ -1,13 +1,16 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import api from "./services/api";
 import { 
   User, Crown, Ticket, Zap, Target, Activity, 
   MapPin, Save, Loader2, Mail, Weight, Ruler, HeartPulse,
   CheckCircle, AlertTriangle, Camera, Calculator, Lock, Percent, Bone,
-  Edit, X
+  Edit, X, Sparkles, ChevronRight
 } from 'lucide-react';
 
 export default function UserProfile() {
+  const navigate = useNavigate(); // Hook chuyển trang SPA không reload
+
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
@@ -177,7 +180,6 @@ export default function UserProfile() {
           muscleMass: updatedUser.muscleMass || ''
         }));
         
-        // Thoát chế độ sửa khi lưu thành công
         setIsEditing(false);
       } else {
         await fetchProfile();
@@ -200,7 +202,6 @@ export default function UserProfile() {
   };
 
   const handleCancelEdit = () => {
-    // Khôi phục lại dữ liệu ban đầu
     fetchProfile();
     setIsEditing(false);
     setError(null);
@@ -244,10 +245,11 @@ export default function UserProfile() {
 
   const currentBMIInfo = getBMIStatus(formData.bmi);
 
-  // Map dữ liệu để hiển thị đẹp hơn
   const goalMap = { lose_weight: 'Giảm cân / Giảm mỡ', gain_muscle: 'Tăng cân / Tăng cơ', maintain: 'Duy trì vóc dáng' };
   const fitnessLevelMap = { beginner: 'Người mới bắt đầu', intermediate: 'Đã có kinh nghiệm', advanced: 'Chuyên nghiệp' };
   const locationMap = { home: 'Tại nhà', gym: 'Phòng Gym' };
+
+  const isPremiumUser = userData?.isPremium || userData?.subscription?.plan === 'premium';
 
   return (
     <div className="bg-gray-950 min-h-screen text-gray-200 pb-12">
@@ -260,7 +262,6 @@ export default function UserProfile() {
             </p>
           </div>
           
-          {/* NÚT CHỈNH SỬA / HỦY */}
           {!isEditing ? (
             <button 
               onClick={() => setIsEditing(true)} 
@@ -295,15 +296,11 @@ export default function UserProfile() {
       <div className="w-full px-4 md:px-8 lg:px-12 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           
-          {/* ========================================== */}
-          {/* CỘT TRÁI: HIỂN THỊ HOẶC FORM NHẬP LIỆU     */}
-          {/* ========================================== */}
+          {/* CỘT TRÁI: FORM / HIỂN THỊ THÔNG TIN */}
           <div className="lg:col-span-8 space-y-6">
             
             {isEditing ? (
-              // ------------------------------------------
-              // CHẾ ĐỘ CHỈNH SỬA (EDIT MODE)
-              // ------------------------------------------
+              /* CHẾ ĐỘ EDIT */
               <>
                 <div className="bg-gray-900 p-5 md:p-6 rounded-2xl border border-gray-800 shadow-lg">
                   <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2 border-b border-gray-800 pb-3">
@@ -470,9 +467,7 @@ export default function UserProfile() {
                 </div>
               </>
             ) : (
-              // ------------------------------------------
-              // CHẾ ĐỘ CHỈ XEM (READ-ONLY MODE)
-              // ------------------------------------------
+              /* CHẾ ĐỘ XEM */
               <>
                 <div className="bg-gray-900 p-6 md:p-8 rounded-2xl border border-gray-800 shadow-lg">
                   <div className="flex flex-col md:flex-row items-center md:items-start gap-6">
@@ -586,149 +581,172 @@ export default function UserProfile() {
 
           </div>
 
-          {/* ========================================== */}
-          {/* CỘT PHẢI: CHỈ HIỂN THỊ KẾT QUẢ TÍNH TOÁN   */}
-          {/* ========================================== */}
+          {/* CỘT PHẢI: GÓI TÀI KHOẢN, CHỈ SỐ DINH DƯỠNG & CƠ THỂ */}
           <div className="lg:col-span-4 space-y-6">
             
-            {/* TRẠNG THÁI TÀI KHOẢN */}
-            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 shadow-lg">
-              <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wide mb-4">Trạng thái tài khoản</h2>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-4 bg-gray-950 border border-yellow-900/50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-500/20 rounded-lg text-yellow-500">
-                      <Crown className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-white font-bold">{userData?.isPremium ? 'Gói Premium' : 'Gói Cơ bản'}</p>
-                      {userData?.isPremium && userData?.premiumUntil && getPremiumDate(userData.premiumUntil) && (
-                        <p className="text-xs text-yellow-400">Đến: {getPremiumDate(userData.premiumUntil)}</p>
-                      )}
-                    </div>
+            {/* THẺ TÀI KHOẢN / NÂNG CẤP PREMIUM */}
+            <div className={`p-6 rounded-2xl border shadow-lg relative overflow-hidden ${
+              isPremiumUser 
+                ? 'bg-gradient-to-br from-amber-950/40 via-gray-900 to-gray-900 border-amber-500/40' 
+                : 'bg-gradient-to-br from-gray-900 via-gray-900 to-gray-950 border-gray-800'
+            }`}>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <div className={`p-2 rounded-xl ${isPremiumUser ? 'bg-amber-500/20 text-amber-400' : 'bg-gray-800 text-gray-400'}`}>
+                    <Crown className="w-6 h-6" />
                   </div>
-                  {!userData?.isPremium && <button className="text-xs font-bold text-yellow-500 bg-yellow-500/10 px-3 py-1.5 rounded-lg border border-yellow-500/30 hover:bg-yellow-500/20">Nâng cấp</button>}
-                </div>
-
-                <div className="flex items-center justify-between p-4 bg-gray-950 border border-purple-900/50 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-500/20 rounded-lg text-purple-400">
-                      <Ticket className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <p className="text-white font-bold">Vé dùng AI</p>
-                      <p className="text-xs text-purple-400">Xem QC để nhận thêm</p>
-                    </div>
-                  </div>
-                  <span className="text-xl font-black text-white">{userData?.aiTickets || 0}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* CHỈ SỐ BMI */}
-            {currentBMIInfo && (
-              <div className={`p-5 rounded-2xl border ${currentBMIInfo.colorClass} shadow-lg transition-colors`}>
-                <div className="flex justify-between items-start mb-1">
-                  <h2 className="text-sm font-bold uppercase tracking-wide opacity-80">Chỉ số BMI</h2>
-                  <Lock className="w-3 h-3 opacity-50" />
-                </div>
-                <div className="flex items-end justify-between">
                   <div>
-                    <span className="text-4xl font-black">{currentBMIInfo.value}</span>
-                    <span className="ml-2 font-bold opacity-90">{currentBMIInfo.status}</span>
+                    <h3 className="font-bold text-white text-base">Gói Tài Khoản</h3>
+                    <p className={`text-xs font-semibold ${isPremiumUser ? 'text-amber-400' : 'text-gray-400'}`}>
+                      {isPremiumUser ? 'Tài khoản Premium' : 'Tài khoản Miễn phí (Free)'}
+                    </p>
                   </div>
                 </div>
-              </div>
-            )}
-
-            {/* BẢNG PHÂN TÍCH CƠ THỂ */}
-            <div className="bg-gray-900 p-5 rounded-2xl border border-purple-900/30 shadow-lg relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-purple-500/10 rounded-full blur-3xl pointer-events-none"></div>
-              
-              <div className="flex justify-between items-start mb-4">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wide">
-                  <Activity className="w-4 h-4 text-purple-500" /> Phân tích cơ thể
-                </h2>
-                <Lock className="w-3 h-3 text-gray-500 opacity-50" />
+                {isPremiumUser && (
+                  <span className="bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2.5 py-1 rounded-full border border-amber-500/30 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> PRO
+                  </span>
+                )}
               </div>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between p-3 bg-gray-950 border border-gray-800 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Percent className="w-4 h-4 text-pink-400" />
-                    <span className="text-gray-400 text-sm font-medium">Lượng mỡ (Body Fat)</span>
+              {isPremiumUser ? (
+                <div className="space-y-2 text-xs text-gray-300 border-t border-amber-500/20 pt-4">
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Trạng thái:</span>
+                    <span className="text-emerald-400 font-medium flex items-center gap-1">
+                      <CheckCircle className="w-3.5 h-3.5" /> Đang hoạt động
+                    </span>
                   </div>
-                  <div className="text-pink-400 font-bold text-lg">{formData.bodyFat ? `${formData.bodyFat}%` : '--'}</div>
+                  {userData?.subscription?.expiresAt && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-400">Hạn dùng:</span>
+                      <span className="font-semibold text-amber-300">
+                        {getPremiumDate(userData.subscription.expiresAt)}
+                      </span>
+                    </div>
+                  )}
+                  <button 
+                    onClick={() => navigate('/premium')}
+                    className="w-full mt-3 py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-300 font-bold rounded-xl transition-colors text-xs flex items-center justify-center gap-2"
+                  >
+                    Gia hạn / Quản lý gói <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3 border-t border-gray-800 pt-4">
+                  <p className="text-xs text-gray-400 leading-relaxed">
+                    Nâng cấp Premium để mở khóa Trợ lý AI HLV, tạo thực đơn & giáo án tập luyện chuyên sâu không giới hạn!
+                  </p>
+                  {/* NÚT CHUYỂN TRANG NÂNG CẤP PREMIUM */}
+                  <button 
+                    onClick={() => navigate('/premium')}
+                    className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 text-gray-950 font-bold rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 text-sm transform hover:-translate-y-0.5 active:translate-y-0"
+                  >
+                    <Crown className="w-4 h-4 fill-current" /> Nâng cấp Premium Ngay
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* CHỈ SỐ DINH DƯỠNG KHUYẾN NGHỊ */}
+            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 shadow-lg">
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2 mb-4 border-b border-gray-800 pb-3">
+                <Zap className="w-4 h-4 text-yellow-400" /> Dinh dưỡng khuyến nghị (Mỗi ngày)
+              </h3>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 bg-gray-950 p-4 rounded-xl border border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs text-gray-400 font-medium">Năng lượng tiêu thụ</span>
+                    <span className="text-2xl font-bold text-yellow-400">
+                      {formData.calories ? `${formData.calories} kcal` : '--'}
+                    </span>
+                  </div>
+                  <Zap className="w-8 h-8 text-yellow-400/30" />
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-gray-950 border border-gray-800 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Activity className="w-4 h-4 text-emerald-400" />
-                    <span className="text-gray-400 text-sm font-medium">Tỷ lệ cơ (Muscle)</span>
-                  </div>
-                  <div className="text-emerald-400 font-bold text-lg">{formData.muscleMass ? `${formData.muscleMass}%` : '--'}</div>
+                <div className="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                  <span className="block text-[11px] text-gray-400 mb-1 font-medium">Protein (Đạm)</span>
+                  <span className="text-lg font-bold text-red-400">
+                    {formData.protein ? `${formData.protein} g` : '--'}
+                  </span>
                 </div>
 
-                <div className="flex items-center justify-between p-3 bg-gray-950 border border-gray-800 rounded-xl">
-                  <div className="flex items-center gap-3">
-                    <Bone className="w-4 h-4 text-blue-400" />
-                    <span className="text-gray-400 text-sm font-medium">Khối lượng phi mỡ</span>
-                  </div>
-                  <div className="text-blue-400 font-bold text-lg">{formData.leanBodyMass ? `${formData.leanBodyMass} kg` : '--'}</div>
+                <div className="bg-gray-950 p-3 rounded-xl border border-gray-800">
+                  <span className="block text-[11px] text-gray-400 mb-1 font-medium">Carbs (Tinh bột)</span>
+                  <span className="text-lg font-bold text-blue-400">
+                    {formData.carbs ? `${formData.carbs} g` : '--'}
+                  </span>
+                </div>
+
+                <div className="col-span-2 bg-gray-950 p-3 rounded-xl border border-gray-800">
+                  <span className="block text-[11px] text-gray-400 mb-1 font-medium">Fat (Chất béo)</span>
+                  <span className="text-lg font-bold text-amber-400">
+                    {formData.fat ? `${formData.fat} g` : '--'}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* BẢNG TÍNH MACROS */}
-            <div className="bg-gray-900 p-5 rounded-2xl border border-blue-900/30 shadow-lg relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-32 h-32 bg-blue-500/10 rounded-full blur-3xl pointer-events-none"></div>
-              
-              <div className="flex justify-between items-start mb-4">
-                <h2 className="text-sm font-bold text-white flex items-center gap-2 uppercase tracking-wide">
-                  <Zap className="w-4 h-4 text-yellow-500" /> Macros đề xuất
-                </h2>
-                <Lock className="w-3 h-3 text-gray-500 opacity-50" />
-              </div>
+            {/* CHỈ SỐ CƠ THỂ TÍNH TOÁN */}
+            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 shadow-lg space-y-4">
+              <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wide flex items-center gap-2 border-b border-gray-800 pb-3">
+                <Percent className="w-4 h-4 text-purple-400" /> Chỉ số cơ thể
+              </h3>
 
-              <div className="space-y-4">
-                <div className="flex justify-between items-center border-b border-gray-800 pb-3">
-                  <span className="text-gray-400 font-medium text-sm">Tổng Calo / Ngày</span>
-                  <div className="flex items-center gap-1">
-                    <span className="text-yellow-500 font-black text-xl">{formData.calories || '--'}</span>
-                    <span className="text-sm font-normal text-gray-500">kcal</span>
+              <div className="space-y-3">
+                {/* BMI */}
+                <div className="bg-gray-950 p-3.5 rounded-xl border border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs text-gray-400 font-medium">BMI</span>
+                    <span className="text-xl font-bold text-white">
+                      {formData.bmi ? formData.bmi : '--'}
+                    </span>
                   </div>
+                  {currentBMIInfo && (
+                    <span className={`text-xs font-bold px-2.5 py-1 rounded-lg border ${currentBMIInfo.colorClass}`}>
+                      {currentBMIInfo.status}
+                    </span>
+                  )}
                 </div>
-                
-                <div className="grid grid-cols-3 gap-2 pt-2">
-                  <div className="bg-gray-950 p-2 rounded-xl border border-gray-800 flex flex-col items-center justify-center">
-                    <span className="block text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider">Protein</span>
-                    <div className="flex items-center gap-1 w-full justify-center">
-                      <span className="text-blue-400 font-bold text-lg">{formData.protein || '--'}</span>
-                      <span className="text-xs text-gray-500">g</span>
-                    </div>
-                  </div>
 
-                  <div className="bg-gray-950 p-2 rounded-xl border border-gray-800 flex flex-col items-center justify-center">
-                    <span className="block text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider">Carbs</span>
-                    <div className="flex items-center gap-1 w-full justify-center">
-                      <span className="text-yellow-400 font-bold text-lg">{formData.carbs || '--'}</span>
-                      <span className="text-xs text-gray-500">g</span>
-                    </div>
+                {/* Body Fat % */}
+                <div className="bg-gray-950 p-3.5 rounded-xl border border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs text-gray-400 font-medium">Tỷ lệ mỡ (Body Fat)</span>
+                    <span className="text-xl font-bold text-purple-400">
+                      {formData.bodyFat ? `${formData.bodyFat}%` : '--'}
+                    </span>
                   </div>
+                  <Percent className="w-5 h-5 text-purple-400/40" />
+                </div>
 
-                  <div className="bg-gray-950 p-2 rounded-xl border border-gray-800 flex flex-col items-center justify-center">
-                    <span className="block text-[10px] text-gray-500 font-bold mb-1 uppercase tracking-wider">Fat</span>
-                    <div className="flex items-center gap-1 w-full justify-center">
-                      <span className="text-red-400 font-bold text-lg">{formData.fat || '--'}</span>
-                      <span className="text-xs text-gray-500">g</span>
-                    </div>
+                {/* Khối lượng cơ thể không mỡ (LBM) */}
+                <div className="bg-gray-950 p-3.5 rounded-xl border border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs text-gray-400 font-medium">Khối lượng không mỡ (LBM)</span>
+                    <span className="text-xl font-bold text-emerald-400">
+                      {formData.leanBodyMass ? `${formData.leanBodyMass} kg` : '--'}
+                    </span>
                   </div>
+                  <Bone className="w-5 h-5 text-emerald-400/40" />
+                </div>
+
+                {/* Khối lượng cơ bắp */}
+                <div className="bg-gray-950 p-3.5 rounded-xl border border-gray-800 flex items-center justify-between">
+                  <div>
+                    <span className="block text-xs text-gray-400 font-medium">Khối lượng cơ bắp</span>
+                    <span className="text-xl font-bold text-blue-400">
+                      {formData.muscleMass ? `${formData.muscleMass} kg` : '--'}
+                    </span>
+                  </div>
+                  <Activity className="w-5 h-5 text-blue-400/40" />
                 </div>
               </div>
             </div>
 
           </div>
+
         </div>
       </div>
     </div>

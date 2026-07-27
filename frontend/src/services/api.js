@@ -49,6 +49,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error.response?.status;
+    const resData = error.response?.data; // Lấy thêm data từ Backend trả về
 
     // 401 - Token hết hạn: tự động logout
     if (status === 401) {
@@ -61,12 +62,17 @@ api.interceptors.response.use(
       }
     }
 
-    // 403 - Tài khoản bị khóa: thông báo toàn cục
+    // 403 - XỬ LÝ PHÂN LOẠI (Khóa tài khoản vs Tính năng Premium)
     if (status === 403) {
-      localStorage.removeItem("token");
-      localStorage.removeItem("adminToken");
-      localStorage.removeItem("role");
-      window.dispatchEvent(new Event("accountLocked"));
+      // CHỈ xóa token và đá văng NẾU đó thực sự là lỗi khóa tài khoản
+      if (resData?.code === "ACCOUNT_LOCKED" || resData?.isLocked === true) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("adminToken");
+        localStorage.removeItem("role");
+        window.dispatchEvent(new Event("accountLocked"));
+      }
+      // TRƯỜNG HỢP CÒN LẠI (như yêu cầu Premium): Không làm gì cả!
+      // Lỗi sẽ tự động chạy tiếp xuống component FloatingBot để bật Modal.
     }
 
     // 503 - Hệ thống bảo trì
@@ -79,5 +85,4 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
-
 export default api;

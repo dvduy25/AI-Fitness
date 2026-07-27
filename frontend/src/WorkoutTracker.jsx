@@ -10,7 +10,6 @@ import {
 
 // IMPORT CÁC COMPONENT TÙY CHỈNH
 import ExerciseEvaluation from './ExerciseEvaluation';
-// Đảm bảo đường dẫn này đúng với thư mục của bạn nhé!
 import PremiumRequireModal from './PremiumRequireModal'; 
 
 // ==========================================
@@ -59,12 +58,11 @@ export default function WorkoutTracker() {
   const [showPremiumModal, setShowPremiumModal] = useState(false);
   const [isLoadingAd, setIsLoadingAd] = useState(false);
   
-  // GIẢ LẬP SỐ VÉ VÀ TRẠNG THÁI VIP (Bạn có thể lấy từ API lấy thông tin User)
   const [userTickets, setUserTickets] = useState(0); 
   const [isPremium, setIsPremium] = useState(false); 
 
   // ==========================================
-  // TÍCH HỢP GOOGLE ADSENSE SCRIPT VÀO REACT
+  // TÍCH HỢP GOOGLE ADSENSE SCRIPT
   // ==========================================
   useEffect(() => {
     const script = document.createElement("script");
@@ -104,13 +102,13 @@ export default function WorkoutTracker() {
       const initialData = {};
       
       todayPlan.exercises.forEach(ex => {
-        const setsCount = ex.sets || 3;
-        initialData[ex.exerciseId._id] = Array.from({ length: setsCount }).map((_, i) => ({
-          setNumber: i + 1,
+        // CHỈ TẠO 1 SET DUY NHẤT LÀM MAX SET
+        initialData[ex.exerciseId._id] = [{
+          setNumber: 1,
           weight: '', 
           reps: ex.reps || '', 
           isDone: false
-        }));
+        }];
         
         fetchPrevRecord(ex.exerciseId._id); 
       });
@@ -121,21 +119,17 @@ export default function WorkoutTracker() {
           headers: { Authorization: `Bearer ${token}` }
         });
 
+        // ĐỒNG BỘ BACKEND: Lấy dữ liệu Max đã lưu trong ngày (nếu có)
         if (res.data.log) {
           setCurrentLogId(res.data.log._id);
           
-          if (res.data.log.exercises) {
-            res.data.log.exercises.forEach(loggedEx => {
-              const exId = loggedEx.exerciseId;
+          if (res.data.log.exerciseMaxes && Array.isArray(res.data.log.exerciseMaxes)) {
+            res.data.log.exerciseMaxes.forEach(loggedEx => {
+              const exId = loggedEx.exerciseId?._id || loggedEx.exerciseId;
               if (initialData[exId]) {
-                loggedEx.setsPerformed.forEach(loggedSet => {
-                  const setIndex = loggedSet.setNumber - 1;
-                  if (initialData[exId][setIndex]) {
-                    initialData[exId][setIndex].weight = loggedSet.weight;
-                    initialData[exId][setIndex].reps = loggedSet.reps;
-                    initialData[exId][setIndex].isDone = true; 
-                  }
-                });
+                initialData[exId][0].weight = loggedEx.maxWeight || '';
+                initialData[exId][0].reps = loggedEx.maxReps || '';
+                initialData[exId][0].isDone = true; 
               }
             });
           }
@@ -159,7 +153,11 @@ export default function WorkoutTracker() {
         setPrevRecords(prev => ({ ...prev, [exerciseId]: res.data.previousSets }));
       }
     } catch (error) {
-      console.error("Lỗi lấy lịch sử cũ:", error);
+      if (error.response && error.response.status === 404) {
+        console.log(`Chưa có lịch sử cho bài tập: ${exerciseId}`);
+      } else {
+        console.error("Lỗi lấy lịch sử cũ:", error);
+      }
     }
   };
 
@@ -181,6 +179,8 @@ export default function WorkoutTracker() {
   };
 
   const handleSetChange = (exerciseId, setIndex, field, value) => {
+    if (value !== '' && Number(value) < 0) return;
+
     setWorkoutData(prev => {
       const updatedExercise = [...prev[exerciseId]];
       updatedExercise[setIndex] = { ...updatedExercise[setIndex], [field]: value };
@@ -201,22 +201,27 @@ export default function WorkoutTracker() {
     setWorkoutData(nextWorkoutData);
 
     try {
+      // Dịch dữ liệu sang chuẩn mới của Backend (exerciseId, maxWeight, maxReps)
       const exercisesPayload = Object.keys(nextWorkoutData).map(exId => {
-        const completedSets = nextWorkoutData[exId]
-          .filter(set => set.isDone === true)
-          .map(set => ({
-            setNumber: set.setNumber,
-            reps: parseInt(String(set.reps).replace(/[^0-9]/g, '')) || 0,
-            weight: parseFloat(String(set.weight).replace(/[^0-9.]/g, '')) || 0
-          }));
+        const completedSets = nextWorkoutData[exId].filter(set => set.isDone === true);
+        
+        if (completedSets.length === 0) return null;
 
-        return { exerciseId: exId, setsPerformed: completedSets };
-      }).filter(ex => ex.setsPerformed.length > 0);
+        const maxSet = completedSets[0];
+        const rawReps = String(maxSet.reps).split('-')[0];
+
+        return { 
+          exerciseId: exId, 
+          maxWeight: parseFloat(String(maxSet.weight).replace(/[^0-9.]/g, '')) || 0,
+          maxReps: parseInt(rawReps.replace(/[^0-9]/g, '')) || 0
+        };
+      }).filter(ex => ex !== null);
 
       if (exercisesPayload.length > 0) {
-        const payload = { planDay: todayPlan.dayOfWeek, exercises: exercisesPayload };
+        const payload = { exercises: exercisesPayload };
         const token = localStorage.getItem('token');
-        const res = await api.post(`/workout-logs`, payload, {
+        
+        const res = await api.put(`/workout-logs/max`, payload, {
           headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -225,7 +230,7 @@ export default function WorkoutTracker() {
     } catch (error) {
       console.error("Lỗi khi lưu dữ liệu:", error);
       setWorkoutData(previousWorkoutData);
-      alert("Lỗi kết nối mạng! Vui lòng thử lại.");
+      alert("Lỗi kết nối mạng hoặc máy chủ từ chối dữ liệu! Vui lòng thử lại.");
     }
   };
 
@@ -235,12 +240,9 @@ export default function WorkoutTracker() {
     return match ? `https://www.youtube.com/embed/${match[1]}?autoplay=1` : url;
   };
 
-  // ==========================================
-  // HÀM XỬ LÝ KHI BẤM NÚT AI ĐÁNH GIÁ
-  // ==========================================
   const handleAiEvaluationClick = (ex) => {
     if (!currentLogId) {
-      alert("Bạn cần tập xong ít nhất 1 hiệp và bấm 'Xong' để hệ thống lưu dữ liệu trước khi AI có thể đánh giá!");
+      alert("Bạn cần tập xong ít nhất 1 hiệp và bấm 'Lưu Max' để hệ thống lưu dữ liệu trước khi AI có thể đánh giá!");
       return;
     }
 
@@ -260,9 +262,6 @@ export default function WorkoutTracker() {
     });
   };
 
-  // ==========================================
-  // XỬ LÝ GOOGLE ADSENSE REWARDED AD
-  // ==========================================
   const handleWatchAd = () => {
     setIsLoadingAd(true);
 
@@ -281,7 +280,7 @@ export default function WorkoutTracker() {
       adRewarded: async () => {
         try {
           const token = localStorage.getItem('token');
-          const res = await api.post(`/transactions/virtual-ad`, 
+          await api.post(`/transactions/virtual-ad`, 
             {}, 
             { headers: { Authorization: `Bearer ${token}` } }
           );
@@ -374,33 +373,34 @@ export default function WorkoutTracker() {
 
                 <div className="px-4 md:px-5 py-3 bg-gray-950/50 border-b border-gray-800 flex gap-2 items-center text-sm text-gray-400">
                   <History className="w-4 h-4 text-orange-400" />
-                  {prevLog ? (
+                  {prevLog && prevLog.length > 0 ? (
                     <span>Buổi trước: <strong className="text-gray-200">{Math.max(...prevLog.map(s => s.weight || 0))}kg</strong> (Max)</span>
                   ) : (
                     <span className="text-emerald-400/80 italic">Chưa có dữ liệu cũ. Cố lên nhé!</span>
                   )}
                 </div>
 
-                {/* Bảng nhập Sets */}
+                {/* Bảng nhập Sets (1 Row Max Set) */}
                 <div className="p-4 md:p-5">
                   <div className="grid grid-cols-12 gap-2 md:gap-4 mb-3 text-xs font-black text-gray-500 uppercase tracking-widest text-center">
-                    <div className="col-span-2">Set</div>
-                    <div className="col-span-3">KG</div>
+                    <div className="col-span-2">Hiệp</div>
+                    <div className="col-span-3">KG Max</div>
                     <div className="col-span-3">Reps</div>
                     <div className="col-span-4">Trạng thái</div>
                   </div>
 
                   {workoutData[exerciseId]?.map((set, setIdx) => {
-                    const prevSet = prevLog?.find(s => s.setNumber === set.setNumber);
+                    const prevMaxSet = prevLog && prevLog.length > 0 ? prevLog.reduce((p, c) => p.weight > c.weight ? p : c, prevLog[0]) : null;
                     return (
                       <div key={setIdx} className={`grid grid-cols-12 gap-2 md:gap-4 items-center mb-2 p-2 rounded-xl transition-all ${set.isDone ? 'bg-emerald-500/10 border border-emerald-500/20' : 'bg-gray-800/30 border border-transparent'}`}>
-                        <div className="col-span-2 text-center font-black text-gray-400 text-lg">
-                          {set.setNumber}
+                        <div className="col-span-2 text-center font-black text-emerald-400/70 text-lg">
+                          MAX
                         </div>
                         <div className="col-span-3 relative">
                           <input 
-                            type="number" 
-                            placeholder={prevSet?.weight || "-"}
+                            type="number"
+                            min="0"
+                            placeholder={prevMaxSet?.weight || "-"}
                             value={set.weight}
                             onChange={(e) => handleSetChange(exerciseId, setIdx, 'weight', e.target.value)}
                             disabled={set.isDone}
@@ -410,7 +410,8 @@ export default function WorkoutTracker() {
                         <div className="col-span-3">
                           <input 
                             type="number" 
-                            placeholder={prevSet?.reps || ex.reps}
+                            min="0"
+                            placeholder={prevMaxSet?.reps || ex.reps}
                             value={set.reps}
                             onChange={(e) => handleSetChange(exerciseId, setIdx, 'reps', e.target.value)}
                             disabled={set.isDone}
@@ -427,7 +428,7 @@ export default function WorkoutTracker() {
                             }`}
                           >
                             {set.isDone ? <CheckCircle className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-                            {set.isDone ? 'Xong' : 'Tập'}
+                            {set.isDone ? 'Xong' : 'Lưu Max'}
                           </button>
                         </div>
                       </div>
