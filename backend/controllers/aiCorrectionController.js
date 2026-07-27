@@ -346,7 +346,7 @@ exports.logActualMealWithAI = async (req, res) => {
 
 
 // ==========================================
-// 3. XÓA BỮA ĂN ĐÃ NẠP VÀ TÍNH TOÁN LẠI LỊCH
+// 1. XÓA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
 // ==========================================
 exports.deleteConsumedMeal = async (req, res) => {
   try {
@@ -356,7 +356,7 @@ exports.deleteConsumedMeal = async (req, res) => {
     const dietLog = await DailyDietLog.findOne({ userId, "consumedMeals._id": mealId });
     if (!dietLog) return res.status(404).json({ message: "Không tìm thấy bữa ăn này!" });
 
-    // --- CHẶN KHÔNG CHO XÓA NẾU ĐÃ CHỐT SỔ ---
+    // 🔒 CHẶN KHÔNG CHO XÓA NẾU ĐÃ BẤM CHỐT SỔ CHÍNH THỨC
     if (dietLog.isDayCompleted) {
       return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể xóa bữa ăn." });
     }
@@ -364,6 +364,7 @@ exports.deleteConsumedMeal = async (req, res) => {
     const deletedMeal = dietLog.consumedMeals.find(m => m._id.toString() === mealId);
     dietLog.consumedMeals = dietLog.consumedMeals.filter((meal) => meal._id.toString() !== mealId);
 
+    // Tính toán lại tổng Calo & Macros thực tế
     let newActualTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     dietLog.consumedMeals.forEach(meal => {
       newActualTotal.calories += meal.mealTotal.calories;
@@ -378,9 +379,8 @@ exports.deleteConsumedMeal = async (req, res) => {
       carbs: formatToInt(newActualTotal.carbs), 
       fat: formatToInt(newActualTotal.fat)
     };
-    dietLog.isDayCompleted = false; 
-    dietLog.dailyAiSummary = "";
 
+    // AI AUTO-ADJUST LẠI CÁC BỮA CÒN LẠI
     const masterPlan = await MealPlan.findOne({ userId });
     const user = await User.findById(userId);
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
@@ -447,7 +447,7 @@ exports.deleteConsumedMeal = async (req, res) => {
     await dietLog.save();
 
     res.status(200).json({
-      message: `Đã xóa ${deletedMeal.mealType} thành công!`, 
+      message: `Đã xóa ${deletedMeal?.mealType || "bữa ăn"} thành công!`, 
       adjustmentNote,
       actualDailyTotal: dietLog.actualDailyTotal, 
       adjustedUpcomingMeals: dietLog.adjustedUpcomingMeals,
@@ -462,7 +462,7 @@ exports.deleteConsumedMeal = async (req, res) => {
 
 
 // ==========================================
-// 4. SỬA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
+// 2. SỬA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
 // ==========================================
 exports.editConsumedMeal = async (req, res) => {
   try {
@@ -473,7 +473,7 @@ exports.editConsumedMeal = async (req, res) => {
     const dietLog = await DailyDietLog.findOne({ userId, "consumedMeals._id": mealId });
     if (!dietLog) return res.status(404).json({ message: "Không tìm thấy bữa ăn này trong nhật ký!" });
 
-    // --- CHẶN KHÔNG CHO SỬA NẾU ĐÃ CHỐT SỔ ---
+    // 🔒 CHẶN KHÔNG CHO SỬA NẾU ĐÃ BẤM CHỐT SỔ CHÍNH THỨC
     if (dietLog.isDayCompleted) {
       return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể chỉnh sửa bữa ăn." });
     }
@@ -556,6 +556,7 @@ exports.editConsumedMeal = async (req, res) => {
     dietLog.consumedMeals[mealIndex].isExactlyAsPlanned = false;
     dietLog.consumedMeals[mealIndex].aiNote = aiNote;
 
+    // Tính toán lại tổng Calo & Macros thực tế
     let newActualTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     dietLog.consumedMeals.forEach(meal => {
       newActualTotal.calories += meal.mealTotal.calories; newActualTotal.protein += meal.mealTotal.protein;
@@ -566,9 +567,8 @@ exports.editConsumedMeal = async (req, res) => {
       calories: formatToInt(newActualTotal.calories), protein: formatToInt(newActualTotal.protein),
       carbs: formatToInt(newActualTotal.carbs), fat: formatToInt(newActualTotal.fat)
     };
-    dietLog.isDayCompleted = false;
 
-    // --- C. AI AUTO-ADJUST LẠI LỊCH SẮP TỚI ---
+    // AI AUTO-ADJUST LẠI LỊCH SẮP TỚI
     const masterPlan = await MealPlan.findOne({ userId });
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
     let adjustmentNote = "Đã cập nhật bữa ăn. Lịch trình sắp tới đã được điều chỉnh theo lượng calo mới.";
