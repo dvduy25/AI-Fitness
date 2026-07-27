@@ -3,7 +3,7 @@
 const Gamification = require('../models/Gamification');
 const WorkoutLog = require('../models/WorkoutLog');
 const DailyDietLog = require('../models/DailyDietLog');
-const User = require('../models/User'); // Gọi model User
+const User = require('../models/User');
 const { closeDayForUser } = require('../services/cronService');
 const { generateCoachingNotifications } = require('../services/coachingService');
 
@@ -40,7 +40,7 @@ const getUserStats = async (req, res) => {
       workoutsThisWeek, workoutsThisMonth,
       dietThisWeek, dietThisMonth,
       todayWorkoutDoc, todayDietDoc,
-      userDoc // Fetch Data User
+      userDoc
     ] = await Promise.all([
       WorkoutLog.countDocuments({ userId, didWorkout: true }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true }), 
@@ -50,7 +50,7 @@ const getUserStats = async (req, res) => {
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }),
       WorkoutLog.findOne({ userId, date: todayStr }),
       DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } }),
-      User.findById(userId) // Tìm User
+      User.findById(userId)
     ]);
 
     // Lấy thời gian chuẩn theo múi giờ Việt Nam
@@ -59,8 +59,10 @@ const getUserStats = async (req, res) => {
 
     // --- 1. Workout Status ---
     const hasWorkoutLog = !!todayWorkoutDoc;
-    const didWorkout = hasWorkoutLog ? todayWorkoutDoc.didWorkout : false;
-    const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : true; 
+    const didWorkout = hasWorkoutLog ? (todayWorkoutDoc.didWorkout || todayWorkoutDoc.isCompleted) : false;
+    
+    // SỬA LỖI 1: Nếu chưa tạo log tập -> Mặc định isRestDay = FALSE (Không được tự coi là nghỉ)
+    const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : false; 
     
     let isWorkoutOverdue = false;
     let isWorkoutUpcoming = false;
@@ -97,34 +99,25 @@ const getUserStats = async (req, res) => {
 
     if (hasDietPlan) {
       didEatRight = todayDietDoc.isDayCompleted;
-      
-      // 1. Lượng calo thực tế đã nạp (Tổng các bữa đã ăn)
-      consumedCalories = todayDietDoc.actualDailyTotal?.calories || 0;
+      consumedCalories = todayDietDoc.actualDailyTotal?.calories || todayDietDoc.totalCaloriesConsumed || 0;
+      targetCalories = userDoc?.targetMacros?.calories || todayDietDoc.targetCalories || 0;
 
-      // 2. Lượng calo mục tiêu (Lấy chuẩn từ User Schema)
-      targetCalories = userDoc?.targetMacros?.calories || 0;
-
-      // 3. Tính toán độ chênh lệch (Dư/Thiếu)
       if (targetCalories > 0) {
         const calRatio = consumedCalories / targetCalories;
-        isCaloriesMet = didEatRight || (calRatio >= 0.9 && calRatio <= 1.1);
-        
+        isCaloriesMet = didEatRight || (calRatio >= 0.85 && calRatio <= 1.05);
         calorieDiff = Math.abs(targetCalories - consumedCalories);
         
-        if (calRatio < 0.9) calorieStatus = 'UNDER';
-        else if (calRatio > 1.1) calorieStatus = 'OVER';
+        if (calRatio < 0.85) calorieStatus = 'UNDER';
+        else if (calRatio > 1.05) calorieStatus = 'OVER';
       }
 
-      // Kiểm tra Bữa ăn (Quá giờ / Sắp tới / Đã ăn hết chưa)
       const mealsToCheck = todayDietDoc.adjustedUpcomingMeals || todayDietDoc.meals || [];
-      
       if (mealsToCheck.length > 0) {
         areAllMealsCompleted = mealsToCheck.every(meal => meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED');
       } else {
         areAllMealsCompleted = didEatRight; 
       }
 
-      // Chỉ báo quá giờ / sắp tới nếu chưa chốt sổ VÀ chưa tick hoàn thành hết các bữa
       if (!didEatRight && !areAllMealsCompleted && mealsToCheck.length > 0) {
         for (const meal of mealsToCheck) {
           if (meal.isCompleted || meal.isEaten || meal.status === 'COMPLETED') continue;
@@ -147,8 +140,10 @@ const getUserStats = async (req, res) => {
     }
 
     // --- 3. ĐIỀU KIỆN CHỐT SỔ (STRICT) ---
-    const workoutConditionMet = didWorkout || isRestDay;
-    const dietConditionMet = hasDietPlan ? didEatRight : true;
+    // SỬA LỖI 2: Phải có Log tập (Đã tập HOẶC đúng ngày nghỉ) VÀ phải có Plan ăn (Đã tick hết các bữa hoặc chốt ngày)
+    const workoutConditionMet = hasWorkoutLog && (didWorkout || isRestDay);
+    const dietConditionMet = hasDietPlan && (didEatRight || areAllMealsCompleted);
+    
     const canCloseDay = workoutConditionMet && dietConditionMet; 
 
     const todayStatus = {
@@ -160,9 +155,9 @@ const getUserStats = async (req, res) => {
       }
     };
 
-    // --- 4. TẠO THÔNG BÁO TỪ SERVICE (CHỈ CHO PREMIUM) ---
+    // --- 4. TẠO THÔNG BÁO TỪ SERVICE ---
     let notifications = [];
-    const isPremiumUser = userDoc?.isPremium === true; // Kiểm tra tài khoản Premium
+    const isPremiumUser = userDoc?.isPremium === true;
 
     if (stats.isCoachingEnabled && isPremiumUser) {
       notifications = generateCoachingNotifications({
@@ -201,13 +196,12 @@ const manualCloseDay = async (req, res) => {
       return res.status(400).json({ success: false, message: result.message });
     }
 
-    // Lấy dữ liệu Gamification mới nhất đã cộng điểm từ DB
     const updatedStats = await Gamification.findOne({ userId });
 
     return res.status(200).json({ 
       success: true, 
       message: result.message,
-      stats: updatedStats, // Trả dữ liệu mới về cho App/Web
+      stats: updatedStats,
       rankPoints: result.rankPoints,
       streak: result.streak
     });
@@ -217,20 +211,13 @@ const manualCloseDay = async (req, res) => {
   }
 };
 
-// ==========================================
-// API: PUT /api/gamification/coaching-style
-// (CHỈ CHO PHÉP TÀI KHOẢN PREMIUM)
-// ==========================================
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
     const { isEnabled, style } = req.body; 
 
-    // --- KIỂM TRA QUYỀN PREMIUM ---
     const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
-    }
+    if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
 
     if (!user.isPremium) {
       return res.status(403).json({ 
@@ -240,7 +227,6 @@ const updateCoachingStyle = async (req, res) => {
     }
 
     let updateData = {};
-
     if (typeof isEnabled === 'boolean') updateData.isCoachingEnabled = isEnabled;
     if (style) {
       if (!['EASY', 'SERIOUS', 'STRICT'].includes(style)) {

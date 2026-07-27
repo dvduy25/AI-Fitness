@@ -125,10 +125,15 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
   // ==========================================
   // 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%
   // ==========================================
-  const isWorkoutPerfect = workout ? (workout.didWorkout || workout.isRestDay) : true;
-  const isDietPerfect = diet?.hasPlan ? (diet.areAllMealsCompleted && diet.calorieStatus === 'PERFECT') : true;
+  // Thay thế đoạn "// 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%" trong coachingService.js bằng đoạn này:
 
-  // Nếu TẤT CẢ đều hoàn hảo và CHƯA BẤM CHỐT SỔ -> Giục bấm chốt sổ
+  // ==========================================
+  // 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%
+  // ==========================================
+  const isWorkoutPerfect = workout?.hasLog ? (workout.didWorkout || workout.isRestDay) : false;
+  const isDietPerfect = diet?.hasPlan ? (diet.areAllMealsCompleted && diet.calorieStatus === 'PERFECT') : false;
+
+  // Bắt buộc phải CÓ LOG TẬP + CÓ PLAN ĂN + CHƯA CHỐT SỔ mới báo ALL_COMPLETED
   if (isWorkoutPerfect && isDietPerfect && !diet?.didEatRight) {
     notifications.push({ id: 'all_completed', time: timeStr, text: MESSAGES.ALL_COMPLETED[selectedStyle], type: 'success' });
   }
