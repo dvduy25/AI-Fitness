@@ -49,7 +49,7 @@ const getUserStats = async (req, res) => {
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }),
       WorkoutLog.findOne({ userId, date: todayStr }),
-      // FIX 1: Tối ưu truy vấn tìm DailyDietLog hỗ trợ cả kiểu Date và String
+      // Hỗ trợ truy vấn cả kiểu Date lẫn String YYYY-MM-DD
       DailyDietLog.findOne({ 
         userId, 
         $or: [
@@ -60,11 +60,11 @@ const getUserStats = async (req, res) => {
       User.findById(userId)
     ]);
 
-    // Lấy thời gian chuẩn theo múi giờ Việt Nam
+    // Lấy thời gian chuẩn theo múi giờ Việt Nam (UTC+7)
     const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     const currentTotalMins = vnTime.getHours() * 60 + vnTime.getMinutes();
 
-    // --- 1. Workout Status ---
+    // --- 1. WORKOUT STATUS ---
     const hasWorkoutLog = !!todayWorkoutDoc;
     const didWorkout = hasWorkoutLog ? (todayWorkoutDoc.didWorkout || todayWorkoutDoc.isCompleted) : false;
     const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : false; 
@@ -74,12 +74,22 @@ const getUserStats = async (req, res) => {
 
     if (!didWorkout && !isRestDay) {
       if (todayWorkoutDoc?.scheduledTime) {
-        const [wHours, wMinutes] = todayWorkoutDoc.scheduledTime.split(':').map(Number);
-        const workoutTotalMins = wHours * 60 + wMinutes;
-        const diffMins = workoutTotalMins - currentTotalMins;
+        const strTime = String(todayWorkoutDoc.scheduledTime);
+        const timeMatch = strTime.match(/(\d+):(\d+)/);
         
-        if (diffMins < 0) isWorkoutOverdue = true;
-        else if (diffMins <= 30) isWorkoutUpcoming = true; 
+        if (timeMatch) {
+          let wHours = parseInt(timeMatch[1], 10);
+          const wMinutes = parseInt(timeMatch[2], 10);
+          
+          if (strTime.toLowerCase().includes('pm') && wHours < 12) wHours += 12;
+          if (strTime.toLowerCase().includes('am') && wHours === 12) wHours = 0;
+
+          const workoutTotalMins = wHours * 60 + wMinutes;
+          const diffMins = workoutTotalMins - currentTotalMins;
+          
+          if (diffMins < 0) isWorkoutOverdue = true;
+          else if (diffMins <= 30) isWorkoutUpcoming = true; 
+        }
       } else {
         const currentHour = vnTime.getHours();
         if (currentHour >= 20) isWorkoutOverdue = true;
@@ -87,7 +97,7 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 2. Diet Status ---
+    // --- 2. DIET STATUS ---
     const hasDietPlan = !!todayDietDoc;
     const isDayCompleted = todayDietDoc?.isDayCompleted || false;
     let didEatRight = isDayCompleted;
@@ -116,15 +126,17 @@ const getUserStats = async (req, res) => {
         else if (calRatio > 1.05) calorieStatus = 'OVER';
       }
 
-      // Kiểm tra xem đã ăn hết các bữa chưa
-      const hasConsumed = todayDietDoc.consumedMeals && todayDietDoc.consumedMeals.length > 0;
-      
-      // FIX 2: Đọc linh hoạt danh sách bữa ăn chưa ăn từ nhiều trường có thể xảy ra
-      const upcomingList = todayDietDoc.adjustedUpcomingMeals 
-                        || todayDietDoc.upcomingMeals 
-                        || todayDietDoc.meals 
-                        || [];
-      
+      // Lấy danh sách các bữa ăn chưa ăn
+      let upcomingList = [];
+      if (Array.isArray(todayDietDoc.adjustedUpcomingMeals) && todayDietDoc.adjustedUpcomingMeals.length > 0) {
+        upcomingList = todayDietDoc.adjustedUpcomingMeals;
+      } else if (Array.isArray(todayDietDoc.upcomingMeals) && todayDietDoc.upcomingMeals.length > 0) {
+        upcomingList = todayDietDoc.upcomingMeals;
+      } else if (Array.isArray(todayDietDoc.meals) && todayDietDoc.meals.length > 0) {
+        upcomingList = todayDietDoc.meals.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED');
+      }
+
+      const hasConsumed = Array.isArray(todayDietDoc.consumedMeals) && todayDietDoc.consumedMeals.length > 0;
       const hasUpcoming = upcomingList.length > 0;
       
       if (hasConsumed && !hasUpcoming) {
@@ -133,26 +145,33 @@ const getUserStats = async (req, res) => {
         areAllMealsCompleted = isDayCompleted; 
       }
 
-      // Vòng lặp kiểm tra trễ giờ ăn
+      // Xử lý kiểm tra trễ giờ ăn
       if (!isDayCompleted && !areAllMealsCompleted && hasUpcoming) {
         for (const meal of upcomingList) {
-          // FIX 3: Hỗ trợ nhiều tên trường chứa thời gian bữa ăn
           const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime;
+          const mealName = meal.mealType || meal.name || meal.title || "Bữa ăn";
 
-          if (mealTimeStr && typeof mealTimeStr === 'string') {
-            const [mHours, mMinutes] = mealTimeStr.split(':').map(Number);
+          if (mealTimeStr) {
+            const strTime = String(mealTimeStr);
+            const timeMatch = strTime.match(/(\d+):(\d+)/);
             
-            if (!isNaN(mHours) && !isNaN(mMinutes)) {
+            if (timeMatch) {
+              let mHours = parseInt(timeMatch[1], 10);
+              const mMinutes = parseInt(timeMatch[2], 10);
+
+              if (strTime.toLowerCase().includes('pm') && mHours < 12) mHours += 12;
+              if (strTime.toLowerCase().includes('am') && mHours === 12) mHours = 0;
+
               const mealTotalMins = mHours * 60 + mMinutes;
               const diffMins = mealTotalMins - currentTotalMins;
 
               if (diffMins < 0) {
                 isMealOverdue = true;
-                overdueMealName = meal.mealType || meal.name || meal.title || "Bữa ăn";
-                break; // Tìm thấy bữa trễ đầu tiên là dừng
-              } else if (diffMins <= 30) { 
+                overdueMealName = mealName;
+                break; // Tìm thấy bữa trễ đầu tiên thì ưu tiên báo lỗi ngay
+              } else if (diffMins <= 30) {
                 isMealUpcoming = true;
-                upcomingMealName = meal.mealType || meal.name || meal.title || "Bữa ăn";
+                upcomingMealName = mealName;
               }
             }
           }
@@ -160,16 +179,32 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 3. ĐIỀU KIỆN HIỂN THỊ NÚT CHỐT SỔ ---
+    // --- 3. ĐIỀU KIỆN HiỂN THỊ NÚT CHỐT SỔ ---
     const canCloseDay = !isDayCompleted; 
 
     const todayStatus = {
       canCloseDay,
       isDayCompleted,
-      workout: { hasLog: hasWorkoutLog, didWorkout, isOverdue: isWorkoutOverdue, isUpcoming: isWorkoutUpcoming, isRestDay },
+      workout: { 
+        hasLog: hasWorkoutLog, 
+        didWorkout, 
+        isOverdue: isWorkoutOverdue, 
+        isUpcoming: isWorkoutUpcoming, 
+        isRestDay 
+      },
       diet: {
-        hasPlan: hasDietPlan, didEatRight, targetCalories, consumedCalories, areAllMealsCompleted,
-        isCaloriesMet, isMealOverdue, isMealUpcoming, overdueMealName, upcomingMealName, calorieStatus, calorieDiff
+        hasPlan: hasDietPlan, 
+        didEatRight, 
+        targetCalories, 
+        consumedCalories, 
+        areAllMealsCompleted,
+        isCaloriesMet, 
+        isMealOverdue, 
+        isMealUpcoming, 
+        overdueMealName, 
+        upcomingMealName, 
+        calorieStatus, 
+        calorieDiff
       }
     };
 
@@ -205,6 +240,9 @@ const getUserStats = async (req, res) => {
   }
 };
 
+// ==========================================
+// API: POST /api/gamification/manual-close
+// ==========================================
 const manualCloseDay = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -229,6 +267,9 @@ const manualCloseDay = async (req, res) => {
   }
 };
 
+// ==========================================
+// API: PUT /api/gamification/coaching-style
+// ==========================================
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -275,6 +316,9 @@ const updateCoachingStyle = async (req, res) => {
   }
 };
 
+// ==========================================
+// API: POST /api/gamification/resolve-violation
+// ==========================================
 const resolveViolation = async (req, res) => {
   try {
     const userId = req.user.id;
