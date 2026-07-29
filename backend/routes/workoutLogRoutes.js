@@ -11,16 +11,16 @@ const {
   getExerciseProgress,
 } = require("../controllers/workoutLogController");
 
-const auth = require("../middleware/auth"); // Middleware xác thực của bạn
+const verifyToken = require("../middleware/auth"); // Middleware xác thực của bạn
 
 // 👈 2. Khai báo route /date (đặt phía trên các route dạng dynamic parameter)
-router.get("/date", auth, getLogByDate);
+router.get("/date", verifyToken, getLogByDate);
 
-router.post("/checkin", auth, checkIn);
-router.put("/max", auth, updateExerciseMax);
-router.get("/today", auth, getTodayLog);
-router.get("/history", auth, getHistory);
-router.get("/personal-records", auth, getPersonalRecords);
-router.get("/exercise-progress/:exerciseId", auth, getExerciseProgress);
+router.post("/checkin", verifyToken , checkIn);
+router.put("/max", verifyToken, updateExerciseMax);
+router.get("/today", verifyToken, getTodayLog);
+router.get("/history", verifyToken, getHistory);
+router.get("/personal-records", verifyToken, getPersonalRecords);
+router.get("/exercise-progress/:exerciseId", verifyToken, getExerciseProgress);
 
 module.exports = router;
