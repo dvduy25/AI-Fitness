@@ -83,8 +83,16 @@ exports.getTodayDietLog = async (req, res) => {
 };
 
 
+// Hàm bổ trợ chuyển đổi Date sang chuỗi YYYY-MM-DD theo múi giờ Việt Nam
+const getVnDateString = (dateInput) => {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  return new Date(d.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }))
+    .toISOString()
+    .split('T')[0];
+};
+
 // ==========================================
-// 2. GHI NHẬN BỮA ĂN (TÍCH HỢP AI + BỆNH LÝ)
+// 1. GHI NHẬN BỮA ĂN VỚI AI
 // ==========================================
 exports.logActualMealWithAI = async (req, res) => {
   try {
@@ -101,33 +109,51 @@ exports.logActualMealWithAI = async (req, res) => {
       return res.status(400).json({ message: "Vui lòng cung cấp ngày và tên bữa ăn!" });
     }
 
-    const targetDate = new Date(date);
-    targetDate.setHours(0, 0, 0, 0);
+    // Chuẩn hóa chuỗi ngày YYYY-MM-DD theo giờ VN
+    const targetDateStr = getVnDateString(date);
 
     // --- A. XỬ LÝ CHUYỂN NGÀY ---
     let dietLog = await DailyDietLog.findOne({ userId }); 
     
     if (!dietLog) {
       dietLog = new DailyDietLog({ 
-        userId, date: targetDate, consumedMeals: [], adjustedUpcomingMeals: [], 
-        actualDailyTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 }, pastRecords: [] 
+        userId, 
+        date: targetDateStr, 
+        consumedMeals: [], 
+        adjustedUpcomingMeals: [], 
+        actualDailyTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 }, 
+        pastRecords: [],
+        isDayCompleted: false
       });
     } else {
-      const targetTime = targetDate.getTime();
-      const logTime = new Date(dietLog.date).setHours(0,0,0,0);
+      const currentDateStr = getVnDateString(dietLog.date);
 
-      if (targetTime > logTime) {
-        if (dietLog.actualDailyTotal && dietLog.actualDailyTotal.calories > 0) {
+      // Nếu ngày gửi lên LỚN HƠN ngày trong Record hiện tại -> Lưu ngày cũ vào pastRecords & Reset ngày mới
+      if (targetDateStr > currentDateStr) {
+        
+        // 🟢 ĐÃ SỬA: Lưu vào pastRecords nếu ĐÃ CHỐT SỔ (dù 0 calo) HOẶC có nạp Calo > 0
+        const shouldSaveToHistory = dietLog.isDayCompleted || (dietLog.actualDailyTotal && dietLog.actualDailyTotal.calories > 0);
+
+        if (shouldSaveToHistory) {
           if (!dietLog.pastRecords) dietLog.pastRecords = [];
           dietLog.pastRecords.push({
-            date: dietLog.date, actualDailyTotal: dietLog.actualDailyTotal,
-            dailyAiSummary: dietLog.dailyAiSummary || "", isDayCompleted: dietLog.isDayCompleted || false
+            date: dietLog.date, 
+            actualDailyTotal: dietLog.actualDailyTotal,
+            dailyAiSummary: dietLog.dailyAiSummary || "", 
+            isDayCompleted: dietLog.isDayCompleted || false,
+            consumedMeals: dietLog.consumedMeals || []
           });
         }
-        dietLog.date = targetDate; dietLog.consumedMeals = []; dietLog.adjustedUpcomingMeals = [];
+
+        // Reset dữ liệu cho ngày mới
+        dietLog.date = targetDateStr; 
+        dietLog.consumedMeals = []; 
+        dietLog.adjustedUpcomingMeals = [];
         dietLog.actualDailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-        dietLog.isDayCompleted = false; dietLog.dailyAiSummary = "";
-      } else if (targetTime < logTime) {
+        dietLog.isDayCompleted = false; 
+        dietLog.dailyAiSummary = "";
+
+      } else if (targetDateStr < currentDateStr) {
         return res.status(400).json({ message: "Dữ liệu của ngày này đã thuộc về quá khứ." });
       }
     }
@@ -327,13 +353,11 @@ exports.logActualMealWithAI = async (req, res) => {
           dietLog.adjustedUpcomingMeals = currentUpcoming.length > 0 ? currentUpcoming : upcomingMeals;
         }
       } else {
-        // ĐÃ ĂN HẾT CÁC BỮA TRONG NGÀY:
         const excessCalories = formatToInt(dietLog.actualDailyTotal.calories - target.calories);
         if (excessCalories > 0) dietLog.dailyAiSummary = `Bạn đã ăn lố ${excessCalories} kcal. Hãy tích cực vận động nhé.`;
         else if (excessCalories < 0) dietLog.dailyAiSummary = `Bạn còn dư ${Math.abs(excessCalories)} kcal. Bám sát mục tiêu rất tốt.`;
         else dietLog.dailyAiSummary = `Đạt chuẩn 100%. Quá xuất sắc!`;
         
-        // 🟢 ĐÃ SỬA: KHÔNG gán isDayCompleted = true ở đây nữa!
         dietLog.adjustedUpcomingMeals = []; 
       }
     }
@@ -353,7 +377,7 @@ exports.logActualMealWithAI = async (req, res) => {
 
 
 // ==========================================
-// 3. XÓA BỮA ĂN ĐÃ NẠP VÀ TÍNH TOÁN LẠI LỊCH
+// 2. XÓA BỮA ĂN ĐÃ NẠP VÀ TÍNH TOÁN LẠI LỊCH
 // ==========================================
 exports.deleteConsumedMeal = async (req, res) => {
   try {
@@ -385,7 +409,8 @@ exports.deleteConsumedMeal = async (req, res) => {
       carbs: formatToInt(newActualTotal.carbs), 
       fat: formatToInt(newActualTotal.fat)
     };
-    dietLog.isDayCompleted = false; 
+
+    // 🟢 ĐÃ SỬA: Loại bỏ dòng `dietLog.isDayCompleted = false` vì ngày chưa chốt thì vốn dĩ nó đã là false.
     dietLog.dailyAiSummary = "";
 
     const masterPlan = await MealPlan.findOne({ userId });
@@ -469,7 +494,7 @@ exports.deleteConsumedMeal = async (req, res) => {
 
 
 // ==========================================
-// 4. SỬA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
+// 3. SỬA BỮA ĂN ĐÃ NẠP & TÍNH TOÁN LẠI LỊCH
 // ==========================================
 exports.editConsumedMeal = async (req, res) => {
   try {
@@ -573,7 +598,8 @@ exports.editConsumedMeal = async (req, res) => {
       calories: formatToInt(newActualTotal.calories), protein: formatToInt(newActualTotal.protein),
       carbs: formatToInt(newActualTotal.carbs), fat: formatToInt(newActualTotal.fat)
     };
-    dietLog.isDayCompleted = false;
+    
+    // 🟢 ĐÃ SỬA: Loại bỏ `dietLog.isDayCompleted = false` thừa thãi
 
     // --- C. AI AUTO-ADJUST LẠI LỊCH SẮP TỚI ---
     const masterPlan = await MealPlan.findOne({ userId });
