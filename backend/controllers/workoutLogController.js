@@ -1,13 +1,13 @@
 // controllers/workoutLogController.js
 // =====================================================
-// Chức năng: Check-in tập luyện & Cập nhật Kỷ lục bài tập
+// Chức năng: Check-in, Cập nhật Max & Theo dõi Tiến độ
 // =====================================================
+const mongoose = require("mongoose");
 const WorkoutLog = require("../models/WorkoutLog");
 const Exercise = require("../models/Exercise");
 
 /**
  * Hàm hỗ trợ lấy chuỗi Date YYYY-MM-DD theo giờ địa phương (Local Time)
- * Tránh lỗi lệch múi giờ của toISOString()
  */
 const toLocalDateStr = (dateObj = new Date()) => {
   const yyyy = dateObj.getFullYear();
@@ -34,7 +34,6 @@ exports.checkIn = async (req, res) => {
 
     const today = toLocalDateStr();
 
-    // Chuẩn bị object update
     const updateData = { didWorkout };
     if (note !== undefined) updateData.note = note;
 
@@ -57,7 +56,8 @@ exports.checkIn = async (req, res) => {
 
 // ─────────────────────────────────────────────────
 // PUT /api/workout-logs/max
-// Body: Hỗ trợ gửi mảng { exercises: [...] } HOẶC gửi lẻ { exerciseId, maxWeight, maxReps }
+// Ghi nhận HOÀN THÀNH BUỔI TẬP & Cập nhật Kỷ lục bài tập (nếu có)
+// Body: { date?, exercises: [{ exerciseId, maxWeight, maxReps }], exerciseId?, maxWeight?, maxReps? }
 // ─────────────────────────────────────────────────
 exports.updateExerciseMax = async (req, res) => {
   try {
@@ -66,7 +66,15 @@ exports.updateExerciseMax = async (req, res) => {
 
     const today = date || toLocalDateStr();
 
-    // 1. Chuẩn hóa dữ liệu đầu vào thành mảng để xử lý (hỗ trợ cả Frontend cũ & mới)
+    // 1. Luôn tự động đánh dấu HOÀN THÀNH BUỔI TẬP (didWorkout = true)
+    let todayLog = await WorkoutLog.findOne({ userId, date: today });
+    if (!todayLog) {
+      todayLog = new WorkoutLog({ userId, date: today, didWorkout: true, exerciseMaxes: [] });
+    } else {
+      todayLog.didWorkout = true;
+    }
+
+    // 2. Chuẩn hóa dữ liệu đầu vào thành mảng
     let exercisesToProcess = [];
     if (exercises && Array.isArray(exercises)) {
       exercisesToProcess = exercises;
@@ -74,78 +82,67 @@ exports.updateExerciseMax = async (req, res) => {
       exercisesToProcess = [{ exerciseId, maxWeight, maxReps }];
     }
 
-    if (exercisesToProcess.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Không có dữ liệu bài tập hợp lệ!",
-      });
-    }
-
-    // 2. Tìm hoặc tạo bản ghi log hôm nay (Tự động Check-in nếu người dùng quên)
-    let todayLog = await WorkoutLog.findOne({ userId, date: today });
-    if (!todayLog) {
-      todayLog = new WorkoutLog({ userId, date: today, didWorkout: true, exerciseMaxes: [] });
-    } else {
-      todayLog.didWorkout = true; 
-    }
-
     let isAnyRecordBroken = false;
 
-    // 3. Duyệt qua danh sách bài tập để cập nhật MAX
-    for (const ex of exercisesToProcess) {
-      const exId = ex.exerciseId;
-      const inputWeight = Number(ex.maxWeight) || 0;
-      const inputReps = Number(ex.maxReps) || 0;
+    // 3. Nếu người dùng CÓ nhập thông số bài tập -> Mới tiến hành cập nhật/so sánh Max
+    if (exercisesToProcess.length > 0) {
+      for (const ex of exercisesToProcess) {
+        const exId = ex.exerciseId;
+        if (!exId) continue;
 
-      if (inputWeight < 0 || inputReps < 0) continue; // Bỏ qua dữ liệu âm
+        const inputWeight = Number(ex.maxWeight) || 0;
+        const inputReps = Number(ex.maxReps) || 0;
 
-      // Lấy tên bài tập (cache lại trong record)
-      const exDoc = await Exercise.findById(exId).select("name");
-      const exerciseName = exDoc?.name || "Bài tập";
+        // Bỏ qua nếu không nhập chỉ số tạ & reps (> 0) để tránh tạo dữ liệu 0kg rác
+        if (inputWeight <= 0 && inputReps <= 0) continue;
 
-      // Tìm kỷ lục đã ghi nhận trong ngày hôm nay
-      const existingIndex = todayLog.exerciseMaxes.findIndex(
-        (e) => e.exerciseId.toString() === exId.toString()
-      );
-      const existing = existingIndex !== -1 ? todayLog.exerciseMaxes[existingIndex] : null;
+        const exDoc = await Exercise.findById(exId).select("name");
+        const exerciseName = exDoc?.name || ex.exerciseName || "Bài tập";
 
-      const prevMaxWeight = existing?.maxWeight ?? 0;
-      const prevMaxReps = existing?.maxReps ?? 0;
+        // Tìm kỷ lục đã lưu trong ngày hôm nay
+        const existingIndex = todayLog.exerciseMaxes.findIndex(
+          (e) => e.exerciseId.toString() === exId.toString()
+        );
+        const existing = existingIndex !== -1 ? todayLog.exerciseMaxes[existingIndex] : null;
 
-      // --- LOGIC SO SÁNH KỶ LỤC CHUẨN GYM ---
-      // Vượt kỷ lục nếu: Tạ nặng hơn OR (Tạ bằng AND Reps nhiều hơn)
-      const isWeightHigher = inputWeight > prevMaxWeight;
-      const isRepsHigher = inputWeight === prevMaxWeight && inputReps > prevMaxReps;
-      const improved = isWeightHigher || isRepsHigher;
+        const prevMaxWeight = existing?.maxWeight ?? 0;
+        const prevMaxReps = existing?.maxReps ?? 0;
 
-      const finalWeight = improved ? inputWeight : prevMaxWeight;
-      const finalReps = improved ? inputReps : prevMaxReps;
+        // --- LOGIC SO SÁNH PHÁ KỶ LỤC ---
+        const isWeightHigher = inputWeight > prevMaxWeight;
+        const isRepsHigher = inputWeight === prevMaxWeight && inputReps > prevMaxReps;
+        const improved = isWeightHigher || isRepsHigher;
 
-      if (improved) isAnyRecordBroken = true;
+        // Chỉ cập nhật hoặc push thêm nếu chỉ số MỚI TỐT HƠN chỉ số CŨ trong ngày
+        if (improved) {
+          isAnyRecordBroken = true;
 
-      // Lưu lại vào log
-      if (existingIndex !== -1) {
-        todayLog.exerciseMaxes[existingIndex].maxWeight = finalWeight;
-        todayLog.exerciseMaxes[existingIndex].maxReps = finalReps;
-        todayLog.exerciseMaxes[existingIndex].exerciseName = exerciseName;
-      } else {
-        todayLog.exerciseMaxes.push({
-          exerciseId: exId,
-          exerciseName: exerciseName,
-          maxWeight: finalWeight,
-          maxReps: finalReps,
-          prevMaxWeight: 0, // Có thể fetch từ record ngày hôm qua nếu muốn mở rộng
-          prevMaxReps: 0
-        });
+          if (existingIndex !== -1) {
+            todayLog.exerciseMaxes[existingIndex].maxWeight = inputWeight;
+            todayLog.exerciseMaxes[existingIndex].maxReps = inputReps;
+            todayLog.exerciseMaxes[existingIndex].exerciseName = exerciseName;
+          } else {
+            todayLog.exerciseMaxes.push({
+              exerciseId: exId,
+              exerciseName: exerciseName,
+              maxWeight: inputWeight,
+              maxReps: inputReps,
+              prevMaxWeight: prevMaxWeight,
+              prevMaxReps: prevMaxReps,
+            });
+          }
+        }
       }
     }
 
-    // 4. Lưu bản ghi đã cập nhật
+    // 4. Lưu bản ghi
     await todayLog.save();
 
     return res.json({
       success: true,
-      message: isAnyRecordBroken ? "Tuyệt vời, bạn đã phá kỷ lục mới!" : "Đã ghi nhận thành tích Max hôm nay.",
+      message: isAnyRecordBroken
+        ? "Tuyệt vời, bạn đã phá kỷ lục mới!"
+        : "Đã ghi nhận hoàn thành buổi tập!",
       log: todayLog,
     });
   } catch (error) {
@@ -194,7 +191,7 @@ exports.getHistory = async (req, res) => {
       .sort({ date: 1 })
       .select("date didWorkout exerciseMaxes note");
 
-    // --- LOGIC TÍNH STREAK CHUẨN TỪ TOÀN BỘ LỊCH SỬ ---
+    // Tính Streak chuỗi ngày tập liên tiếp
     const allWorkedOutLogs = await WorkoutLog.find({ userId, didWorkout: true })
       .select("date")
       .sort({ date: -1 });
@@ -205,7 +202,6 @@ exports.getHistory = async (req, res) => {
     const checkDate = new Date();
     const todayStr = toLocalDateStr(checkDate);
 
-    // Nếu hôm nay chưa tập, lùi checkDate lại 1 ngày để kiểm tra chuỗi nối tiếp từ hôm qua
     if (!workedOutSet.has(todayStr)) {
       checkDate.setDate(checkDate.getDate() - 1);
     }
@@ -243,11 +239,11 @@ exports.getHistory = async (req, res) => {
 exports.getPersonalRecords = async (req, res) => {
   try {
     const userId = req.user._id || req.user.id;
+    const userObjectId = new mongoose.Types.ObjectId(userId);
 
     const records = await WorkoutLog.aggregate([
-      { $match: { userId, didWorkout: true } },
+      { $match: { userId: userObjectId, didWorkout: true } },
       { $unwind: "$exerciseMaxes" },
-      // Sắp xếp theo tạ giảm dần, reps giảm dần trước khi group
       {
         $sort: {
           "exerciseMaxes.maxWeight": -1,
@@ -271,5 +267,85 @@ exports.getPersonalRecords = async (req, res) => {
   } catch (error) {
     console.error("[getPersonalRecords]", error.message);
     res.status(500).json({ success: false, message: "Lỗi server!" });
+  }
+};
+
+// ─────────────────────────────────────────────────
+// GET /api/workout-logs/exercise-progress/:exerciseId
+// Xem tiến độ tăng trưởng & Lịch sử mức tạ của 1 bài tập (Dùng cho Biểu đồ LineChart)
+// ─────────────────────────────────────────────────
+exports.getExerciseProgress = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { exerciseId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(exerciseId)) {
+      return res.status(400).json({ success: false, message: "exerciseId không hợp lệ!" });
+    }
+
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const exerciseObjectId = new mongoose.Types.ObjectId(exerciseId);
+
+    const rawProgress = await WorkoutLog.aggregate([
+      { $match: { userId: userObjectId, didWorkout: true, "exerciseMaxes.exerciseId": exerciseObjectId } },
+      { $unwind: "$exerciseMaxes" },
+      { $match: { "exerciseMaxes.exerciseId": exerciseObjectId } },
+      { $sort: { date: 1 } },
+      {
+        $project: {
+          _id: 0,
+          date: "$date",
+          exerciseName: "$exerciseMaxes.exerciseName",
+          maxWeight: "$exerciseMaxes.maxWeight",
+          maxReps: "$exerciseMaxes.maxReps",
+        },
+      },
+    ]);
+
+    if (rawProgress.length === 0) {
+      return res.json({
+        success: true,
+        message: "Chưa có dữ liệu tăng trưởng cho bài tập này.",
+        summary: null,
+        timeline: [],
+      });
+    }
+
+    // Thống kê chuỗi thời gian & Tính 1RM (Epley formula: Weight * (1 + Reps / 30))
+    const timeline = rawProgress.map((item) => {
+      const estimatedOneRepMax = Math.round(item.maxWeight * (1 + item.maxReps / 30));
+      return {
+        date: item.date,
+        maxWeight: item.maxWeight,
+        maxReps: item.maxReps,
+        estimatedOneRepMax,
+      };
+    });
+
+    const firstRecord = timeline[0];
+    const latestRecord = timeline[timeline.length - 1];
+    const allTimeHighestWeight = Math.max(...timeline.map((t) => t.maxWeight));
+    const weightGained = latestRecord.maxWeight - firstRecord.maxWeight;
+    const growthPercentage =
+      firstRecord.maxWeight > 0
+        ? Number(((weightGained / firstRecord.maxWeight) * 100).toFixed(1))
+        : 0;
+
+    return res.json({
+      success: true,
+      exerciseName: rawProgress[0].exerciseName,
+      summary: {
+        firstRecorded: { date: firstRecord.date, weight: firstRecord.maxWeight, reps: firstRecord.maxReps },
+        latestRecorded: { date: latestRecord.date, weight: latestRecord.maxWeight, reps: latestRecord.maxReps },
+        allTimeHighestWeight,
+        weightGained,
+        growthPercentage,
+        totalSessionsLogged: timeline.length,
+      },
+      timeline,
+    });
+  } catch (error) {
+    console.error("[getExerciseProgress]", error.message);
+    res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
   }
 };
