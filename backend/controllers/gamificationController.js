@@ -7,13 +7,6 @@ const User = require('../models/User');
 const { closeDayForUser } = require('../services/cronService');
 const { generateCoachingNotifications } = require('../services/coachingService');
 
-const toYYYYMMDD = (dateObj) => {
-  const yyyy = dateObj.getFullYear();
-  const mm = String(dateObj.getMonth() + 1).padStart(2, '0');
-  const dd = String(dateObj.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-};
-
 // ==========================================
 // API: GET /api/gamification/stats
 // ==========================================
@@ -23,17 +16,22 @@ const getUserStats = async (req, res) => {
     let stats = await Gamification.findOne({ userId });
     if (!stats) stats = await Gamification.create({ userId });
 
-    const now = new Date();
-    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
-    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-    
-    const dayOfWeek = now.getDay() || 7; 
-    const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek + 1, 0, 0, 0);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+    // 1. KHẮC PHỤC TRIỆT ĐỂ LỖI LỆCH MÚI GIỜ (UTC vs VN)
+    const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
+    const yyyy = vnTime.getFullYear();
+    const mm = String(vnTime.getMonth() + 1).padStart(2, '0');
+    const dd = String(vnTime.getDate()).padStart(2, '0');
+    const todayStrVn = `${yyyy}-${mm}-${dd}`;
 
-    const todayStr = toYYYYMMDD(now);
-    const startOfWeekStr = toYYYYMMDD(startOfWeek);
-    const startOfMonthStr = toYYYYMMDD(startOfMonth);
+    // Tạo mốc 00:00 và 23:59 CHUẨN GIỜ VIỆT NAM (+07:00)
+    const startOfDayVN = new Date(`${todayStrVn}T00:00:00.000+07:00`);
+    const endOfDayVN = new Date(`${todayStrVn}T23:59:59.999+07:00`);
+
+    const dayOfWeek = vnTime.getDay() || 7; 
+    const startOfWeek = new Date(vnTime);
+    startOfWeek.setDate(vnTime.getDate() - dayOfWeek + 1);
+    const startOfWeekStr = `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
+    const startOfMonthStr = `${yyyy}-${mm}-01`;
 
     const [
       realWorkouts, realDietDays,
@@ -46,25 +44,25 @@ const getUserStats = async (req, res) => {
       DailyDietLog.countDocuments({ userId, isDayCompleted: true }), 
       WorkoutLog.countDocuments({ userId, didWorkout: true, date: { $gte: startOfWeekStr } }), 
       WorkoutLog.countDocuments({ userId, didWorkout: true, date: { $gte: startOfMonthStr } }), 
-      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }), 
-      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }),
-      WorkoutLog.findOne({ userId, date: todayStr }),
-      // Hỗ trợ truy vấn cả kiểu Date lẫn String YYYY-MM-DD
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, createdAt: { $gte: startOfDayVN } }), 
+      DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonthStr } }),
+      WorkoutLog.findOne({ userId, date: todayStrVn }),
+      // TRUY VẤN MỞ RỘNG: Đảm bảo 100% bắt được DietLog của ngày hôm nay
       DailyDietLog.findOne({ 
         userId, 
         $or: [
-          { date: todayStr },
-          { date: { $gte: startOfDay, $lte: endOfDay } }
+          { date: todayStrVn },
+          { date: { $gte: startOfDayVN, $lte: endOfDayVN } },
+          { createdAt: { $gte: startOfDayVN, $lte: endOfDayVN } }
         ]
       }),
       User.findById(userId)
     ]);
 
-    // Lấy thời gian chuẩn theo múi giờ Việt Nam (UTC+7)
-    const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     const currentTotalMins = vnTime.getHours() * 60 + vnTime.getMinutes();
+    const currentHour = vnTime.getHours();
 
-    // --- 1. WORKOUT STATUS ---
+    // --- 2. WORKOUT STATUS ---
     const hasWorkoutLog = !!todayWorkoutDoc;
     const didWorkout = hasWorkoutLog ? (todayWorkoutDoc.didWorkout || todayWorkoutDoc.isCompleted) : false;
     const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : false; 
@@ -74,30 +72,24 @@ const getUserStats = async (req, res) => {
 
     if (!didWorkout && !isRestDay) {
       if (todayWorkoutDoc?.scheduledTime) {
-        const strTime = String(todayWorkoutDoc.scheduledTime);
-        const timeMatch = strTime.match(/(\d+):(\d+)/);
-        
+        const timeMatch = String(todayWorkoutDoc.scheduledTime).match(/(\d+):(\d+)/);
         if (timeMatch) {
           let wHours = parseInt(timeMatch[1], 10);
           const wMinutes = parseInt(timeMatch[2], 10);
           
-          if (strTime.toLowerCase().includes('pm') && wHours < 12) wHours += 12;
-          if (strTime.toLowerCase().includes('am') && wHours === 12) wHours = 0;
-
-          const workoutTotalMins = wHours * 60 + wMinutes;
-          const diffMins = workoutTotalMins - currentTotalMins;
+          if (String(todayWorkoutDoc.scheduledTime).toLowerCase().includes('pm') && wHours < 12) wHours += 12;
+          const diffMins = (wHours * 60 + wMinutes) - currentTotalMins;
           
           if (diffMins < 0) isWorkoutOverdue = true;
           else if (diffMins <= 30) isWorkoutUpcoming = true; 
         }
       } else {
-        const currentHour = vnTime.getHours();
         if (currentHour >= 20) isWorkoutOverdue = true;
         else if (currentHour === 19) isWorkoutUpcoming = true;
       }
     }
 
-    // --- 2. DIET STATUS ---
+    // --- 3. DIET STATUS (TỐI ƯU HÓA HOÀN TOÀN) ---
     const hasDietPlan = !!todayDietDoc;
     const isDayCompleted = todayDietDoc?.isDayCompleted || false;
     let didEatRight = isDayCompleted;
@@ -126,93 +118,93 @@ const getUserStats = async (req, res) => {
         else if (calRatio > 1.05) calorieStatus = 'OVER';
       }
 
-      // Lấy danh sách các bữa ăn chưa ăn
+      // Quét tự động mọi mảng dữ liệu có thể chứa bữa ăn
       let upcomingList = [];
-      if (Array.isArray(todayDietDoc.adjustedUpcomingMeals) && todayDietDoc.adjustedUpcomingMeals.length > 0) {
-        upcomingList = todayDietDoc.adjustedUpcomingMeals;
-      } else if (Array.isArray(todayDietDoc.upcomingMeals) && todayDietDoc.upcomingMeals.length > 0) {
-        upcomingList = todayDietDoc.upcomingMeals;
-      } else if (Array.isArray(todayDietDoc.meals) && todayDietDoc.meals.length > 0) {
-        upcomingList = todayDietDoc.meals.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED');
+      const possibleArrays = [
+        todayDietDoc.adjustedUpcomingMeals, todayDietDoc.upcomingMeals, 
+        todayDietDoc.meals, todayDietDoc.plannedMeals, todayDietDoc.dailyMeals
+      ];
+      for (const arr of possibleArrays) {
+        if (Array.isArray(arr) && arr.length > 0) {
+          upcomingList = arr;
+          break;
+        }
       }
 
-      const hasConsumed = Array.isArray(todayDietDoc.consumedMeals) && todayDietDoc.consumedMeals.length > 0;
-      const hasUpcoming = upcomingList.length > 0;
+      // Lọc các bữa CHƯA ĂN
+      upcomingList = upcomingList.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED' && m.status !== 'EATEN');
       
-      if (hasConsumed && !hasUpcoming) {
+      const hasConsumed = (todayDietDoc.consumedMeals && todayDietDoc.consumedMeals.length > 0) || (consumedCalories > 0);
+      
+      if (hasConsumed && upcomingList.length === 0) {
         areAllMealsCompleted = true;
       } else {
         areAllMealsCompleted = isDayCompleted; 
       }
 
-      // Xử lý kiểm tra trễ giờ ăn
-      if (!isDayCompleted && !areAllMealsCompleted && hasUpcoming) {
-        for (const meal of upcomingList) {
-          const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime;
-          const mealName = meal.mealType || meal.name || meal.title || "Bữa ăn";
+      // TỪ ĐIỂN DỊCH TÊN BỮA ĂN
+      const translateMealName = (nameStr) => {
+        const upper = String(nameStr).toUpperCase();
+        if (upper.includes('BREAKFAST')) return 'sáng';
+        if (upper.includes('LUNCH')) return 'trưa';
+        if (upper.includes('DINNER')) return 'tối';
+        if (upper.includes('SNACK')) return 'phụ';
+        return nameStr;
+      };
 
-          if (mealTimeStr) {
-            const strTime = String(mealTimeStr);
-            const timeMatch = strTime.match(/(\d+):(\d+)/);
-            
-            if (timeMatch) {
-              let mHours = parseInt(timeMatch[1], 10);
-              const mMinutes = parseInt(timeMatch[2], 10);
+      if (!isDayCompleted && !areAllMealsCompleted) {
+        if (upcomingList.length > 0) {
+          for (const meal of upcomingList) {
+            const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime || meal.timeStr;
+            const rawName = meal.mealType || meal.name || meal.title || "ăn";
+            const mealName = translateMealName(rawName);
 
-              if (strTime.toLowerCase().includes('pm') && mHours < 12) mHours += 12;
-              if (strTime.toLowerCase().includes('am') && mHours === 12) mHours = 0;
+            if (mealTimeStr) {
+              const timeMatch = String(mealTimeStr).match(/(\d+):(\d+)/);
+              if (timeMatch) {
+                let mHours = parseInt(timeMatch[1], 10);
+                const mMinutes = parseInt(timeMatch[2], 10);
+                if (String(mealTimeStr).toLowerCase().includes('pm') && mHours < 12) mHours += 12;
 
-              const mealTotalMins = mHours * 60 + mMinutes;
-              const diffMins = mealTotalMins - currentTotalMins;
+                const diffMins = (mHours * 60 + mMinutes) - currentTotalMins;
 
-              if (diffMins < 0) {
-                isMealOverdue = true;
-                overdueMealName = mealName;
-                break; // Tìm thấy bữa trễ đầu tiên thì ưu tiên báo lỗi ngay
-              } else if (diffMins <= 30) {
-                isMealUpcoming = true;
-                upcomingMealName = mealName;
+                if (diffMins < 0) {
+                  isMealOverdue = true;
+                  overdueMealName = mealName;
+                  break; 
+                } else if (diffMins <= 30) {
+                  isMealUpcoming = true;
+                  upcomingMealName = mealName;
+                }
               }
             }
+          }
+        } else {
+          // SMART FALLBACK: Bắt lỗi trường hợp mảng bữa ăn bị rỗng/thiếu giờ nhưng đã quá khuya
+          const calRatio = targetCalories > 0 ? (consumedCalories / targetCalories) : 0;
+          if (calRatio < 0.6) { 
+            if (currentHour >= 20) { isMealOverdue = true; overdueMealName = "tối"; }
+            else if (currentHour >= 13) { isMealOverdue = true; overdueMealName = "trưa"; }
+            else if (currentHour >= 9) { isMealOverdue = true; overdueMealName = "sáng"; }
           }
         }
       }
     }
 
-    // --- 3. ĐIỀU KIỆN HiỂN THỊ NÚT CHỐT SỔ ---
+    // --- 4. TỔNG HỢP & GỬI THÔNG BÁO ---
     const canCloseDay = !isDayCompleted; 
 
     const todayStatus = {
-      canCloseDay,
-      isDayCompleted,
-      workout: { 
-        hasLog: hasWorkoutLog, 
-        didWorkout, 
-        isOverdue: isWorkoutOverdue, 
-        isUpcoming: isWorkoutUpcoming, 
-        isRestDay 
-      },
+      canCloseDay, isDayCompleted,
+      workout: { hasLog: hasWorkoutLog, didWorkout, isOverdue: isWorkoutOverdue, isUpcoming: isWorkoutUpcoming, isRestDay },
       diet: {
-        hasPlan: hasDietPlan, 
-        didEatRight, 
-        targetCalories, 
-        consumedCalories, 
-        areAllMealsCompleted,
-        isCaloriesMet, 
-        isMealOverdue, 
-        isMealUpcoming, 
-        overdueMealName, 
-        upcomingMealName, 
-        calorieStatus, 
-        calorieDiff
+        hasPlan: hasDietPlan, didEatRight, targetCalories, consumedCalories, areAllMealsCompleted,
+        isCaloriesMet, isMealOverdue, isMealUpcoming, overdueMealName, upcomingMealName, calorieStatus, calorieDiff
       }
     };
 
-    // --- 4. TẠO THÔNG BÁO TỪ SERVICE ---
     let notifications = [];
-    const isPremiumUser = userDoc?.isPremium === true;
-
-    if (stats.isCoachingEnabled && isPremiumUser) {
+    if (stats.isCoachingEnabled && userDoc?.isPremium) {
       notifications = generateCoachingNotifications({
         style: stats.coachingStyle,
         isViolating: stats.activeViolation?.isViolating,
@@ -240,101 +232,51 @@ const getUserStats = async (req, res) => {
   }
 };
 
-// ==========================================
-// API: POST /api/gamification/manual-close
-// ==========================================
 const manualCloseDay = async (req, res) => {
   try {
     const userId = req.user.id;
     const result = await closeDayForUser(userId);
+    if (!result.success) return res.status(400).json({ success: false, message: result.message });
     
-    if (!result.success) {
-      return res.status(400).json({ success: false, message: result.message });
-    }
-
     const updatedStats = await Gamification.findOne({ userId });
-
-    return res.status(200).json({ 
-      success: true, 
-      message: result.message,
-      stats: updatedStats,
-      rankPoints: result.rankPoints,
-      streak: result.streak
-    });
+    return res.status(200).json({ success: true, message: result.message, stats: updatedStats, rankPoints: result.rankPoints, streak: result.streak });
   } catch (error) {
-    console.error("Lỗi API chốt sổ thủ công:", error);
     res.status(500).json({ success: false, message: "Lỗi hệ thống khi chốt sổ." });
   }
 };
 
-// ==========================================
-// API: PUT /api/gamification/coaching-style
-// ==========================================
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
     const { isEnabled, style } = req.body; 
-
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
-
-    if (!user.isPremium) {
-      return res.status(403).json({ 
-        success: false, 
-        message: "Tính năng Huấn luyện viên AI chỉ dành cho tài khoản Premium. Vui lòng nâng cấp gói!" 
-      });
-    }
+    if (!user.isPremium) return res.status(403).json({ success: false, message: "Tính năng này dành cho Premium!" });
 
     let updateData = {};
     if (typeof isEnabled === 'boolean') updateData.isCoachingEnabled = isEnabled;
-    if (style) {
-      if (!['EASY', 'SERIOUS', 'STRICT'].includes(style)) {
-        return res.status(400).json({ success: false, message: "Tính cách không hợp lệ." });
-      }
-      updateData.coachingStyle = style;
-    }
+    if (style && ['EASY', 'SERIOUS', 'STRICT'].includes(style)) updateData.coachingStyle = style;
     
-    if (Object.keys(updateData).length === 0) {
-      return res.status(400).json({ success: false, message: "Không có dữ liệu cập nhật." });
-    }
-
-    const stats = await Gamification.findOneAndUpdate(
-      { userId }, 
-      { $set: updateData }, 
-      { new: true, upsert: true }
-    );
-    
-    res.status(200).json({ 
-      success: true, 
-      message: `${stats.isCoachingEnabled ? "Đã BẬT" : "Đã TẮT"} chế độ huấn luyện viên AI.`, 
-      isCoachingEnabled: stats.isCoachingEnabled,
-      coachingStyle: stats.coachingStyle 
-    });
+    const stats = await Gamification.findOneAndUpdate({ userId }, { $set: updateData }, { new: true, upsert: true });
+    res.status(200).json({ success: true, message: "Đã cập nhật AI.", isCoachingEnabled: stats.isCoachingEnabled, coachingStyle: stats.coachingStyle });
   } catch (error) {
-    console.error("Lỗi cập nhật coaching style:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 
-// ==========================================
-// API: POST /api/gamification/resolve-violation
-// ==========================================
 const resolveViolation = async (req, res) => {
   try {
     const userId = req.user.id;
     const stats = await Gamification.findOne({ userId });
-    if (!stats || !stats.activeViolation?.isViolating) {
-      return res.status(400).json({ success: false, message: "Bạn không có vi phạm nào cần xử lý." });
-    }
+    if (!stats || !stats.activeViolation?.isViolating) return res.status(400).json({ success: false, message: "Không có vi phạm." });
 
     stats.activeViolation.isViolating = false;
     stats.activeViolation.violationType = null;
     stats.activeViolation.nagCount = 0;
     await stats.save();
 
-    res.status(200).json({ success: true, message: "Đã ghi nhận cam kết sửa sai! Hãy giữ đúng kỷ luật." });
+    res.status(200).json({ success: true, message: "Đã ghi nhận cam kết sửa sai!" });
   } catch (error) {
-    console.error("Lỗi xử lý vi phạm:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
