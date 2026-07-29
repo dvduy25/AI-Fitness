@@ -400,3 +400,31 @@ exports.getExerciseProgress = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
   }
 };
+// ─────────────────────────────────────────────────
+// GET /api/workout-logs/date?date=YYYY-MM-DD
+// ─────────────────────────────────────────────────
+exports.getLogByDate = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { date } = req.query;
+
+    const targetDate = date || toLocalDateStr();
+
+    const log = await WorkoutLog.findOne({ userId, date: targetDate })
+      .populate("exerciseMaxes.exerciseId", "name muscleGroup")
+      .populate("exercises.exerciseId", "name muscleGroup");
+
+    // Trả về HTTP 200 kèm log (hoặc null nếu chưa có dữ liệu)
+    // Việc này giúp Axios ở Frontend không bị bắn lỗi 404 ra console
+    return res.json({
+      success: true,
+      date: targetDate,
+      log: log || null,
+      didWorkout: log?.didWorkout ?? null,
+      isCompleted: log?.isCompleted ?? false,
+    });
+  } catch (error) {
+    console.error("[getLogByDate]", error.message);
+    res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
+  }
+};
