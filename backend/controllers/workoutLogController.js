@@ -428,3 +428,91 @@ exports.getLogByDate = async (req, res) => {
     res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
   }
 };
+// ─────────────────────────────────────────────────
+// GET /api/workout-logs/previous/:exerciseId
+// Lấy lịch sử tập gần nhất của 1 bài tập cụ thể
+// ─────────────────────────────────────────────────
+exports.getPreviousExerciseLog = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { exerciseId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(exerciseId)) {
+      return res.status(400).json({ success: false, message: "exerciseId không hợp lệ!" });
+    }
+
+    const userObjectId = new mongoose.Types.ObjectId(userId);
+    const exerciseObjectId = new mongoose.Types.ObjectId(exerciseId);
+
+    // Tìm bản ghi gần nhất có chứa bài tập này
+    const previousLog = await WorkoutLog.findOne({
+      userId: userObjectId,
+      didWorkout: true,
+      "exercises.exerciseId": exerciseObjectId,
+    })
+      .sort({ date: -1 })
+      .select("date exercises exerciseMaxes");
+
+    if (!previousLog) {
+      // Trả về 200 kèm data null (tránh 404 ra console)
+      return res.json({
+        success: true,
+        data: null,
+        message: "Chưa có lịch sử cho bài tập này.",
+      });
+    }
+
+    // Lọc ra dữ liệu set tập và kỷ lục max của bài tập đó
+    const exData = previousLog.exercises.find(
+      (e) => e.exerciseId.toString() === exerciseId
+    );
+    const maxData = previousLog.exerciseMaxes.find(
+      (e) => e.exerciseId.toString() === exerciseId
+    );
+
+    return res.json({
+      success: true,
+      date: previousLog.date,
+      data: {
+        exerciseId,
+        exerciseName: exData?.exerciseName || maxData?.exerciseName || "Bài tập",
+        setsPerformed: exData?.setsPerformed || [],
+        maxWeight: maxData?.maxWeight || 0,
+        maxReps: maxData?.maxReps || 0,
+      },
+    });
+  } catch (error) {
+    console.error("[getPreviousExerciseLog]", error.message);
+    res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
+  }
+};
+// ─────────────────────────────────────────────────
+// PUT /api/workout-logs/unlock
+// Cho phép mở khóa buổi tập để chỉnh sửa lại
+// ─────────────────────────────────────────────────
+exports.unlockWorkout = async (req, res) => {
+  try {
+    const userId = req.user._id || req.user.id;
+    const { date } = req.body;
+    const targetDate = date || toLocalDateStr();
+
+    const log = await WorkoutLog.findOneAndUpdate(
+      { userId, date: targetDate },
+      { $set: { isCompleted: false } },
+      { new: true }
+    );
+
+    if (!log) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy nhật ký ngày này!" });
+    }
+
+    return res.json({
+      success: true,
+      message: "Đã mở khóa buổi tập, bạn có thể chỉnh sửa ngay bây giờ!",
+      log,
+    });
+  } catch (error) {
+    console.error("[unlockWorkout]", error.message);
+    res.status(500).json({ success: false, message: "Lỗi server!", error: error.message });
+  }
+};
