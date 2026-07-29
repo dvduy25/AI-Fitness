@@ -11,7 +11,7 @@ const {
   getExerciseProgress,
 } = require("../controllers/workoutLogController");
 
-const verifyToken = require("../middleware/auth"); // Middleware xác thực của bạn
+const{ verifyToken }= require("../middleware/authMiddleware"); // Middleware xác thực của bạn
 
 // 👈 2. Khai báo route /date (đặt phía trên các route dạng dynamic parameter)
 router.get("/date", verifyToken, getLogByDate);
