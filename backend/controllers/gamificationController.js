@@ -16,14 +16,13 @@ const getUserStats = async (req, res) => {
     let stats = await Gamification.findOne({ userId });
     if (!stats) stats = await Gamification.create({ userId });
 
-    // 1. KHẮC PHỤC TRIỆT ĐỂ LỖI LỆCH MÚI GIỜ (UTC vs VN)
+    // 1. XỬ LÝ MÚI GIỜ VIỆT NAM (UTC+7)
     const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
     const yyyy = vnTime.getFullYear();
     const mm = String(vnTime.getMonth() + 1).padStart(2, '0');
     const dd = String(vnTime.getDate()).padStart(2, '0');
     const todayStrVn = `${yyyy}-${mm}-${dd}`;
 
-    // Tạo mốc 00:00 và 23:59 CHUẨN GIỜ VIỆT NAM (+07:00)
     const startOfDayVN = new Date(`${todayStrVn}T00:00:00.000+07:00`);
     const endOfDayVN = new Date(`${todayStrVn}T23:59:59.999+07:00`);
 
@@ -47,7 +46,6 @@ const getUserStats = async (req, res) => {
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, createdAt: { $gte: startOfDayVN } }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonthStr } }),
       WorkoutLog.findOne({ userId, date: todayStrVn }),
-      // TRUY VẤN MỞ RỘNG: Đảm bảo 100% bắt được DietLog của ngày hôm nay
       DailyDietLog.findOne({ 
         userId, 
         $or: [
@@ -76,7 +74,6 @@ const getUserStats = async (req, res) => {
         if (timeMatch) {
           let wHours = parseInt(timeMatch[1], 10);
           const wMinutes = parseInt(timeMatch[2], 10);
-          
           if (String(todayWorkoutDoc.scheduledTime).toLowerCase().includes('pm') && wHours < 12) wHours += 12;
           const diffMins = (wHours * 60 + wMinutes) - currentTotalMins;
           
@@ -89,8 +86,8 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 3. DIET STATUS (TỐI ƯU HÓA HOÀN TOÀN) ---
-    const hasDietPlan = !!todayDietDoc;
+    // --- 3. DIET STATUS (LOGIC XỬ LÝ TUẦN TỰ) ---
+    const hasDietPlan = true; // Luôn bật theo dõi ăn uống
     const isDayCompleted = todayDietDoc?.isDayCompleted || false;
     let didEatRight = isDayCompleted;
     let isMealOverdue = false;
@@ -99,16 +96,14 @@ const getUserStats = async (req, res) => {
     let upcomingMealName = null;
     
     let consumedCalories = 0;
-    let targetCalories = 0;
+    let targetCalories = userDoc?.targetMacros?.calories || todayDietDoc?.targetCalories || 2000;
     let isCaloriesMet = false;
     let calorieStatus = 'PERFECT'; 
     let calorieDiff = 0;
     let areAllMealsCompleted = false;
 
-    if (hasDietPlan) {
+    if (todayDietDoc) {
       consumedCalories = todayDietDoc.actualDailyTotal?.calories || todayDietDoc.totalCaloriesConsumed || 0;
-      targetCalories = userDoc?.targetMacros?.calories || todayDietDoc.targetCalories || 0;
-
       if (targetCalories > 0) {
         const calRatio = consumedCalories / targetCalories;
         isCaloriesMet = didEatRight || (calRatio >= 0.85 && calRatio <= 1.05);
@@ -117,81 +112,108 @@ const getUserStats = async (req, res) => {
         if (calRatio < 0.85) calorieStatus = 'UNDER';
         else if (calRatio > 1.05) calorieStatus = 'OVER';
       }
+    }
 
-      // Quét tự động mọi mảng dữ liệu có thể chứa bữa ăn
-      let upcomingList = [];
+    // KHUNG BỮA ĂN MẶC ĐỊNH KHÔNG THỂ BỎ QUA
+    const DEFAULT_MEALS = [
+      { mealType: 'BREAKFAST', name: 'sáng', scheduledTime: '08:00', defaultMins: 8 * 60 },
+      { mealType: 'LUNCH', name: 'trưa', scheduledTime: '12:30', defaultMins: 12 * 60 + 30 },
+      { mealType: 'SNACK', name: 'phụ', scheduledTime: '16:00', defaultMins: 16 * 60 },
+      { mealType: 'DINNER', name: 'tối', scheduledTime: '19:30', defaultMins: 19 * 60 + 30 }
+    ];
+
+    let uneatenMeals = [];
+
+    if (todayDietDoc) {
+      let rawMeals = [];
       const possibleArrays = [
         todayDietDoc.adjustedUpcomingMeals, todayDietDoc.upcomingMeals, 
-        todayDietDoc.meals, todayDietDoc.plannedMeals, todayDietDoc.dailyMeals
+        todayDietDoc.meals, todayDietDoc.plannedMeals
       ];
       for (const arr of possibleArrays) {
         if (Array.isArray(arr) && arr.length > 0) {
-          upcomingList = arr;
+          rawMeals = arr;
           break;
         }
       }
 
-      // Lọc các bữa CHƯA ĂN
-      upcomingList = upcomingList.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED' && m.status !== 'EATEN');
-      
-      const hasConsumed = (todayDietDoc.consumedMeals && todayDietDoc.consumedMeals.length > 0) || (consumedCalories > 0);
-      
-      if (hasConsumed && upcomingList.length === 0) {
-        areAllMealsCompleted = true;
+      if (rawMeals.length > 0) {
+        // Lọc các bữa chưa ăn từ DB
+        uneatenMeals = rawMeals.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED' && m.status !== 'EATEN');
       } else {
-        areAllMealsCompleted = isDayCompleted; 
+        // Nếu DB chưa chia mảng bữa ăn, lọc dựa theo consumedMeals đã lưu
+        const consumedTypes = (todayDietDoc.consumedMeals || []).map(m => 
+          String(m.mealType || m.name || m.type || '').toUpperCase()
+        );
+        uneatenMeals = DEFAULT_MEALS.filter(defM => 
+          !consumedTypes.some(ct => ct.includes(defM.mealType) || ct.includes(defM.name.toUpperCase()))
+        );
       }
+    } else {
+      // Nếu chưa có doc hôm nay -> Coi như chưa ăn bữa nào cả
+      uneatenMeals = [...DEFAULT_MEALS];
+    }
 
-      // TỪ ĐIỂN DỊCH TÊN BỮA ĂN
-      const translateMealName = (nameStr) => {
-        const upper = String(nameStr).toUpperCase();
-        if (upper.includes('BREAKFAST')) return 'sáng';
-        if (upper.includes('LUNCH')) return 'trưa';
-        if (upper.includes('DINNER')) return 'tối';
-        if (upper.includes('SNACK')) return 'phụ';
-        return nameStr;
-      };
-
-      if (!isDayCompleted && !areAllMealsCompleted) {
-        if (upcomingList.length > 0) {
-          for (const meal of upcomingList) {
-            const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime || meal.timeStr;
-            const rawName = meal.mealType || meal.name || meal.title || "ăn";
-            const mealName = translateMealName(rawName);
-
-            if (mealTimeStr) {
-              const timeMatch = String(mealTimeStr).match(/(\d+):(\d+)/);
-              if (timeMatch) {
-                let mHours = parseInt(timeMatch[1], 10);
-                const mMinutes = parseInt(timeMatch[2], 10);
-                if (String(mealTimeStr).toLowerCase().includes('pm') && mHours < 12) mHours += 12;
-
-                const diffMins = (mHours * 60 + mMinutes) - currentTotalMins;
-
-                if (diffMins < 0) {
-                  isMealOverdue = true;
-                  overdueMealName = mealName;
-                  break; 
-                } else if (diffMins <= 30) {
-                  isMealUpcoming = true;
-                  upcomingMealName = mealName;
-                }
-              }
-            }
-          }
-        } else {
-          // SMART FALLBACK: Bắt lỗi trường hợp mảng bữa ăn bị rỗng/thiếu giờ nhưng đã quá khuya
-          const calRatio = targetCalories > 0 ? (consumedCalories / targetCalories) : 0;
-          if (calRatio < 0.6) { 
-            if (currentHour >= 20) { isMealOverdue = true; overdueMealName = "tối"; }
-            else if (currentHour >= 13) { isMealOverdue = true; overdueMealName = "trưa"; }
-            else if (currentHour >= 9) { isMealOverdue = true; overdueMealName = "sáng"; }
-          }
+    // Helper lấy số phút trong ngày của bữa ăn
+    const getMealMins = (meal) => {
+      if (meal.defaultMins) return meal.defaultMins;
+      const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime || meal.timeStr;
+      if (mealTimeStr) {
+        const timeMatch = String(mealTimeStr).match(/(\d+):(\d+)/);
+        if (timeMatch) {
+          let mHours = parseInt(timeMatch[1], 10);
+          const mMinutes = parseInt(timeMatch[2], 10);
+          if (String(mealTimeStr).toLowerCase().includes('pm') && mHours < 12) mHours += 12;
+          if (String(mealTimeStr).toLowerCase().includes('am') && mHours === 12) mHours = 0;
+          return mHours * 60 + mMinutes;
         }
+      }
+      const upper = String(meal.mealType || meal.name || meal.title || '').toUpperCase();
+      if (upper.includes('BREAKFAST') || upper.includes('SÁNG')) return 8 * 60;
+      if (upper.includes('LUNCH') || upper.includes('TRƯA')) return 12 * 60 + 30;
+      if (upper.includes('SNACK') || upper.includes('PHỤ')) return 16 * 60;
+      if (upper.includes('DINNER') || upper.includes('TỐI')) return 19 * 60 + 30;
+      return 12 * 60;
+    };
+
+    // Helper dịch tên bữa ăn
+    const translateMealName = (nameStr) => {
+      const upper = String(nameStr).toUpperCase();
+      if (upper.includes('BREAKFAST') || upper.includes('SÁNG')) return 'sáng';
+      if (upper.includes('LUNCH') || upper.includes('TRƯA')) return 'trưa';
+      if (upper.includes('DINNER') || upper.includes('TỐI')) return 'tối';
+      if (upper.includes('SNACK') || upper.includes('PHỤ')) return 'phụ';
+      return nameStr;
+    };
+
+    // SẮP XẾP BỮA ĂN CHƯA HOÀN THÀNH THEO THỨ TỰ THỜI GIAN
+    uneatenMeals.sort((a, b) => getMealMins(a) - getMealMins(b));
+
+    if (todayDietDoc && uneatenMeals.length === 0) {
+      areAllMealsCompleted = true;
+    } else {
+      areAllMealsCompleted = isDayCompleted; 
+    }
+
+    // XÉT DUY NHẤT BỮA ĂN ĐẦU TIÊN TRONG HÀNG CHỜ (CHƯA ĂN)
+    if (!isDayCompleted && !areAllMealsCompleted && uneatenMeals.length > 0) {
+      const firstUnEatenMeal = uneatenMeals[0]; // Bữa sớm nhất chưa tick
+      const mealTotalMins = getMealMins(firstUnEatenMeal);
+      const rawName = firstUnEatenMeal.mealType || firstUnEatenMeal.name || firstUnEatenMeal.title || "ăn";
+      const mealName = translateMealName(rawName);
+
+      const diffMins = mealTotalMins - currentTotalMins;
+
+      if (diffMins < 0) {
+        isMealOverdue = true;
+        overdueMealName = mealName;
+      } else if (diffMins <= 30) {
+        isMealUpcoming = true;
+        upcomingMealName = mealName;
       }
     }
 
-    // --- 4. TỔNG HỢP & GỬI THÔNG BÁO ---
+    // --- 4. TỔNG HỢP KẾT QUẢ & THÔNG BÁO ---
     const canCloseDay = !isDayCompleted; 
 
     const todayStatus = {
