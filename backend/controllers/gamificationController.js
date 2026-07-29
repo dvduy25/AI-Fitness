@@ -49,7 +49,14 @@ const getUserStats = async (req, res) => {
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfWeek } }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true, date: { $gte: startOfMonth } }),
       WorkoutLog.findOne({ userId, date: todayStr }),
-      DailyDietLog.findOne({ userId, date: { $gte: startOfDay, $lte: endOfDay } }),
+      // FIX 1: Tối ưu truy vấn tìm DailyDietLog hỗ trợ cả kiểu Date và String
+      DailyDietLog.findOne({ 
+        userId, 
+        $or: [
+          { date: todayStr },
+          { date: { $gte: startOfDay, $lte: endOfDay } }
+        ]
+      }),
       User.findById(userId)
     ]);
 
@@ -111,30 +118,42 @@ const getUserStats = async (req, res) => {
 
       // Kiểm tra xem đã ăn hết các bữa chưa
       const hasConsumed = todayDietDoc.consumedMeals && todayDietDoc.consumedMeals.length > 0;
-      const hasUpcoming = todayDietDoc.adjustedUpcomingMeals && todayDietDoc.adjustedUpcomingMeals.length > 0;
       
-      // Nếu đã ăn ít nhất 1 bữa và không còn bữa sắp tới nào -> Đã hoàn thành toàn bộ bữa ăn
+      // FIX 2: Đọc linh hoạt danh sách bữa ăn chưa ăn từ nhiều trường có thể xảy ra
+      const upcomingList = todayDietDoc.adjustedUpcomingMeals 
+                        || todayDietDoc.upcomingMeals 
+                        || todayDietDoc.meals 
+                        || [];
+      
+      const hasUpcoming = upcomingList.length > 0;
+      
       if (hasConsumed && !hasUpcoming) {
         areAllMealsCompleted = true;
       } else {
         areAllMealsCompleted = isDayCompleted; 
       }
 
-      const upcomingList = todayDietDoc.adjustedUpcomingMeals || [];
-      if (!isDayCompleted && !areAllMealsCompleted && upcomingList.length > 0) {
+      // Vòng lặp kiểm tra trễ giờ ăn
+      if (!isDayCompleted && !areAllMealsCompleted && hasUpcoming) {
         for (const meal of upcomingList) {
-          if (meal.scheduledTime) {
-            const [mHours, mMinutes] = meal.scheduledTime.split(':').map(Number);
-            const mealTotalMins = mHours * 60 + mMinutes;
-            const diffMins = mealTotalMins - currentTotalMins;
+          // FIX 3: Hỗ trợ nhiều tên trường chứa thời gian bữa ăn
+          const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime;
 
-            if (diffMins < 0) {
-              isMealOverdue = true;
-              overdueMealName = meal.mealType || meal.name || "Bữa ăn";
-              break; 
-            } else if (diffMins <= 30) { 
-              isMealUpcoming = true;
-              upcomingMealName = meal.mealType || meal.name || "Bữa ăn";
+          if (mealTimeStr && typeof mealTimeStr === 'string') {
+            const [mHours, mMinutes] = mealTimeStr.split(':').map(Number);
+            
+            if (!isNaN(mHours) && !isNaN(mMinutes)) {
+              const mealTotalMins = mHours * 60 + mMinutes;
+              const diffMins = mealTotalMins - currentTotalMins;
+
+              if (diffMins < 0) {
+                isMealOverdue = true;
+                overdueMealName = meal.mealType || meal.name || meal.title || "Bữa ăn";
+                break; // Tìm thấy bữa trễ đầu tiên là dừng
+              } else if (diffMins <= 30) { 
+                isMealUpcoming = true;
+                upcomingMealName = meal.mealType || meal.name || meal.title || "Bữa ăn";
+              }
             }
           }
         }
@@ -142,7 +161,6 @@ const getUserStats = async (req, res) => {
     }
 
     // --- 3. ĐIỀU KIỆN HIỂN THỊ NÚT CHỐT SỔ ---
-    // Nút "Chốt sổ" LUÔN LUÔN HIỆN (canCloseDay = true) miễn là ngày hôm nay CHƯA CHỐT SỔ (isDayCompleted = false).
     const canCloseDay = !isDayCompleted; 
 
     const todayStatus = {
