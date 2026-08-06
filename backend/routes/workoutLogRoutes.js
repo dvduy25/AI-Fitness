@@ -1,10 +1,10 @@
 const express = require("express");
 const router = express.Router();
-const authMiddleware = require("../middleware/authMiddleware"); // Middleware xác thực Token
+const { verifyToken } = require("../middleware/authMiddleware"); // Middleware xác thực Token
 const workoutLogController = require("../controllers/workoutLogController");
 
 // Bắt buộc sử dụng middleware auth cho tất cả các route này
-router.use(authMiddleware);
+router.use(verifyToken);
 
 // 1. Khai báo các Route tĩnh / Route cụ thể TRƯỚC
 router.post("/checkin", workoutLogController.checkIn);
