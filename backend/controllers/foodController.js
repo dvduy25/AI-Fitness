@@ -162,7 +162,7 @@ exports.checkAndSuggestFood = async (req, res) => {
     const existingTitles = existingFoods.map(f => f.name).join(", ");
 
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite",
+      model: "gemini-2.5-flash",
       generationConfig: { responseMimeType: "application/json" } 
     });
 

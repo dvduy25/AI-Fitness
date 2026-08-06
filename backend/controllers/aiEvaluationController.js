@@ -58,7 +58,7 @@ YÊU CẦU ĐẦU RA (ĐỊNH DẠNG JSON CHUẨN MỰC):
 }`;
 
     // 4. Gọi Gemini
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
     const result = await model.generateContent(prompt);
     const aiData = JSON.parse(result.response.text());
 
@@ -129,7 +129,7 @@ YÊU CẦU ĐẦU RA (ĐỊNH DẠNG JSON CHUẨN MỰC):
 }`;
 
     // 4. Gọi Gemini
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
     const result = await model.generateContent(prompt);
     const aiData = JSON.parse(result.response.text());
 
@@ -207,7 +207,7 @@ YÊU CẦU ĐẦU RA (OUTPUT FORMAT BẮT BUỘC LÀ JSON):
 
     // 5. Gọi Gemini (Dùng model gemini-2.5-flash vì nó cực nhanh và xử lý JSON cực tốt)
     const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash",
         generationConfig: { 
             responseMimeType: "application/json" // Yêu cầu Gemini ép kiểu trả về JSON chuẩn 100%
         }
@@ -309,7 +309,7 @@ exports.evaluateExerciseProgress = async (req, res) => {
     `;
 
     // 5. GỌI GEMINI AI THỰC TẾ
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const result = await model.generateContent(prompt);
     const aiResponse = result.response.text();
 
