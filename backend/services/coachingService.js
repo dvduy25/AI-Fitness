@@ -31,7 +31,7 @@ const MESSAGES = {
 
   CALORIE_UNDER: (diff, isCompleted) => ({
     EASY: isCompleted ? `Hôm nay chốt ăn xong rồi mà hình như thiếu khoảng ${diff} kcal đó nha. Mai đắp thêm bù nha! 🍲` : `Bạn đang thiếu ~${diff} kcal đó, cẩn thận đói nhé.`,
-    SERIOUS: isCompleted ? `LƯU Ý: Bạn đã hoàn tất ăn uống nhưng hụt mất ${diff} kcal so với mục tiêu. Cần cân đối lại vào ngày mai.` : `Bạn đang nạp thiếu ${diff} kcal. Hãy bổ sung theo kế hoạch.`,
+    SERIOUS: isCompleted ? `LƯU Ý: Bạn đã hoàn tất ăn uống nhưng hụt mất ${diff} kcal so with target. Cần cân đối lại vào ngày mai.` : `Bạn đang nạp thiếu ${diff} kcal. Hãy bổ sung theo kế hoạch.`,
     STRICT: isCompleted ? `🛑 BÁO ĐỘNG! Bấm hoàn thành ăn uống rồi mà vẫn hụt tận ${diff} kcal? Cơ bắp đang thiếu hụt trầm trọng! Nhớ mặt ngày mai đấy! 📉` : `Cảnh báo dị hóa! Đang hụt ${diff} kcal! Mau nạp thêm năng lượng đi!`
   }),
   CALORIE_OVER: (diff, isCompleted) => ({
@@ -69,11 +69,15 @@ const MESSAGES = {
   }
 };
 
-const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout, diet }) => {
+const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout, diet, isCoachingEnabled = true }) => {
+  // KHÓA BẢO VỆ: NẾU TẮT BOT HOẶC ISCOACHINGENABLED = FALSE -> TRẢ VỀ MẢNG RỖNG
+  if (isCoachingEnabled === false) {
+    return [];
+  }
+
   const selectedStyle = ['EASY', 'SERIOUS', 'STRICT'].includes(style) ? style : 'SERIOUS';
   const notifications = [];
   
-  // Lấy giờ chuẩn theo múi giờ Việt Nam
   const vnTime = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }));
   const timeStr = `${vnTime.getHours().toString().padStart(2, '0')}:${vnTime.getMinutes().toString().padStart(2, '0')}`;
 
@@ -85,7 +89,6 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
   // 2. Xét trạng thái Dinh dưỡng & Calo
   if (diet?.hasPlan) {
     if (diet.didEatRight || diet.areAllMealsCompleted) {
-      
       const isClosed = diet.didEatRight;
       
       if (diet.calorieStatus === 'UNDER' && diet.calorieDiff > 0) {
@@ -93,12 +96,9 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
       } else if (diet.calorieStatus === 'OVER' && diet.calorieDiff > 0) {
         notifications.push({ id: 'calorie_over_done', time: timeStr, text: MESSAGES.CALORIE_OVER(diet.calorieDiff.toFixed(0), isClosed)[selectedStyle], type: 'error' });
       } else if (diet.didEatRight) {
-        // Đã chốt sổ và ăn hoàn hảo
         notifications.push({ id: 'diet_done', time: timeStr, text: MESSAGES.DIET_DONE[selectedStyle], type: 'success' });
       }
-      
     } else {
-      // VẪN ĐANG TRONG NGÀY (Chưa tick xong hết các bữa): Báo bữa tới/quá bữa
       if (diet.isMealOverdue) {
         const meal = diet.overdueMealName?.toUpperCase();
         notifications.push({ id: 'meal_overdue', time: timeStr, text: MESSAGES.MEAL_OVERDUE(meal)[selectedStyle], type: 'error' });
@@ -122,23 +122,15 @@ const generateCoachingNotifications = ({ style = 'SERIOUS', isViolating, workout
     }
   }
 
-  // ==========================================
-  // 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%
-  // ==========================================
-  // Thay thế đoạn "// 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%" trong coachingService.js bằng đoạn này:
-
-  // ==========================================
-  // 4. CHỈ BÁO KHI ĐÃ ĐẠT CHUẨN HOÀN HẢO 100%
-  // ==========================================
+  // 4. Trạng thái Hoàn thành 100%
   const isWorkoutPerfect = workout?.hasLog ? (workout.didWorkout || workout.isRestDay) : false;
   const isDietPerfect = diet?.hasPlan ? (diet.areAllMealsCompleted && diet.calorieStatus === 'PERFECT') : false;
 
-  // Bắt buộc phải CÓ LOG TẬP + CÓ PLAN ĂN + CHƯA CHỐT SỔ mới báo ALL_COMPLETED
   if (isWorkoutPerfect && isDietPerfect && !diet?.didEatRight) {
     notifications.push({ id: 'all_completed', time: timeStr, text: MESSAGES.ALL_COMPLETED[selectedStyle], type: 'success' });
   }
 
-  // 5. Mặc định (Chào buổi sáng nếu không có thông báo nào khác)
+  // 5. Mặc định
   if (notifications.length === 0) {
     notifications.push({ id: 'welcome', time: '07:00', text: MESSAGES.WELCOME[selectedStyle], type: 'info' });
   }

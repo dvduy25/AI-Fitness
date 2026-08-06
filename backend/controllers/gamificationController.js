@@ -86,8 +86,8 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 3. DIET STATUS (LOGIC XỬ LÝ TUẦN TỰ) ---
-    const hasDietPlan = true; // Luôn bật theo dõi ăn uống
+    // --- 3. DIET STATUS ---
+    const hasDietPlan = true;
     const isDayCompleted = todayDietDoc?.isDayCompleted || false;
     let didEatRight = isDayCompleted;
     let isMealOverdue = false;
@@ -114,7 +114,6 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // KHUNG BỮA ĂN MẶC ĐỊNH KHÔNG THỂ BỎ QUA
     const DEFAULT_MEALS = [
       { mealType: 'BREAKFAST', name: 'sáng', scheduledTime: '08:00', defaultMins: 8 * 60 },
       { mealType: 'LUNCH', name: 'trưa', scheduledTime: '12:30', defaultMins: 12 * 60 + 30 },
@@ -138,10 +137,8 @@ const getUserStats = async (req, res) => {
       }
 
       if (rawMeals.length > 0) {
-        // Lọc các bữa chưa ăn từ DB
         uneatenMeals = rawMeals.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED' && m.status !== 'EATEN');
       } else {
-        // Nếu DB chưa chia mảng bữa ăn, lọc dựa theo consumedMeals đã lưu
         const consumedTypes = (todayDietDoc.consumedMeals || []).map(m => 
           String(m.mealType || m.name || m.type || '').toUpperCase()
         );
@@ -150,11 +147,9 @@ const getUserStats = async (req, res) => {
         );
       }
     } else {
-      // Nếu chưa có doc hôm nay -> Coi như chưa ăn bữa nào cả
       uneatenMeals = [...DEFAULT_MEALS];
     }
 
-    // Helper lấy số phút trong ngày của bữa ăn
     const getMealMins = (meal) => {
       if (meal.defaultMins) return meal.defaultMins;
       const mealTimeStr = meal.scheduledTime || meal.time || meal.mealTime || meal.timeStr;
@@ -176,7 +171,6 @@ const getUserStats = async (req, res) => {
       return 12 * 60;
     };
 
-    // Helper dịch tên bữa ăn
     const translateMealName = (nameStr) => {
       const upper = String(nameStr).toUpperCase();
       if (upper.includes('BREAKFAST') || upper.includes('SÁNG')) return 'sáng';
@@ -186,7 +180,6 @@ const getUserStats = async (req, res) => {
       return nameStr;
     };
 
-    // SẮP XẾP BỮA ĂN CHƯA HOÀN THÀNH THEO THỨ TỰ THỜI GIAN
     uneatenMeals.sort((a, b) => getMealMins(a) - getMealMins(b));
 
     if (todayDietDoc && uneatenMeals.length === 0) {
@@ -195,9 +188,8 @@ const getUserStats = async (req, res) => {
       areAllMealsCompleted = isDayCompleted; 
     }
 
-    // XÉT DUY NHẤT BỮA ĂN ĐẦU TIÊN TRONG HÀNG CHỜ (CHƯA ĂN)
     if (!isDayCompleted && !areAllMealsCompleted && uneatenMeals.length > 0) {
-      const firstUnEatenMeal = uneatenMeals[0]; // Bữa sớm nhất chưa tick
+      const firstUnEatenMeal = uneatenMeals[0];
       const mealTotalMins = getMealMins(firstUnEatenMeal);
       const rawName = firstUnEatenMeal.mealType || firstUnEatenMeal.name || firstUnEatenMeal.title || "ăn";
       const mealName = translateMealName(rawName);
@@ -225,6 +217,7 @@ const getUserStats = async (req, res) => {
       }
     };
 
+    // CHỈ TẠO THÔNG BÁO KHI BOT ĐANG BẬT CẢ Ở SYSTEM VÀ KHÔNG BỊ TẮT BỞI USER
     let notifications = [];
     if (stats.isCoachingEnabled && userDoc?.isPremium) {
       notifications = generateCoachingNotifications({
@@ -232,7 +225,8 @@ const getUserStats = async (req, res) => {
         isViolating: stats.activeViolation?.isViolating,
         workout: todayStatus.workout,
         diet: todayStatus.diet,
-        canCloseDay: todayStatus.canCloseDay
+        canCloseDay: todayStatus.canCloseDay,
+        isCoachingEnabled: stats.isCoachingEnabled
       });
     }
 
@@ -254,6 +248,9 @@ const getUserStats = async (req, res) => {
   }
 };
 
+// ==========================================
+// API: POST /api/gamification/close-day
+// ==========================================
 const manualCloseDay = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -267,25 +264,65 @@ const manualCloseDay = async (req, res) => {
   }
 };
 
+// ==========================================
+// API: PUT /api/gamification/coaching-style
+// ==========================================
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
     const { isEnabled, style } = req.body; 
+
     const user = await User.findById(userId);
     if (!user) return res.status(404).json({ success: false, message: "Không tìm thấy người dùng." });
     if (!user.isPremium) return res.status(403).json({ success: false, message: "Tính năng này dành cho Premium!" });
 
     let updateData = {};
-    if (typeof isEnabled === 'boolean') updateData.isCoachingEnabled = isEnabled;
-    if (style && ['EASY', 'SERIOUS', 'STRICT'].includes(style)) updateData.coachingStyle = style;
-    
-    const stats = await Gamification.findOneAndUpdate({ userId }, { $set: updateData }, { new: true, upsert: true });
-    res.status(200).json({ success: true, message: "Đã cập nhật AI.", isCoachingEnabled: stats.isCoachingEnabled, coachingStyle: stats.coachingStyle });
+    let customMessage = "Đã cập nhật cài đặt AI Coach.";
+
+    if (typeof isEnabled === 'boolean') {
+      updateData.isCoachingEnabled = isEnabled;
+
+      // NẾU TẮT BOT: RESET TOÀN BỘ RANK, STREAK VÀ VI PHẠM
+      if (isEnabled === false) {
+        updateData.rankPoints = 0;
+        updateData.streak = 0;
+        updateData.activeViolation = {
+          isViolating: false,
+          violationType: null,
+          lastNotifiedAt: null,
+          nagCount: 0
+        };
+        customMessage = "Đã tắt AI Coach. Chuỗi Streak và điểm Rank của bạn đã bị đặt lại về 0!";
+      }
+    }
+
+    if (style && ['EASY', 'SERIOUS', 'STRICT'].includes(style)) {
+      updateData.coachingStyle = style;
+    }
+
+    const stats = await Gamification.findOneAndUpdate(
+      { userId }, 
+      { $set: updateData }, 
+      { new: true, upsert: true }
+    );
+
+    res.status(200).json({ 
+      success: true, 
+      message: customMessage, 
+      isCoachingEnabled: stats.isCoachingEnabled, 
+      coachingStyle: stats.coachingStyle,
+      rankPoints: stats.rankPoints,
+      streak: stats.streak
+    });
   } catch (error) {
+    console.error("Lỗi cập nhật AI Coach:", error);
     res.status(500).json({ success: false, message: "Lỗi server" });
   }
 };
 
+// ==========================================
+// API: POST /api/gamification/resolve-violation
+// ==========================================
 const resolveViolation = async (req, res) => {
   try {
     const userId = req.user.id;
