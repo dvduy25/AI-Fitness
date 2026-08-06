@@ -5,7 +5,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   X, Dumbbell, Clock, CheckCircle, History, 
   Play, Trophy, ArrowLeft, Video, Info, 
-  BrainCircuit
+  BrainCircuit, Loader2
 } from 'lucide-react';
 
 // IMPORT CÁC COMPONENT TÙY CHỈNH
@@ -43,6 +43,7 @@ export default function WorkoutTracker() {
   const [prevRecords, setPrevRecords] = useState({});
   const [startTime] = useState(Date.now());
   const [currentLogId, setCurrentLogId] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Trạng thái đang lưu hoàn thành
   const [infoModal, setInfoModal] = useState({ isOpen: false, exercise: null });
   
   // State gọi AI Modal
@@ -102,7 +103,6 @@ export default function WorkoutTracker() {
       const initialData = {};
       
       todayPlan.exercises.forEach(ex => {
-        // CHỈ TẠO 1 SET DUY NHẤT LÀM MAX SET
         initialData[ex.exerciseId._id] = [{
           setNumber: 1,
           weight: '', 
@@ -119,7 +119,6 @@ export default function WorkoutTracker() {
           headers: { Authorization: `Bearer ${token}` }
         });
 
-        // ĐỒNG BỘ BACKEND: Lấy dữ liệu Max đã lưu trong ngày (nếu có)
         if (res.data.log) {
           setCurrentLogId(res.data.log._id);
           
@@ -201,7 +200,6 @@ export default function WorkoutTracker() {
     setWorkoutData(nextWorkoutData);
 
     try {
-      // Dịch dữ liệu sang chuẩn mới của Backend (exerciseId, maxWeight, maxReps)
       const exercisesPayload = Object.keys(nextWorkoutData).map(exId => {
         const completedSets = nextWorkoutData[exId].filter(set => set.isDone === true);
         
@@ -231,6 +229,60 @@ export default function WorkoutTracker() {
       console.error("Lỗi khi lưu dữ liệu:", error);
       setWorkoutData(previousWorkoutData);
       alert("Lỗi kết nối mạng hoặc máy chủ từ chối dữ liệu! Vui lòng thử lại.");
+    }
+  };
+
+  // ==========================================
+  // XỬ LÝ NÚT HOÀN THÀNH BUỔI TẬP & LƯU LỊCH SỬ
+  // ==========================================
+  const handleFinishWorkout = async () => {
+    try {
+      setIsSubmitting(true);
+
+      // Gom toàn bộ các bài tập có nhập dữ liệu hoặc đã tích chọn
+      const exercisesPayload = Object.keys(workoutData).map(exId => {
+        const sets = workoutData[exId];
+        // Tìm set đã tích Done hoặc set đầu tiên có nhập dữ liệu
+        const targetSet = sets.find(s => s.isDone || (s.weight !== '' && s.reps !== '')) || sets[0];
+
+        if (!targetSet) return null;
+
+        const weightVal = parseFloat(String(targetSet.weight).replace(/[^0-9.]/g, '')) || 0;
+        const rawReps = String(targetSet.reps).split('-')[0];
+        const repsVal = parseInt(rawReps.replace(/[^0-9]/g, '')) || 0;
+
+        // Bỏ qua bài tập không có bất kỳ thông số nào
+        if (weightVal <= 0 && repsVal <= 0) return null;
+
+        return {
+          exerciseId: exId,
+          maxWeight: weightVal,
+          maxReps: repsVal
+        };
+      }).filter(Boolean);
+
+      const token = localStorage.getItem('token');
+      
+      // Gọi API gửi mảng dữ liệu và đánh dấu isCompleted = true trên Backend
+      const res = await api.put('/workout-logs/max', { exercises: exercisesPayload }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data.success) {
+        alert("🎉 " + (res.data.message || "Tuyệt vời! Bạn đã hoàn thành và lưu lịch sử buổi tập thành công!"));
+        // Điều hướng sang trang Lịch Sử (hoặc Trang Chủ '/')
+        navigate('/history');
+      }
+    } catch (error) {
+      console.error("Lỗi khi lưu hoàn thành buổi tập:", error);
+      if (error.response?.status === 403) {
+        alert("Buổi tập hôm nay đã được lưu và khóa lại từ trước!");
+        navigate('/history');
+      } else {
+        alert("Có lỗi kết nối khi lưu kết quả buổi tập. Vui lòng thử lại!");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -441,15 +493,25 @@ export default function WorkoutTracker() {
         </div>
       </div>
 
-      {/* FOOTER */}
+      {/* FOOTER - TÍCH HỢP NÚT HOÀN THÀNH */}
       <div className="fixed bottom-0 left-0 right-0 p-4 md:p-6 bg-gray-900/90 backdrop-blur-md border-t border-gray-800 z-40">
         <div className="max-w-3xl mx-auto">
           <button 
-            onClick={() => { alert("Tuyệt vời! Bạn đã hoàn thành buổi tập."); navigate('/'); }}
-            className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-500 rounded-2xl text-white font-bold text-lg flex justify-center items-center gap-2 shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all"
+            onClick={handleFinishWorkout}
+            disabled={isSubmitting}
+            className="w-full py-4 bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 rounded-2xl text-white font-bold text-lg flex justify-center items-center gap-2 shadow-xl shadow-emerald-500/20 hover:shadow-emerald-500/40 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Trophy className="w-6 h-6" />
-            Hoàn Thành Buổi Tập
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-6 h-6 animate-spin" />
+                Đang lưu lịch sử...
+              </>
+            ) : (
+              <>
+                <Trophy className="w-6 h-6" />
+                Hoàn Thành Buổi Tập
+              </>
+            )}
           </button>
         </div>
       </div>

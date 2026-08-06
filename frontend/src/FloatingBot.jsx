@@ -95,7 +95,7 @@ function PremiumRequireModal({ isOpen, onClose, onUpgrade }) {
 // MAIN COMPONENT: FLOATING BOT
 // ==========================================
 export default function FloatingBot() {
-  const navigate = useNavigate(); // Hook chuyển hướng không reload trang
+  const navigate = useNavigate();
 
   const [isOpen, setIsOpen] = useState(false);
   const [stats, setStats] = useState(null);
@@ -106,7 +106,8 @@ export default function FloatingBot() {
 
   // Trạng thái ngày hôm nay
   const [todayStatus, setTodayStatus] = useState({
-    canCloseDay: false,
+    canCloseDay: true,
+    isDayCompleted: false,
     workout: { hasLog: false, didWorkout: false, isOverdue: false, isUpcoming: false, isRestDay: false },
     diet: { hasPlan: false, didEatRight: false, isCaloriesMet: false, isMealOverdue: false, isMealUpcoming: false, overdueMealName: null, upcomingMealName: null, calorieStatus: 'PERFECT', calorieDiff: 0 }
   });
@@ -123,7 +124,7 @@ export default function FloatingBot() {
   // State điều khiển việc chớp nháy bong bóng hội thoại
   const [showBubble, setShowBubble] = useState(false);
 
-  // Chuyển hướng đến trang Nâng cấp Premium (Single Page Application - Không reload)
+  // Chuyển hướng đến trang Nâng cấp Premium
   const handleUpgradeRedirect = () => {
     setShowPremiumModal(false);
     navigate('/premium'); 
@@ -161,7 +162,7 @@ export default function FloatingBot() {
       } else {
         console.error("Lỗi khi lấy dữ liệu Bot:", error);
       }
-    } finally {
+    } fontinally: {
       setLoading(false);
     }
   };
@@ -317,9 +318,9 @@ export default function FloatingBot() {
   const { coachingStyle, isCoachingEnabled, activeViolation } = displayStats;
   const { eatWrong, noWorkout, bothFail } = displayStats.currentWeekTrackers || { eatWrong: 0, noWorkout: 0, bothFail: 0 };
 
-  // Kiểm tra xem đã chốt sổ trong hôm nay chưa
-  const isAlreadyClosed = stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0)); 
-  const showCloseButton = todayStatus?.canCloseDay && !isAlreadyClosed;
+  // Kiểm tra ngày hôm nay đã chốt sổ chưa
+  const isAlreadyClosed = todayStatus?.isDayCompleted || (stats?.lastEvaluatedDate && new Date(stats.lastEvaluatedDate) >= new Date(new Date().setHours(0,0,0,0))); 
+  const showCloseButton = !isAlreadyClosed;
 
   // Tuỳ chỉnh màu sắc bong bóng tuỳ trạng thái
   let bubbleMessage = isCoachingEnabled && todayLogs.length > 0 ? todayLogs[0].text : null;
@@ -476,16 +477,21 @@ export default function FloatingBot() {
                 </div>
               </div>
 
-              {/* NÚT CHỐT SỔ */}
-              {showCloseButton && (
+              {/* NÚT CHỐT SỔ HOẶC THÔNG BÁO ĐÃ CHỐT */}
+              {showCloseButton ? (
                 <button 
                   onClick={handleManualClose}
                   disabled={closing}
-                  className="w-full mt-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce"
+                  className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce"
                 >
                   <CheckCircle className="w-4 h-4" />
                   {closing ? "Đang xử lý..." : "Chốt Sổ Hoàn Thành Ngày!"}
                 </button>
+              ) : (
+                <div className="w-full mt-3 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 font-medium text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-inner">
+                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>Đã chốt sổ ngày hôm nay</span>
+                </div>
               )}
             </div>
           </div>
