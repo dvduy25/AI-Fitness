@@ -340,7 +340,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Kiểm tra tài khoản (Bỏ qua check vé vì Middleware verifyPremiumOrTicket ở Route đã lo việc này)
+    // 1. Kiểm tra tài khoản
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
@@ -416,9 +416,9 @@ exports.adjustMealPlanByAI = async (req, res) => {
       }
     `;
 
-    // 5. Gọi AI và Parse JSON an toàn
+    // 5. Gọi AI với tên model chuẩn
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash", 
+      model: "gemini-2.0-flash", // SỬA LẠI TÊN MODEL CHUẨN TẠI ĐÂY
       generationConfig: { responseMimeType: "application/json" } 
     });
     
@@ -426,7 +426,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
     let parsedData;
 
     try {
-      // Dùng regex bao quát hơn để dọn dẹp markdown code block
       const rawText = result.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
       parsedData = JSON.parse(rawText);
     } catch (parseError) {
@@ -444,7 +443,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
     const processedMeals = [];
 
     for (const meal of parsedData.meals) {
-      // Bỏ qua nếu bữa ăn không có items
       if (!Array.isArray(meal.items)) continue; 
 
       let mealTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
@@ -508,8 +506,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
       { new: true } 
     );
 
-  
-    // 9. Trả kết quả
+    // 8. Trả kết quả
     return res.status(200).json({ 
       success: true,
       message: "AI đã cân bằng lại định lượng thực đơn thành công!", 
@@ -526,7 +523,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
     });
   }
 };
-
 
 // =========================================================================
 // 4. API TÌM KIẾM VÀ ƯỚC LƯỢNG MÓN ĂN BẰNG AI
