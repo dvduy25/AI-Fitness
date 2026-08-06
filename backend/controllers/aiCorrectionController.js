@@ -235,7 +235,7 @@ exports.logActualMealWithAI = async (req, res) => {
         }`;
 
         try {
-          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+          const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
           const result = await model.generateContent(prompt);
           const parsedAiData = safeParseJSON(result.response.text());
           
@@ -327,7 +327,7 @@ exports.logActualMealWithAI = async (req, res) => {
             }`;
 
             try {
-              const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+              const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
               const adjustResult = await adjustModel.generateContent(adjustPrompt);
               const parsedAdjustData = safeParseJSON(adjustResult.response.text());
               
@@ -438,7 +438,7 @@ exports.deleteConsumedMeal = async (req, res) => {
         }`;
 
         try {
-          const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+          const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
           const adjustResult = await adjustModel.generateContent(adjustPrompt);
           const parsedAdjustData = safeParseJSON(adjustResult.response.text());
           
@@ -560,7 +560,7 @@ exports.editConsumedMeal = async (req, res) => {
       }`;
 
       try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
         const result = await model.generateContent(prompt);
         const parsedAiData = safeParseJSON(result.response.text());
         
@@ -630,7 +630,7 @@ exports.editConsumedMeal = async (req, res) => {
           }`;
 
           try {
-            const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+            const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
             const adjustResult = await adjustModel.generateContent(adjustPrompt);
             const parsedAdjustData = safeParseJSON(adjustResult.response.text());
             
@@ -708,7 +708,7 @@ exports.syncDietLogWithNewPlan = async (req, res) => {
       }`;
 
       try {
-        const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+        const adjustModel = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
         const adjustResult = await adjustModel.generateContent(adjustPrompt);
         const parsedAdjustData = safeParseJSON(adjustResult.response.text());
         
