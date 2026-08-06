@@ -112,7 +112,7 @@ exports.generatePTWorkoutPlan = async (req, res) => {
       }
     `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite", generationConfig: { responseMimeType: "application/json" } });
     const result = await model.generateContent(prompt);
     const parsedData = JSON.parse(result.response.text().replace(/```json/g, "").replace(/```/g, "").trim());
 
@@ -258,7 +258,7 @@ exports.generatePTMealPlan = async (req, res) => {
       }
     `;
 
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite", generationConfig: { responseMimeType: "application/json" } });
+    const model = genAI.getGenerativeModel({ model: "gemini-3.1-flash-lite", generationConfig: { responseMimeType: "application/json" } });
     const result = await model.generateContent(prompt);
     const parsedData = JSON.parse(result.response.text().replace(/```json/g, "").replace(/```/g, "").trim());
 
@@ -418,7 +418,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
 
     // 5. Gọi AI và Parse JSON an toàn
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite", 
+      model: "gemini-3.1-flash-lite", 
       generationConfig: { responseMimeType: "application/json" } 
     });
     
@@ -563,7 +563,7 @@ exports.searchOrEstimateFood = async (req, res) => {
     `;
 
     const model = genAI.getGenerativeModel({ 
-      model: "gemini-2.5-flash-lite", 
+      model: "gemini-3.1-flash-lite", 
       generationConfig: { responseMimeType: "application/json" } 
     });
     
