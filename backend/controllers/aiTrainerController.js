@@ -340,29 +340,28 @@ exports.adjustMealPlanByAI = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // 1. Kiểm tra tài khoản
+    // 1. Kiểm tra tài khoản & Target Macros
     const user = await User.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: "Không tìm thấy thông tin người dùng!" });
     }
 
-    // 2. KIỂM TRA TARGET MACROS CỦA USER (Bắt buộc phải có, không tự ý tính toán)
     if (!user.targetMacros || !user.targetMacros.calories || user.targetMacros.calories <= 0) {
       return res.status(400).json({ 
         success: false, 
-        message: "Bạn chưa thiết lập mục tiêu Calo. Vui lòng vào phần cài đặt thông tin cá nhân để hoàn tất mục tiêu trước khi điều chỉnh thực đơn!" 
+        message: "Bạn chưa thiết lập mục tiêu Calo. Vui lòng cập nhật thông tin cá nhân trước!" 
       });
     }
 
     const targetCalories = Number(user.targetMacros.calories);
 
-    // 3. Kiểm tra thực đơn hiện tại
+    // 2. Kiểm tra thực đơn hiện tại
     const mealPlan = await MealPlan.findOne({ userId });
     if (!mealPlan || !mealPlan.meals || mealPlan.meals.length === 0) {
       return res.status(404).json({ success: false, message: "Bạn chưa có lịch ăn cố định nào để điều chỉnh!" });
     }
 
-    // 4. Lấy dữ liệu thực đơn và Calo trên 100g của từng món trực tiếp từ DB
+    // 3. Lấy thông tin thực phẩm gốc từ DB
     const foodIdsInPlan = [];
     mealPlan.meals.forEach(m => m.items.forEach(i => foodIdsInPlan.push(i.foodId)));
     
@@ -383,26 +382,18 @@ exports.adjustMealPlanByAI = async (req, res) => {
       })
     }));
 
-    // 5. Prompt yêu cầu AI cân bằng chính xác theo targetCalories có sẵn
+    // 4. Prompt nhờ AI gợi ý tỷ lệ gram tương đối giữa các món
     const prompt = `
-      Bạn là một máy tính dinh dưỡng chuẩn xác.
-      Nhiệm vụ: Hãy ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) của từng món ăn trong thực đơn sao cho TỔNG CALORIES toàn bộ thực đơn trong ngày BẰNG ĐÚNG CHÍNH XÁC mục tiêu của người dùng.
+      Bạn là chuyên gia dinh dưỡng. Hãy điều chỉnh định lượng (quantityInGrams) các món ăn trong thực đơn sao cho tỷ lệ giữa các bữa cân đối.
 
-      MỤC TIÊU CALORIES CỦA NGƯỜI DÙNG: ${targetCalories} kcal
-
-      DANH SÁCH THỰC ĐƠN HIỆN TẠI (KÈM CALO TRÊN 100G CỦA MỖI MÓN):
+      DANH SÁCH THỰC ĐƠN HIỆN TẠI (KÈM CALO/100G):
       ${JSON.stringify(currentMealsContext, null, 2)}
 
-      CÔNG THỨC TÍNH:
-      - Calo của từng món = (quantityInGrams * caloriesPer100g) / 100
-      - TỔNG CALO CẢ NGÀY = Sum(Calo của tất cả các món trong các bữa)
+      QUY TẮC:
+      1. GIỮ NGUYÊN danh sách món ăn, bữa ăn (Không thêm/bớt món, không đổi foodId, foodName, mealType).
+      2. Đưa ra định lượng "quantityInGrams" tương đối hợp lý (từ 30g đến 300g) cho từng món.
 
-      YÊU CẦU BẮT BUỘC:
-      1. GIỮ NGUYÊN danh sách món ăn, bữa ăn (Không thêm/bớt món, không sửa foodId, foodName, mealType).
-      2. CHỈ thay đổi giá trị "quantityInGrams" (là số nguyên dương từ 15g đến 500g).
-      3. Tính toán sao cho Tổng Calo cả ngày bằng đúng ${targetCalories} kcal (độ sai lệch tối đa không quá ±1%).
-
-      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG CHỨA BẤT KỲ VĂN BẢN NÀO KHÁC):
+      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON:
       {
         "meals": [
           {
@@ -416,7 +407,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
       }
     `;
 
-    // 6. Gọi AI Gemini
     const model = genAI.getGenerativeModel({ 
       model: "gemini-3.1-flash-lite", 
       generationConfig: { responseMimeType: "application/json" } 
@@ -430,19 +420,45 @@ exports.adjustMealPlanByAI = async (req, res) => {
       parsedData = JSON.parse(rawText);
     } catch (parseError) {
       console.error("Lỗi parse JSON từ AI:", result.response.text());
-      return res.status(500).json({ success: false, message: "Dữ liệu AI trả về không hợp lệ, vui lòng thử lại!" });
+      return res.status(500).json({ success: false, message: "Dữ liệu AI trả về không hợp lệ!" });
     }
 
     if (!parsedData || !Array.isArray(parsedData.meals)) {
-      return res.status(500).json({ success: false, message: "AI phản hồi sai cấu trúc dữ liệu yêu cầu!" });
+      return res.status(500).json({ success: false, message: "AI phản hồi sai cấu trúc dữ liệu!" });
     }
 
-    // 7. Backend tính toán lại chính xác chỉ số dựa trên gram mới
+    // =========================================================================
+    // 5. THUẬT TOÁN CHUẨN HÓA BẰNG TOÁN HỌC TẠI BACKEND (Giải quyết lỗi AI tính sai)
+    // =========================================================================
+    
+    // BƯỚC 5.1: Tính tổng Calo sơ bộ do AI đề xuất
+    let preliminaryTotalCalories = 0;
+
+    for (const meal of parsedData.meals) {
+      if (!Array.isArray(meal.items)) continue;
+      for (const item of meal.items) {
+        if (!item.foodId) continue;
+        const foodData = availableFoods.find(f => f._id.toString() === item.foodId.toString().trim());
+        if (foodData) {
+          const grams = Math.max(10, Math.round(Number(item.quantityInGrams) || 100));
+          preliminaryTotalCalories += (foodData.caloriesPer100g * grams) / 100;
+        }
+      }
+    }
+
+    if (preliminaryTotalCalories <= 0) {
+      return res.status(500).json({ success: false, message: "Không thể tính toán Calo thực đơn!" });
+    }
+
+    // BƯỚC 5.2: Tính hệ số co/dãn (Scale Factor) để ép chuẩn Calo theo target
+    const scaleFactor = targetCalories / preliminaryTotalCalories;
+
+    // BƯỚC 5.3: Áp dụng Scale Factor vào Gram của từng món và tính toán lại dinh dưỡng
     let dailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     const processedMeals = [];
 
     for (const meal of parsedData.meals) {
-      if (!Array.isArray(meal.items)) continue; 
+      if (!Array.isArray(meal.items)) continue;
 
       let mealTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
       const processedItems = [];
@@ -452,25 +468,27 @@ exports.adjustMealPlanByAI = async (req, res) => {
         
         const foodData = availableFoods.find(f => f._id.toString() === item.foodId.toString().trim());
         if (foodData) {
-          let finalGrams = Math.round(Number(item.quantityInGrams) || 10);
-          if (finalGrams < 10) finalGrams = 10;
+          let aiGrams = Math.max(10, Math.round(Number(item.quantityInGrams) || 100));
+          
+          // Nhân với scaleFactor để ép định lượng gram về đúng targetCalories
+          let finalGrams = Math.max(10, Math.round(aiGrams * scaleFactor));
 
           const ratio = finalGrams / 100;
           const calcItem = {
-            foodId: foodData._id, 
-            foodName: foodData.name, 
-            quantityInGrams: finalGrams, 
+            foodId: foodData._id,
+            foodName: foodData.name,
+            quantityInGrams: finalGrams,
             calories: Math.round(foodData.caloriesPer100g * ratio),
             protein: Math.round((foodData.proteinPer100g * ratio) * 10) / 10,
             carbs: Math.round((foodData.carbsPer100g * ratio) * 10) / 10,
             fat: Math.round((foodData.fatPer100g * ratio) * 10) / 10,
           };
-          
-          mealTotal.calories += calcItem.calories; 
-          mealTotal.protein += calcItem.protein; 
-          mealTotal.carbs += calcItem.carbs; 
+
+          mealTotal.calories += calcItem.calories;
+          mealTotal.protein += calcItem.protein;
+          mealTotal.carbs += calcItem.carbs;
           mealTotal.fat += calcItem.fat;
-          
+
           processedItems.push(calcItem);
         }
       }
@@ -478,18 +496,18 @@ exports.adjustMealPlanByAI = async (req, res) => {
       mealTotal.protein = Math.round(mealTotal.protein * 10) / 10;
       mealTotal.carbs = Math.round(mealTotal.carbs * 10) / 10;
       mealTotal.fat = Math.round(mealTotal.fat * 10) / 10;
-      
-      dailyTotal.calories += mealTotal.calories; 
-      dailyTotal.protein += mealTotal.protein; 
-      dailyTotal.carbs += mealTotal.carbs; 
+
+      dailyTotal.calories += mealTotal.calories;
+      dailyTotal.protein += mealTotal.protein;
+      dailyTotal.carbs += mealTotal.carbs;
       dailyTotal.fat += mealTotal.fat;
 
       if (processedItems.length > 0) {
-        processedMeals.push({ 
-          mealType: meal.mealType, 
-          scheduledTime: meal.scheduledTime || "07:00", 
-          items: processedItems, 
-          mealTotal 
+        processedMeals.push({
+          mealType: meal.mealType,
+          scheduledTime: meal.scheduledTime || "07:00",
+          items: processedItems,
+          mealTotal
         });
       }
     }
@@ -498,27 +516,26 @@ exports.adjustMealPlanByAI = async (req, res) => {
     dailyTotal.carbs = Math.round(dailyTotal.carbs * 10) / 10;
     dailyTotal.fat = Math.round(dailyTotal.fat * 10) / 10;
 
-    // 8. Cập nhật vào Database
+    // 6. Cập nhật Database
     const updatedMealPlan = await MealPlan.findOneAndUpdate(
-      { userId: userId }, 
-      { $set: { dailyTotal: dailyTotal, meals: processedMeals } }, 
-      { new: true } 
+      { userId: userId },
+      { $set: { dailyTotal: dailyTotal, meals: processedMeals } },
+      { new: true }
     );
 
-    // 9. Trả kết quả về Frontend
-    return res.status(200).json({ 
+    return res.status(200).json({
       success: true,
-      message: "AI đã cân bằng lại định lượng thực đơn theo mức Calo mục tiêu thành công!", 
-      targetCalories: targetCalories, 
-      masterMealPlan: updatedMealPlan 
+      message: "Đã cân bằng lại thực đơn chính xác theo mức Calo mục tiêu!",
+      targetCalories: targetCalories,
+      masterMealPlan: updatedMealPlan
     });
 
   } catch (error) {
     console.error("Lỗi khi dùng AI sửa thực đơn:", error);
-    return res.status(500).json({ 
-      success: false, 
-      message: "Lỗi trong quá trình AI xử lý cân bằng thực đơn", 
-      error: error.message 
+    return res.status(500).json({
+      success: false,
+      message: "Lỗi trong quá trình xử lý cân bằng thực đơn",
+      error: error.message
     });
   }
 };
