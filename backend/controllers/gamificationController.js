@@ -3,6 +3,7 @@
 const Gamification = require('../models/Gamification');
 const WorkoutLog = require('../models/WorkoutLog');
 const DailyDietLog = require('../models/DailyDietLog');
+const MealPlan = require('../models/MealPlan'); // 1. Bổ sung Model MealPlan
 const User = require('../models/User');
 const { closeDayForUser } = require('../services/cronService');
 const { generateCoachingNotifications } = require('../services/coachingService');
@@ -32,12 +33,14 @@ const getUserStats = async (req, res) => {
     const startOfWeekStr = `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
     const startOfMonthStr = `${yyyy}-${mm}-01`;
 
+    // 2. TRUY VẤN DỮ LIỆU (Bổ sung MealPlan.findOne)
     const [
       realWorkouts, realDietDays,
       workoutsThisWeek, workoutsThisMonth,
       dietThisWeek, dietThisMonth,
       todayWorkoutDoc, todayDietDoc,
-      userDoc
+      userDoc,
+      masterPlan
     ] = await Promise.all([
       WorkoutLog.countDocuments({ userId, didWorkout: true }), 
       DailyDietLog.countDocuments({ userId, isDayCompleted: true }), 
@@ -54,13 +57,14 @@ const getUserStats = async (req, res) => {
           { createdAt: { $gte: startOfDayVN, $lte: endOfDayVN } }
         ]
       }),
-      User.findById(userId)
+      User.findById(userId),
+      MealPlan.findOne({ userId })
     ]);
 
     const currentTotalMins = vnTime.getHours() * 60 + vnTime.getMinutes();
     const currentHour = vnTime.getHours();
 
-    // --- 2. WORKOUT STATUS ---
+    // --- WORKOUT STATUS ---
     const hasWorkoutLog = !!todayWorkoutDoc;
     const didWorkout = hasWorkoutLog ? (todayWorkoutDoc.didWorkout || todayWorkoutDoc.isCompleted) : false;
     const isRestDay = hasWorkoutLog ? (todayWorkoutDoc.isRestDay === true) : false; 
@@ -86,7 +90,7 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 3. DIET STATUS ---
+    // --- DIET STATUS ---
     const hasDietPlan = true;
     const isDayCompleted = todayDietDoc?.isDayCompleted || false;
     let didEatRight = isDayCompleted;
@@ -114,6 +118,7 @@ const getUserStats = async (req, res) => {
       }
     }
 
+    // 3. KHẮC PHỤC LỖI BỮA ẢO (Sử dụng danh sách thực tế từ masterPlan)
     const DEFAULT_MEALS = [
       { mealType: 'BREAKFAST', name: 'sáng', scheduledTime: '08:00', defaultMins: 8 * 60 },
       { mealType: 'LUNCH', name: 'trưa', scheduledTime: '12:30', defaultMins: 12 * 60 + 30 },
@@ -121,33 +126,30 @@ const getUserStats = async (req, res) => {
       { mealType: 'DINNER', name: 'tối', scheduledTime: '19:30', defaultMins: 19 * 60 + 30 }
     ];
 
+    const plannedMealList = (masterPlan && masterPlan.meals && masterPlan.meals.length > 0)
+      ? masterPlan.meals
+      : DEFAULT_MEALS;
+
     let uneatenMeals = [];
 
     if (todayDietDoc) {
-      let rawMeals = [];
-      const possibleArrays = [
-        todayDietDoc.adjustedUpcomingMeals, todayDietDoc.upcomingMeals, 
-        todayDietDoc.meals, todayDietDoc.plannedMeals
-      ];
-      for (const arr of possibleArrays) {
-        if (Array.isArray(arr) && arr.length > 0) {
-          rawMeals = arr;
-          break;
-        }
-      }
-
-      if (rawMeals.length > 0) {
-        uneatenMeals = rawMeals.filter(m => !m.isEaten && !m.isCompleted && m.status !== 'COMPLETED' && m.status !== 'EATEN');
+      // Ưu tiên 1: Lấy trực tiếp từ adjustedUpcomingMeals nếu đã khởi tạo
+      if (Array.isArray(todayDietDoc.adjustedUpcomingMeals)) {
+        uneatenMeals = todayDietDoc.adjustedUpcomingMeals;
       } else {
+        // Ưu tiên 2: So sánh danh sách đã ăn với kế hoạch thực tế (plannedMealList)
         const consumedTypes = (todayDietDoc.consumedMeals || []).map(m => 
-          String(m.mealType || m.name || m.type || '').toUpperCase()
+          String(m.mealType || m.name || m.type || '').toUpperCase().trim()
         );
-        uneatenMeals = DEFAULT_MEALS.filter(defM => 
-          !consumedTypes.some(ct => ct.includes(defM.mealType) || ct.includes(defM.name.toUpperCase()))
-        );
+
+        uneatenMeals = plannedMealList.filter(pMeal => {
+          const pType = String(pMeal.mealType || pMeal.name || '').toUpperCase().trim();
+          return !consumedTypes.some(cType => cType === pType || (cType && pType && cType.includes(pType)));
+        });
       }
     } else {
-      uneatenMeals = [...DEFAULT_MEALS];
+      // Chưa có log ngày hôm nay -> Lấy toàn bộ bữa trong kế hoạch
+      uneatenMeals = [...plannedMealList];
     }
 
     const getMealMins = (meal) => {
@@ -205,7 +207,7 @@ const getUserStats = async (req, res) => {
       }
     }
 
-    // --- 4. TỔNG HỢP KẾT QUẢ & THÔNG BÁO ---
+    // --- TỔNG HỢP KẾT QUẢ & THÔNG BÁO ---
     const canCloseDay = !isDayCompleted; 
 
     const todayStatus = {
@@ -217,7 +219,6 @@ const getUserStats = async (req, res) => {
       }
     };
 
-    // CHỈ TẠO THÔNG BÁO KHI BOT ĐANG BẬT CẢ Ở SYSTEM VÀ KHÔNG BỊ TẮT BỞI USER
     let notifications = [];
     if (stats.isCoachingEnabled && userDoc?.isPremium) {
       notifications = generateCoachingNotifications({
@@ -248,9 +249,6 @@ const getUserStats = async (req, res) => {
   }
 };
 
-// ==========================================
-// API: POST /api/gamification/close-day
-// ==========================================
 const manualCloseDay = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -264,9 +262,6 @@ const manualCloseDay = async (req, res) => {
   }
 };
 
-// ==========================================
-// API: PUT /api/gamification/coaching-style
-// ==========================================
 const updateCoachingStyle = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -282,7 +277,6 @@ const updateCoachingStyle = async (req, res) => {
     if (typeof isEnabled === 'boolean') {
       updateData.isCoachingEnabled = isEnabled;
 
-      // NẾU TẮT BOT: RESET TOÀN BỘ RANK, STREAK VÀ VI PHẠM
       if (isEnabled === false) {
         updateData.rankPoints = 0;
         updateData.streak = 0;
@@ -320,9 +314,6 @@ const updateCoachingStyle = async (req, res) => {
   }
 };
 
-// ==========================================
-// API: POST /api/gamification/resolve-violation
-// ==========================================
 const resolveViolation = async (req, res) => {
   try {
     const userId = req.user.id;
