@@ -10,7 +10,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 // HÀM HỖ TRỢ (TIỆN ÍCH)
 // ==========================================
 
-// 1. Hàm bóc tách JSON an toàn (Chống lỗi AI trả về kèm markdown hoặc text thừa)
+// 1. Hàm bóc tách JSON an toàn
 const safeParseJSON = (text) => {
   try {
     const cleanedText = text.replace(/```json/gi, "").replace(/```/g, "").trim();
@@ -22,15 +22,23 @@ const safeParseJSON = (text) => {
   }
 };
 
-// 2. Hàm làm tròn TẤT CẢ dữ liệu về số nguyên chuẩn (Loại bỏ hoàn toàn số lẻ)
+// 2. Hàm làm tròn số nguyên
 const formatToInt = (val) => Math.round(Number(val)) || 0;
 
-// 3. Hàm tạo Prompt về Bệnh lý (Medical Conditions)
+// 3. Hàm tạo Prompt về Bệnh lý
 const getMedicalPrompt = (user) => {
   if (user.medicalConditions && user.medicalConditions.length > 0) {
-    return `\n[LƯU Ý QUAN TRỌNG VỀ SỨC KHỎE]: Người dùng này có bệnh lý: ${user.medicalConditions.join(', ')}. Khi điều chỉnh lịch ăn sắp tới, TUYỆT ĐỐI KHÔNG đề xuất hoặc sử dụng thực phẩm gây hại cho bệnh này (ví dụ: tiểu đường hạn chế đường tinh luyện, dạ dày tránh đồ chua cay). Tự động thay thế các nguyên liệu kiêng kỵ bằng thực phẩm an toàn tương đương.`;
+    return `\n[LƯU Ý QUAN TRỌNG VỀ SỨC KHỎE]: Người dùng này có bệnh lý: ${user.medicalConditions.join(', ')}. Khi điều chỉnh lịch ăn sắp tới, TUYỆT ĐỐI KHÔNG đề xuất hoặc sử dụng thực phẩm gây hại cho bệnh này. Tự động thay thế các nguyên liệu kiêng kỵ bằng thực phẩm an toàn tương đương.`;
   }
   return "";
+};
+
+// 4. Chuyển đổi Date sang YYYY-MM-DD theo giờ VN
+const getVnDateString = (dateInput) => {
+  const d = dateInput ? new Date(dateInput) : new Date();
+  return new Date(d.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }))
+    .toISOString()
+    .split('T')[0];
 };
 
 // ==========================================
@@ -82,35 +90,9 @@ exports.getTodayDietLog = async (req, res) => {
   }
 };
 
-
-// Hàm bổ trợ chuyển đổi Date sang chuỗi YYYY-MM-DD theo múi giờ Việt Nam
-const getVnDateString = (dateInput) => {
-  const d = dateInput ? new Date(dateInput) : new Date();
-  return new Date(d.toLocaleString("en-US", { timeZone: "Asia/Ho_Chi_Minh" }))
-    .toISOString()
-    .split('T')[0];
-};
-
 // ==========================================
-// 1. GHI NHẬN BỮA ĂN VỚI AI
+// 2. GHI NHẬN BỮA ĂN VỚI AI (ĐÃ SỬA LỖI X2 MÓN)
 // ==========================================
-// const formatToInt = (val) => Math.round(Number(val) || 0);
-
-// const getVnDateString = (dateStr) => {
-//   const d = dateStr ? new Date(dateStr) : new Date();
-//   return d.toISOString().split("T")[0];
-// };
-
-// const safeParseJSON = (str) => {
-//   try {
-//     const cleanStr = str.replace(/```json/g, "").replace(/```/g, "").trim();
-//     return JSON.parse(cleanStr);
-//   } catch (e) {
-//     console.error("Lỗi parse JSON từ AI:", e.message);
-//     return {};
-//   }
-// };
-
 exports.logActualMealWithAI = async (req, res) => {
   try {
     const userId = req.user.id;
@@ -129,18 +111,14 @@ exports.logActualMealWithAI = async (req, res) => {
 
     const targetDateStr = getVnDateString(date);
 
-    // --- A. XỬ LÝ NGÀY VÀ NHẬT KÝ KHỞI TẠO ---
+    // --- A. XỬ LÝ CHUYỂN NGÀY VÀ LỊCH SỬ ---
     let dietLog = await DailyDietLog.findOne({ userId }); 
     
     if (!dietLog) {
       dietLog = new DailyDietLog({ 
-        userId, 
-        date: targetDateStr, 
-        consumedMeals: [], 
-        adjustedUpcomingMeals: [], 
+        userId, date: targetDateStr, consumedMeals: [], adjustedUpcomingMeals: [], 
         actualDailyTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 }, 
-        pastRecords: [], 
-        isDayCompleted: false
+        pastRecords: [], isDayCompleted: false
       });
     } else {
       const currentDateStr = getVnDateString(dietLog.date);
@@ -150,19 +128,15 @@ exports.logActualMealWithAI = async (req, res) => {
         if (shouldSaveToHistory) {
           if (!dietLog.pastRecords) dietLog.pastRecords = [];
           dietLog.pastRecords.push({
-            date: dietLog.date, 
-            actualDailyTotal: dietLog.actualDailyTotal,
-            dailyAiSummary: dietLog.dailyAiSummary || "", 
-            isDayCompleted: dietLog.isDayCompleted || false,
+            date: dietLog.date, actualDailyTotal: dietLog.actualDailyTotal,
+            dailyAiSummary: dietLog.dailyAiSummary || "", isDayCompleted: dietLog.isDayCompleted || false,
             consumedMeals: dietLog.consumedMeals || []
           });
         }
         dietLog.date = targetDateStr; 
-        dietLog.consumedMeals = []; 
-        dietLog.adjustedUpcomingMeals = [];
+        dietLog.consumedMeals = []; dietLog.adjustedUpcomingMeals = [];
         dietLog.actualDailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
-        dietLog.isDayCompleted = false; 
-        dietLog.dailyAiSummary = "";
+        dietLog.isDayCompleted = false; dietLog.dailyAiSummary = "";
 
       } else if (targetDateStr < currentDateStr) {
         return res.status(400).json({ message: "Dữ liệu của ngày này đã thuộc về quá khứ." });
@@ -173,20 +147,24 @@ exports.logActualMealWithAI = async (req, res) => {
       return res.status(400).json({ message: "Ngày hôm nay đã được chốt sổ! Bạn không thể thay đổi bữa ăn." });
     }
 
-    // --- B. KHỞI TẠO BIẾN CƠ BẢN ---
+    // --- B. KHỞI TẠO BIẾN ---
     const masterPlan = await MealPlan.findOne({ userId }); 
     const user = await User.findById(userId);
     const target = user.targetMacros || { calories: 2000, protein: 150, carbs: 200, fat: 50 };
-    const medicalContext = typeof getMedicalPrompt === 'function' ? getMedicalPrompt(user) : ""; 
+    const medicalContext = getMedicalPrompt(user); 
 
-    let rawProcessedItems = [];
+    let rawItems = [];
     let aiNote = "";
 
     const addItemToMeal = (item) => {
-      rawProcessedItems.push({
-        foodId: item.foodId ? item.foodId.toString() : null,
-        foodName: (item.foodName || item.name || "Món ăn").trim(),
-        quantityInGrams: formatToInt(item.quantityInGrams || item.amount || 100),
+      const rawId = item.foodId || item._id || (item.food && (item.food._id || item.food));
+      const foodIdStr = rawId ? rawId.toString() : null;
+      const foodNameStr = (item.foodName || item.name || (item.food && item.food.name) || "Món ăn").trim();
+
+      rawItems.push({
+        foodId: foodIdStr,
+        foodName: foodNameStr,
+        quantityInGrams: formatToInt(item.quantityInGrams || item.amount || item.grams || 100),
         calories: formatToInt(item.calories),
         protein: formatToInt(item.protein),
         carbs: formatToInt(item.carbs),
@@ -199,50 +177,63 @@ exports.logActualMealWithAI = async (req, res) => {
       plannedMeal = masterPlan.meals.find(m => m.mealType.toLowerCase() === mealType.toLowerCase());
     }
 
-    // --- C. PHÂN LUỒNG XỬ LÝ MÓN ĂN ---
-
-    // 1. Nếu chọn ăn ĐÚNG kế hoạch gốc (không ghi đè custom)
-    if ((logType === "EXACT" || logType === "ADD_EXTRA") && !isOverwrite) {
+    // --- C. PHÂN LUỒNG XỬ LÝ MÓN ĂN (ĐÃ SỬA LỖI TÁCH BIỆT ĐIỀU KIỆN) ---
+    
+    // Luồng 1: Ăn đúng kế hoạch (EXACT và không ghi đè) -> Chỉ lấy món từ kế hoạch
+    if (logType === "EXACT" && !isOverwrite) {
       if (!plannedMeal) {
         return res.status(400).json({ message: `Không tìm thấy bữa ăn '${mealType}' trong lịch trình.` });
       }
       plannedMeal.items.forEach(item => addItemToMeal(item));
-      aiNote = logType === "EXACT" ? "Xác nhận đã ăn đúng như lịch trình!" : "Đã ăn theo lịch trình và thêm món.";
-    }
+      aiNote = "Xác nhận đã ăn đúng như lịch trình!";
+    } 
+    // Luồng 2: Tùy chỉnh / Ghi đè (CUSTOM / OVERWRITE / REPLACE) -> Chỉ lấy món từ Frontend truyền lên
+    else if (logType === "CUSTOM" || isOverwrite || logType === "REPLACE") {
+      if (consumedFoods && consumedFoods.length > 0) {
+        const foodIds = consumedFoods.map(item => item.foodId).filter(Boolean); 
+        const availableFoods = foodIds.length > 0 ? await Food.find({ _id: { $in: foodIds } }) : [];
 
-    // 2. Xử lý danh sách món ăn từ Frontend gửi lên (nếu có)
-    if (consumedFoods && consumedFoods.length > 0) {
-      const foodIds = consumedFoods.map(item => item.foodId).filter(Boolean); 
-      const availableFoods = foodIds.length > 0 ? await Food.find({ _id: { $in: foodIds } }) : [];
-
-      for (const item of consumedFoods) {
-        if (item.foodId) {
-          const foodIdStr = item.foodId.toString();
-          const foodData = availableFoods.find(f => f._id.toString() === foodIdStr);
-          
-          if (foodData) {
-            const grams = formatToInt(item.quantityInGrams || 100);
-            const ratio = grams / 100;
-            addItemToMeal({
-              foodId: foodData._id, 
-              foodName: item.foodName || foodData.name, 
-              quantityInGrams: grams,
-              calories: foodData.caloriesPer100g * ratio, 
-              protein: foodData.proteinPer100g * ratio,
-              carbs: foodData.carbsPer100g * ratio, 
-              fat: foodData.fatPer100g * ratio,
-            });
-          } else {
-            addItemToMeal(item);
+        for (const item of consumedFoods) {
+          if (item.foodId) {
+            const foodIdStr = item.foodId.toString();
+            const foodData = availableFoods.find(f => f._id.toString() === foodIdStr);
+            
+            if (foodData) {
+              const grams = formatToInt(item.quantityInGrams || 100);
+              const ratio = grams / 100;
+              addItemToMeal({
+                foodId: foodData._id, 
+                foodName: item.foodName || foodData.name, 
+                quantityInGrams: grams,
+                calories: foodData.caloriesPer100g * ratio, 
+                protein: foodData.proteinPer100g * ratio,
+                carbs: foodData.carbsPer100g * ratio, 
+                fat: foodData.fatPer100g * ratio,
+              });
+            } else {
+              addItemToMeal(item);
+            }
+          } else if (item.foodName) {
+            addItemToMeal(item); 
           }
-        } else if (item.foodName) {
-          addItemToMeal(item); 
         }
       }
+    } 
+    // Luồng 3: Ăn kế hoạch + thêm món mới (ADD_EXTRA) -> Lấy cả kế hoạch lẫn món mới từ Frontend
+    else if (logType === "ADD_EXTRA") {
+      if (plannedMeal && plannedMeal.items && !isOverwrite) {
+        plannedMeal.items.forEach(item => addItemToMeal(item));
+      }
+      if (consumedFoods && consumedFoods.length > 0) {
+        for (const item of consumedFoods) {
+          addItemToMeal(item);
+        }
+      }
+      aiNote = "Đã ăn theo lịch trình và thêm món.";
     }
 
-    // 3. Phân tích món ăn bằng AI từ text tự do (Chỉ chạy khi KHÔNG gửi kèm consumedFoods để tránh nhân đôi)
-    if (extraFoodText && extraFoodText.trim() !== "" && (consumedFoods.length === 0 || logType === "ADD_EXTRA")) {
+    // --- C2. PHÂN TÍCH MÓN ĂN BẰNG AI TỪ TEXT BỔ SUNG (NẾU CÓ) ---
+    if (extraFoodText && extraFoodText.trim() !== "") {
       const prompt = `Học viên vừa ăn: "${extraFoodText}". ${medicalContext}
       Hãy phân tích và ước lượng số Gram, Calories và Macros (P, C, F) cho món ăn này. 
       Nếu món ăn chứa thành phần vi phạm bệnh lý, hãy đưa ra cảnh báo ở aiNote.
@@ -277,90 +268,65 @@ exports.logActualMealWithAI = async (req, res) => {
       }
     }
 
-    // --- C.1 CHỐNG NHÂN ĐÔI MÓN ÁN (DEDUPLICATION) ---
+    // --- C3. LỌC TRÙNG LẶP MÓN ĂN AN TOÀN (DEDUPLICATION) ---
     const processedItems = [];
-    const seenMap = new Set();
+    const seenKeys = new Set();
 
-    for (const item of rawProcessedItems) {
-      const uniqueKey = item.foodId 
-        ? `${item.foodId}_${item.quantityInGrams}` 
-        : `${item.foodName.toLowerCase()}_${item.quantityInGrams}`;
+    for (const item of rawItems) {
+      // Key phân biệt dựa trên ID/Tên món + trọng lượng
+      const key = item.foodId 
+        ? `${item.foodId}_${item.quantityInGrams}`
+        : `${item.foodName.toLowerCase().trim()}_${item.quantityInGrams}`;
 
-      if (!seenMap.has(uniqueKey)) {
-        seenMap.add(uniqueKey);
+      if (!seenKeys.has(key)) {
+        seenKeys.add(key);
         processedItems.push(item);
       }
     }
 
     if (!aiNote) aiNote = isOverwrite ? "Đã cập nhật lại danh sách món ăn." : "Ghi nhận bữa ăn thành công.";
 
-    // --- D. LƯU VÀO NHẬT KÝ MÓN ĂN ---
+    // --- D. LƯU VÀO NHẬT KÝ BỮA ĂN ---
     const existingMealIndex = dietLog.consumedMeals.findIndex(m => m.mealType.toLowerCase() === mealType.toLowerCase());
 
     if (isOverwrite || logType === "REPLACE") {
-      // TRƯỜNG HỢP 1: GHI ĐÈ / SỬA / XÓA BỮA ĂN
       if (processedItems.length === 0) {
         if (existingMealIndex > -1) dietLog.consumedMeals.splice(existingMealIndex, 1);
-      } else {
-        const mealTotal = processedItems.reduce((acc, curr) => ({
-          calories: acc.calories + curr.calories, 
-          protein: acc.protein + curr.protein,
-          carbs: acc.carbs + curr.carbs, 
-          fat: acc.fat + curr.fat,
-        }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
-        const updatedMeal = { mealType, aiNote, isExactlyAsPlanned: false, items: processedItems, mealTotal };
-
-        if (existingMealIndex > -1) {
-          dietLog.consumedMeals[existingMealIndex] = updatedMeal;
-        } else {
-          dietLog.consumedMeals.push(updatedMeal);
-        }
-      }
-    } else {
-      // TRƯỜNG HỢP 2: THÊM MỚI BỮA ĂN HOẶC BỔ SUNG MÓN (APPEND)
-      if (processedItems.length === 0) {
-        return res.status(400).json({ message: "Không có món nào được ghi nhận." });
-      }
-
-      if (existingMealIndex > -1) {
-        // Lọc trùng với các món ĐÃ CÓ TRONG DATABASE trước khi push thêm
-        const existingItems = dietLog.consumedMeals[existingMealIndex].items;
-        const itemsToPush = processedItems.filter(newItem => {
-          return !existingItems.some(oldItem => 
-            (oldItem.foodId && newItem.foodId && oldItem.foodId.toString() === newItem.foodId.toString() && oldItem.quantityInGrams === newItem.quantityInGrams) ||
-            (oldItem.foodName.toLowerCase() === newItem.foodName.toLowerCase() && oldItem.quantityInGrams === newItem.quantityInGrams)
-          );
-        });
-
-        if (itemsToPush.length > 0) {
-          dietLog.consumedMeals[existingMealIndex].items.push(...itemsToPush);
-          
-          const addedTotal = itemsToPush.reduce((acc, curr) => ({
-            calories: acc.calories + curr.calories, protein: acc.protein + curr.protein,
-            carbs: acc.carbs + curr.carbs, fat: acc.fat + curr.fat,
-          }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
-
-          dietLog.consumedMeals[existingMealIndex].mealTotal.calories += addedTotal.calories;
-          dietLog.consumedMeals[existingMealIndex].mealTotal.protein += addedTotal.protein;
-          dietLog.consumedMeals[existingMealIndex].mealTotal.carbs += addedTotal.carbs;
-          dietLog.consumedMeals[existingMealIndex].mealTotal.fat += addedTotal.fat;
-        }
-        dietLog.consumedMeals[existingMealIndex].isExactlyAsPlanned = false; 
       } else {
         const mealTotal = processedItems.reduce((acc, curr) => ({
           calories: acc.calories + curr.calories, protein: acc.protein + curr.protein,
           carbs: acc.carbs + curr.carbs, fat: acc.fat + curr.fat,
         }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
 
+        const updatedMeal = { mealType, aiNote, isExactlyAsPlanned: false, items: processedItems, mealTotal };
+
+        if (existingMealIndex > -1) dietLog.consumedMeals[existingMealIndex] = updatedMeal;
+        else dietLog.consumedMeals.push(updatedMeal);
+      }
+    } else {
+      if (processedItems.length === 0) return res.status(400).json({ message: "Không có món nào được ghi nhận." });
+
+      const newItemsTotal = processedItems.reduce((acc, curr) => ({
+        calories: acc.calories + curr.calories, protein: acc.protein + curr.protein,
+        carbs: acc.carbs + curr.carbs, fat: acc.fat + curr.fat,
+      }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+
+      if (existingMealIndex > -1) {
+        dietLog.consumedMeals[existingMealIndex].items.push(...processedItems);
+        dietLog.consumedMeals[existingMealIndex].mealTotal.calories += newItemsTotal.calories;
+        dietLog.consumedMeals[existingMealIndex].mealTotal.protein += newItemsTotal.protein;
+        dietLog.consumedMeals[existingMealIndex].mealTotal.carbs += newItemsTotal.carbs;
+        dietLog.consumedMeals[existingMealIndex].mealTotal.fat += newItemsTotal.fat;
+        dietLog.consumedMeals[existingMealIndex].isExactlyAsPlanned = false; 
+      } else {
         dietLog.consumedMeals.push({ 
           mealType, aiNote, isExactlyAsPlanned: logType === "EXACT", 
-          items: processedItems, mealTotal 
+          items: processedItems, mealTotal: newItemsTotal 
         });
       }
     }
 
-    // TÍNH LẠI TỔNG DINH DƯỠNG TRONG NGÀY
+    // TÍNH LẠI TỔNG CHỈ SỐ DINH DƯỠNG TRONG NGÀY
     const newActualTotal = dietLog.consumedMeals.reduce((acc, meal) => ({
       calories: acc.calories + (meal.mealTotal?.calories || 0), 
       protein: acc.protein + (meal.mealTotal?.protein || 0),
@@ -369,13 +335,11 @@ exports.logActualMealWithAI = async (req, res) => {
     }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
     
     dietLog.actualDailyTotal = {
-      calories: formatToInt(newActualTotal.calories), 
-      protein: formatToInt(newActualTotal.protein),
-      carbs: formatToInt(newActualTotal.carbs), 
-      fat: formatToInt(newActualTotal.fat)
+      calories: formatToInt(newActualTotal.calories), protein: formatToInt(newActualTotal.protein),
+      carbs: formatToInt(newActualTotal.carbs), fat: formatToInt(newActualTotal.fat)
     };
 
-    // --- E. AI AUTO-ADJUST CHO CÁC BỮA CÒN LẠI ---
+    // --- E. AI AUTO-ADJUST LỊCH SẮP TỚI ---
     let adjustmentNote = "";
 
     if (masterPlan) {
@@ -415,22 +379,15 @@ exports.logActualMealWithAI = async (req, res) => {
                 dietLog.adjustedUpcomingMeals = parsedAdjustData.adjustedUpcomingMeals.map(meal => {
                   let mCal = 0, mPro = 0, mCarb = 0, mFat = 0;
                   const formattedItems = (meal.items || []).map(item => {
-                    mCal += formatToInt(item.calories); 
-                    mPro += formatToInt(item.protein); 
-                    mCarb += formatToInt(item.carbs); 
-                    mFat += formatToInt(item.fat);
+                    mCal += formatToInt(item.calories); mPro += formatToInt(item.protein); mCarb += formatToInt(item.carbs); mFat += formatToInt(item.fat);
                     return { 
                       ...item, 
-                      quantityInGrams: formatToInt(item.quantityInGrams), 
-                      calories: formatToInt(item.calories), 
-                      protein: formatToInt(item.protein), 
-                      carbs: formatToInt(item.carbs), 
-                      fat: formatToInt(item.fat) 
+                      quantityInGrams: formatToInt(item.quantityInGrams), calories: formatToInt(item.calories), 
+                      protein: formatToInt(item.protein), carbs: formatToInt(item.carbs), fat: formatToInt(item.fat) 
                     };
                   });
                   return { 
-                    mealType: meal.mealType, 
-                    items: formattedItems, 
+                    mealType: meal.mealType, items: formattedItems, 
                     mealTotal: { calories: formatToInt(mCal), protein: formatToInt(mPro), carbs: formatToInt(mCarb), fat: formatToInt(mFat) } 
                   };
                 });
@@ -459,13 +416,9 @@ exports.logActualMealWithAI = async (req, res) => {
 
     return res.status(200).json({
       message: "Ghi nhận/cập nhật bữa ăn thành công!", 
-      aiNote, 
-      adjustmentNote, 
-      actualDailyTotal: dietLog.actualDailyTotal,
-      consumedMeals: dietLog.consumedMeals, 
-      adjustedUpcomingMeals: dietLog.adjustedUpcomingMeals, 
-      isDayCompleted: dietLog.isDayCompleted || false, 
-      dailyAiSummary: dietLog.dailyAiSummary || ""
+      aiNote, adjustmentNote, actualDailyTotal: dietLog.actualDailyTotal,
+      consumedMeals: dietLog.consumedMeals, adjustedUpcomingMeals: dietLog.adjustedUpcomingMeals, 
+      isDayCompleted: dietLog.isDayCompleted || false, dailyAiSummary: dietLog.dailyAiSummary || ""
     });
 
   } catch (error) {
