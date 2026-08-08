@@ -555,14 +555,17 @@ exports.searchOrEstimateFood = async (req, res) => {
       Bạn là một chuyên gia dinh dưỡng.
       Nhiệm vụ:
       1. Kiểm tra xem cụm từ "${trimmedQuery}" có phải là một món ăn, thức uống hoặc thực phẩm thực sự hay không.
-      2. Nếu KHÔNG PHẢI là đồ ăn/thức uống (ví dụ: đồ vật, tên người, từ vô nghĩa, địa danh,...), hãy trả về "isFood": false và tất cả chỉ số dinh dưỡng bằng 0.
-      3. Nếu ĐÚNG LÀ đồ ăn/thức uống, hãy trả về "isFood": true và ước lượng thành phần dinh dưỡng trung bình cho 100g.
+      2. Kiểm tra xem tên món ăn có ĐỦ CỤ THỂ để tính toán calo và dinh dưỡng chính xác hay không.
+         - Nếu tên món quá chung chung, mơ hồ (Ví dụ: "cơm cá", "cơm gà", "thịt", "cá", "bún", "canh", "bánh",... vì có vô số cách chế biến với lượng calo hoàn toàn khác nhau) -> Đánh giá "isSpecific": false.
+         - Nếu là tên món ăn cụ thể có cách chế biến rõ ràng (Ví dụ: "Cơm gà xối mỡ", "Cơm cá kho tộ", "Ức gà luộc", "Phở bò chín",...) -> Đánh giá "isSpecific": true.
 
       Trả về MỘT chuỗi JSON hợp lệ, KHÔNG chứa định dạng Markdown, KHÔNG kèm giải thích.
 
       Định dạng bắt buộc:
       {
-        "isFood": true hoặc false,
+        "isFood": boolean,
+        "isSpecific": boolean,
+        "reason": "Lý do ngắn gọn nếu không phải đồ ăn hoặc nếu tên món quá chung chung (bằng tiếng Việt)",
         "caloriesPer100g": số nguyên,
         "proteinPer100g": số thực (1 chữ số thập phân),
         "carbsPer100g": số thực (1 chữ số thập phân),
@@ -585,11 +588,19 @@ exports.searchOrEstimateFood = async (req, res) => {
     if (!estimatedData.isFood) {
       return res.status(400).json({
         success: false,
-        message: `"${trimmedQuery}" không phải là một món ăn hoặc thực phẩm hợp lệ.`
+        message: estimatedData.reason || `"${trimmedQuery}" không phải là một món ăn hoặc thực phẩm hợp lệ.`
       });
     }
 
-    // 4. Nếu là đồ ăn hợp lệ -> Lưu kết quả AI phân tích vào Database
+    // 4. Nếu tên món QUÁ CHUNG CHUNG / MƠ HỒ -> Báo lỗi yêu cầu nhập cụ thể hơn, KHÔNG lưu vào Database
+    if (!estimatedData.isSpecific) {
+      return res.status(400).json({
+        success: false,
+        message: estimatedData.reason || `Món "${trimmedQuery}" quá chung chung. Vui lòng nhập cụ thể tên món (ví dụ: "Cơm gà xối mỡ", "Cơm cá kho tộ") để tính calo chính xác.`
+      });
+    }
+
+    // 5. Nếu là đồ ăn hợp lệ VÀ cụ thể -> Lưu kết quả AI phân tích vào Database
     food = new Food({
       name: trimmedQuery, 
       baseUnit: "100g",
@@ -601,7 +612,7 @@ exports.searchOrEstimateFood = async (req, res) => {
 
     await food.save();
 
-    // 5. Trả về cho Frontend
+    // 6. Trả về cho Frontend
     return res.status(200).json({
       success: true,
       source: 'ai_estimated',
