@@ -536,8 +536,10 @@ exports.searchOrEstimateFood = async (req, res) => {
     const { query } = req.query; // Nhận tên món ăn từ người dùng
     if (!query) return res.status(400).json({ message: "Vui lòng nhập tên món ăn." });
 
+    const trimmedQuery = query.trim();
+
     // 1. Tìm trong Database trước (Sử dụng Regex không phân biệt hoa thường)
-    let food = await Food.findOne({ name: { $regex: new RegExp(`^${escapeRegex(query.trim())}$`, 'i') } });
+    let food = await Food.findOne({ name: { $regex: new RegExp(`^${escapeRegex(trimmedQuery)}$`, 'i') } });
 
     // Nếu tìm thấy trong CSDL, trả về luôn để tiết kiệm lượt gọi API AI
     if (food) {
@@ -548,13 +550,19 @@ exports.searchOrEstimateFood = async (req, res) => {
       });
     }
 
-    // 2. Nếu KHÔNG có trong DB -> Gọi Gemini để phân tích dinh dưỡng
+    // 2. Nếu KHÔNG có trong DB -> Gọi Gemini để kiểm tra & phân tích dinh dưỡng
     const prompt = `
-      Bạn là một chuyên gia dinh dưỡng. Hãy ước lượng thành phần dinh dưỡng trung bình cho 100g của món ăn: "${query}".
+      Bạn là một chuyên gia dinh dưỡng.
+      Nhiệm vụ:
+      1. Kiểm tra xem cụm từ "${trimmedQuery}" có phải là một món ăn, thức uống hoặc thực phẩm thực sự hay không.
+      2. Nếu KHÔNG PHẢI là đồ ăn/thức uống (ví dụ: đồ vật, tên người, từ vô nghĩa, địa danh,...), hãy trả về "isFood": false và tất cả chỉ số dinh dưỡng bằng 0.
+      3. Nếu ĐÚNG LÀ đồ ăn/thức uống, hãy trả về "isFood": true và ước lượng thành phần dinh dưỡng trung bình cho 100g.
+
       Trả về MỘT chuỗi JSON hợp lệ, KHÔNG chứa định dạng Markdown, KHÔNG kèm giải thích.
-      
+
       Định dạng bắt buộc:
       {
+        "isFood": true hoặc false,
         "caloriesPer100g": số nguyên,
         "proteinPer100g": số thực (1 chữ số thập phân),
         "carbsPer100g": số thực (1 chữ số thập phân),
@@ -573,9 +581,17 @@ exports.searchOrEstimateFood = async (req, res) => {
     const rawText = result.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
     const estimatedData = JSON.parse(rawText);
 
-    // 3. Lưu kết quả AI phân tích vào Database để người sau tìm sẽ có ngay (không cần gọi AI nữa)
+    // 3. Nếu KHÔNG PHẢI đồ ăn -> Trả về lỗi, KHÔNG lưu vào Database
+    if (!estimatedData.isFood) {
+      return res.status(400).json({
+        success: false,
+        message: `"${trimmedQuery}" không phải là một món ăn hoặc thực phẩm hợp lệ.`
+      });
+    }
+
+    // 4. Nếu là đồ ăn hợp lệ -> Lưu kết quả AI phân tích vào Database
     food = new Food({
-      name: query, 
+      name: trimmedQuery, 
       baseUnit: "100g",
       caloriesPer100g: estimatedData.caloriesPer100g || 0,
       proteinPer100g: estimatedData.proteinPer100g || 0,
@@ -585,7 +601,7 @@ exports.searchOrEstimateFood = async (req, res) => {
 
     await food.save();
 
-    // 4. Trả về cho Frontend
+    // 5. Trả về cho Frontend
     return res.status(200).json({
       success: true,
       source: 'ai_estimated',
