@@ -346,42 +346,33 @@ exports.adjustMealPlanByAI = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
     }
 
-    // 2. Kiểm tra lịch ăn hiện tại
+    // 2. Kiểm tra thực đơn hiện tại
     const mealPlan = await MealPlan.findOne({ userId });
     if (!mealPlan || !mealPlan.meals || mealPlan.meals.length === 0) {
       return res.status(404).json({ message: "Bạn chưa có lịch ăn cố định nào để điều chỉnh!" });
     }
 
-    // 3. TÍNH TOÁN / LẤY MỤC TIÊU CALO VÀ MACROS CỦA USER
-    let target = {
-      calories: user.targetMacros?.calories,
-      protein: user.targetMacros?.protein,
-      carbs: user.targetMacros?.carbs,
-      fat: user.targetMacros?.fat
-    };
+    // 3. XÁC ĐỊNH CALO MỤC TIÊU CỦA USER
+    let targetCalories = user.targetMacros?.calories;
 
-    // Nếu chưa thiết lập targetMacros, tự động tính toán theo BMR / TDEE từ chỉ số cơ thể User
-    if (!target.calories || target.calories <= 0) {
+    // Nếu user chưa cài đặt targetMacros, tự động tính Calo mục tiêu dựa trên thông tin cơ thể
+    if (!targetCalories || targetCalories <= 0) {
       const weight = user.weight || 65;
       const height = user.height || 170;
       const age = user.age || 25;
       const isFemale = user.gender === "female";
 
-      // Công thức Mifflin-St Jeor tính BMR
+      // Công thức BMR Mifflin-St Jeor
       let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (isFemale ? -161 : 5);
-      let tdee = bmr * 1.375; // Hệ số vận động trung bình
+      let tdee = bmr * 1.375;
 
-      // Điều chỉnh calo theo mục tiêu cá nhân
       if (user.goal === "lose_weight") tdee -= 400;
       else if (user.goal === "gain_muscle") tdee += 300;
 
-      target.calories = Math.round(tdee);
-      target.protein = Math.round(weight * 2); // 2g protein / kg thể trọng
-      target.fat = Math.round((target.calories * 0.25) / 9); // 25% tổng calo từ Fat
-      target.carbs = Math.round((target.calories - (target.protein * 4) - (target.fat * 9)) / 4);
+      targetCalories = Math.round(tdee);
     }
 
-    // 4. Lấy thông tin thực đơn hiện tại và chỉ số dinh dưỡng gốc trên 100g
+    // 4. Lấy dữ liệu thực đơn và Calo trên 100g của từng món
     const foodIdsInPlan = [];
     mealPlan.meals.forEach(m => m.items.forEach(i => foodIdsInPlan.push(i.foodId)));
     
@@ -397,42 +388,27 @@ exports.adjustMealPlanByAI = async (req, res) => {
           foodId: item.foodId.toString(),
           foodName: item.foodName,
           currentQuantityGrams: item.quantityInGrams,
-          caloriesPer100g: baseFood ? baseFood.caloriesPer100g : 0,
-          proteinPer100g: baseFood ? baseFood.proteinPer100g : 0,
-          carbsPer100g: baseFood ? baseFood.carbsPer100g : 0,
-          fatPer100g: baseFood ? baseFood.fatPer100g : 0
+          caloriesPer100g: baseFood ? baseFood.caloriesPer100g : 0
         };
       })
     }));
 
-    const goalTextMap = {
-      lose_weight: "Giảm cân / Giảm mỡ (Ưu tiên giảm Carbs/Fat, giữ Protein)",
-      gain_muscle: "Tăng cơ / Tăng cân (Ưu tiên tăng Carbs và Protein)",
-      maintain: "Duy trì vóc dáng (Cân bằng dinh dưỡng)"
-    };
-
-    // 5. Xây dựng Prompt gửi cho Gemini AI
+    // 5. Prompt tối giản - CHỈ TẬP TRUNG VÀO CALO
     const prompt = `
-      Bạn là một chuyên gia dinh dưỡng thể hình cao cấp.
-      Nhiệm vụ: Điều chỉnh định lượng (quantityInGrams) của thực đơn hiện tại sao cho TỔNG NĂNG LƯỢNG VÀ MACROS cả ngày khớp chính xác nhất với mục tiêu của người dùng.
+      Bạn là chuyên gia dinh dưỡng. Hãy ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) các món ăn trong thực đơn sao cho TỔNG CALORIES cả ngày đạt bằng mức mục tiêu.
 
-      THÔNG TIN MỤC TIÊU CỦA NGƯỜI DÙNG:
-      - Định hướng: ${goalTextMap[user.goal] || "Duy trì vóc dáng"}
-      - Calories mục tiêu: ~${target.calories} kcal
-      - Protein mục tiêu: ~${target.protein}g
-      - Carbs mục tiêu: ~${target.carbs}g
-      - Fat mục tiêu: ~${target.fat}g
+      MỤC TIÊU CALORIES CẢ NGÀY: ~${targetCalories} kcal
 
-      THỰC ĐƠN HIỆN TẠI (KÈM CHỈ SỐ DINH DƯỠNG TRÊN 100G MỖI MÓN):
+      DANH SÁCH THỰC ĐƠN HIỆN TẠI (KÈM CALO TRÊN 100G MỖI MÓN):
       ${JSON.stringify(currentMealsContext, null, 2)}
 
-      QUY TẮC THÉP (NẾU VI PHẠM HỆ THỐNG SẼ LỖI):
+      QUY TẮC THÉP:
       1. TUYỆT ĐỐI KHÔNG thêm, xóa hay thay đổi bất kỳ món ăn nào (Giữ nguyên mealType, scheduledTime, foodId, foodName).
-      2. CHỈ ĐIỀU CHỈNH giá trị "quantityInGrams" của từng item.
-      3. Định lượng "quantityInGrams" phải là số nguyên dương thực tế cho một khẩu phần ăn (Tối thiểu 15g, Tối đa 500g).
-      4. Phân bổ hợp lý giữa các bữa ăn sao cho tổng Calo và Macros cả ngày tiệm cận mục tiêu nhất (độ lệch cho phép ±5%).
+      2. CHỈ thay đổi giá trị "quantityInGrams" của từng món ăn.
+      3. Định lượng "quantityInGrams" phải là số nguyên hợp lý (từ 15g đến 500g).
+      4. Điều chỉnh sao cho TỔNG CALORIES cả ngày xấp xỉ đúng ${targetCalories} kcal (độ lệch cho phép ±3%).
 
-      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG CHỨA BẤT KỲ VĂN BẢN KHÁC):
+      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG CHỨA VĂN BẢN KHÁC):
       {
         "meals": [
           {
@@ -467,7 +443,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
       return res.status(500).json({ message: "AI phản hồi sai cấu trúc dữ liệu yêu cầu!" });
     }
 
-    // 7. Tính toán lại dinh dưỡng chính xác ở Backend (dựa trên dữ liệu gốc từ DB)
+    // 7. Tính toán lại chi tiết dinh dưỡng dựa trên gram mới
     let dailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     const processedMeals = [];
 
@@ -538,8 +514,8 @@ exports.adjustMealPlanByAI = async (req, res) => {
     // 9. Trả kết quả về Frontend
     return res.status(200).json({ 
       success: true,
-      message: "AI đã cân bằng lại định lượng thực đơn theo mục tiêu Calo thành công!", 
-      targetMacros: target, 
+      message: "AI đã cân bằng lại định lượng thực đơn theo Calo thành công!", 
+      targetCalories: targetCalories, 
       masterMealPlan: updatedMealPlan 
     });
 
@@ -552,7 +528,6 @@ exports.adjustMealPlanByAI = async (req, res) => {
     });
   }
 };
-
 // =========================================================================
 // 4. API TÌM KIẾM VÀ ƯỚC LƯỢNG MÓN ĂN BẰNG AI
 // =========================================================================
