@@ -343,36 +343,26 @@ exports.adjustMealPlanByAI = async (req, res) => {
     // 1. Kiểm tra tài khoản
     const user = await User.findById(userId);
     if (!user) {
-      return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
+      return res.status(404).json({ success: false, message: "Không tìm thấy thông tin người dùng!" });
     }
 
-    // 2. Kiểm tra thực đơn hiện tại
+    // 2. KIỂM TRA TARGET MACROS CỦA USER (Bắt buộc phải có, không tự ý tính toán)
+    if (!user.targetMacros || !user.targetMacros.calories || user.targetMacros.calories <= 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Bạn chưa thiết lập mục tiêu Calo. Vui lòng vào phần cài đặt thông tin cá nhân để hoàn tất mục tiêu trước khi điều chỉnh thực đơn!" 
+      });
+    }
+
+    const targetCalories = Number(user.targetMacros.calories);
+
+    // 3. Kiểm tra thực đơn hiện tại
     const mealPlan = await MealPlan.findOne({ userId });
     if (!mealPlan || !mealPlan.meals || mealPlan.meals.length === 0) {
-      return res.status(404).json({ message: "Bạn chưa có lịch ăn cố định nào để điều chỉnh!" });
+      return res.status(404).json({ success: false, message: "Bạn chưa có lịch ăn cố định nào để điều chỉnh!" });
     }
 
-    // 3. XÁC ĐỊNH CALO MỤC TIÊU CỦA USER
-    let targetCalories = user.targetMacros?.calories;
-
-    // Nếu user chưa cài đặt targetMacros, tự động tính Calo mục tiêu dựa trên thông tin cơ thể
-    if (!targetCalories || targetCalories <= 0) {
-      const weight = user.weight || 65;
-      const height = user.height || 170;
-      const age = user.age || 25;
-      const isFemale = user.gender === "female";
-
-      // Công thức BMR Mifflin-St Jeor
-      let bmr = (10 * weight) + (6.25 * height) - (5 * age) + (isFemale ? -161 : 5);
-      let tdee = bmr * 1.375;
-
-      if (user.goal === "lose_weight") tdee -= 400;
-      else if (user.goal === "gain_muscle") tdee += 300;
-
-      targetCalories = Math.round(tdee);
-    }
-
-    // 4. Lấy dữ liệu thực đơn và Calo trên 100g của từng món
+    // 4. Lấy dữ liệu thực đơn và Calo trên 100g của từng món trực tiếp từ DB
     const foodIdsInPlan = [];
     mealPlan.meals.forEach(m => m.items.forEach(i => foodIdsInPlan.push(i.foodId)));
     
@@ -393,22 +383,26 @@ exports.adjustMealPlanByAI = async (req, res) => {
       })
     }));
 
-    // 5. Prompt tối giản - CHỈ TẬP TRUNG VÀO CALO
+    // 5. Prompt yêu cầu AI cân bằng chính xác theo targetCalories có sẵn
     const prompt = `
-      Bạn là chuyên gia dinh dưỡng. Hãy ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) các món ăn trong thực đơn sao cho TỔNG CALORIES cả ngày đạt bằng mức mục tiêu.
+      Bạn là một máy tính dinh dưỡng chuẩn xác.
+      Nhiệm vụ: Hãy ĐIỀU CHỈNH ĐỊNH LƯỢNG (quantityInGrams) của từng món ăn trong thực đơn sao cho TỔNG CALORIES toàn bộ thực đơn trong ngày BẰNG ĐÚNG CHÍNH XÁC mục tiêu của người dùng.
 
-      MỤC TIÊU CALORIES CẢ NGÀY: ~${targetCalories} kcal
+      MỤC TIÊU CALORIES CỦA NGƯỜI DÙNG: ${targetCalories} kcal
 
-      DANH SÁCH THỰC ĐƠN HIỆN TẠI (KÈM CALO TRÊN 100G MỖI MÓN):
+      DANH SÁCH THỰC ĐƠN HIỆN TẠI (KÈM CALO TRÊN 100G CỦA MỖI MÓN):
       ${JSON.stringify(currentMealsContext, null, 2)}
 
-      QUY TẮC THÉP:
-      1. TUYỆT ĐỐI KHÔNG thêm, xóa hay thay đổi bất kỳ món ăn nào (Giữ nguyên mealType, scheduledTime, foodId, foodName).
-      2. CHỈ thay đổi giá trị "quantityInGrams" của từng món ăn.
-      3. Định lượng "quantityInGrams" phải là số nguyên hợp lý (từ 15g đến 500g).
-      4. Điều chỉnh sao cho TỔNG CALORIES cả ngày xấp xỉ đúng ${targetCalories} kcal (độ lệch cho phép ±3%).
+      CÔNG THỨC TÍNH:
+      - Calo của từng món = (quantityInGrams * caloriesPer100g) / 100
+      - TỔNG CALO CẢ NGÀY = Sum(Calo của tất cả các món trong các bữa)
 
-      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG CHỨA VĂN BẢN KHÁC):
+      YÊU CẦU BẮT BUỘC:
+      1. GIỮ NGUYÊN danh sách món ăn, bữa ăn (Không thêm/bớt món, không sửa foodId, foodName, mealType).
+      2. CHỈ thay đổi giá trị "quantityInGrams" (là số nguyên dương từ 15g đến 500g).
+      3. Tính toán sao cho Tổng Calo cả ngày bằng đúng ${targetCalories} kcal (độ sai lệch tối đa không quá ±1%).
+
+      TRẢ VỀ ĐÚNG ĐỊNH DẠNG JSON SAU (KHÔNG CHỨA BẤT KỲ VĂN BẢN NÀO KHÁC):
       {
         "meals": [
           {
@@ -436,14 +430,14 @@ exports.adjustMealPlanByAI = async (req, res) => {
       parsedData = JSON.parse(rawText);
     } catch (parseError) {
       console.error("Lỗi parse JSON từ AI:", result.response.text());
-      return res.status(500).json({ message: "Dữ liệu AI trả về không hợp lệ, vui lòng thử lại!" });
+      return res.status(500).json({ success: false, message: "Dữ liệu AI trả về không hợp lệ, vui lòng thử lại!" });
     }
 
     if (!parsedData || !Array.isArray(parsedData.meals)) {
-      return res.status(500).json({ message: "AI phản hồi sai cấu trúc dữ liệu yêu cầu!" });
+      return res.status(500).json({ success: false, message: "AI phản hồi sai cấu trúc dữ liệu yêu cầu!" });
     }
 
-    // 7. Tính toán lại chi tiết dinh dưỡng dựa trên gram mới
+    // 7. Backend tính toán lại chính xác chỉ số dựa trên gram mới
     let dailyTotal = { calories: 0, protein: 0, carbs: 0, fat: 0 };
     const processedMeals = [];
 
@@ -514,7 +508,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
     // 9. Trả kết quả về Frontend
     return res.status(200).json({ 
       success: true,
-      message: "AI đã cân bằng lại định lượng thực đơn theo Calo thành công!", 
+      message: "AI đã cân bằng lại định lượng thực đơn theo mức Calo mục tiêu thành công!", 
       targetCalories: targetCalories, 
       masterMealPlan: updatedMealPlan 
     });
