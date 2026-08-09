@@ -2,7 +2,7 @@
 const mongoose = require("mongoose");
 
 function imageLimit(val) {
-  return val ? val.length <= 10 : true; // Kiểm tra an toàn tránh sập server nếu mảng trống
+  return val ? val.length <= 10 : true;
 }
 
 const postSchema = new mongoose.Schema({
@@ -14,14 +14,12 @@ const postSchema = new mongoose.Schema({
   },
   video: { type: String, default: null },
 
-  // Phân loại bài viết để Frontend render giao diện tương ứng
   postType: {
     type: String,
     enum: ['text', 'workout_log', 'diet_log', 'master_workout', 'master_diet'],
     default: 'text'
   },
 
-  // Lưu bản sao lịch tập / thực đơn tại thời điểm đăng bài
   originalReferenceId: { type: mongoose.Schema.Types.ObjectId, default: null },
   workoutSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
   dietSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -30,11 +28,12 @@ const postSchema = new mongoose.Schema({
   likes: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   commentsCount: { type: Number, default: 0 },
   savesCount: { type: Number, default: 0 },
+  
+  // 🌟 Thêm trường viewedBy để theo dõi user nào đã xem bài viết
+  viewedBy: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   viewsCount: { type: Number, default: 0 },
   sharesCount: { type: Number, default: 0 },
-  // =================================================================
-  // HỆ THỐNG KIỂM DUYỆT (Bắt buộc phải có để Admin Controller hoạt động)
-  // =================================================================
+
   status: {
     type: String,
     enum: ['approved', 'pending_review', 'hidden_by_system', 'banned'],

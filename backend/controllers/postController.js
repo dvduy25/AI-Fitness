@@ -196,31 +196,34 @@ exports.getFeed = async (req, res) => {
 
     const followingListObj = (currentUser.following || []).map(id => new mongoose.Types.ObjectId(id));
     const currentUserIdObj = new mongoose.Types.ObjectId(currentUserId);
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const now = new Date();
 
     const posts = await Post.aggregate([
-      // 🌟 TỐI ƯU: Chỉ lấy bài approved, code cực kỳ sạch và chạy nhanh
-      { $match: { 
-          createdAt: { $gte: thirtyDaysAgo },
-          status: 'approved' 
-      }},
+      // 1. Lấy tất cả bài viết approved (Không chặn cứng mốc 30 ngày)
+      { 
+        $match: { status: 'approved' } 
+      },
+
+      // 2. Lookup comments để lấy danh sách người dùng đã bình luận
       {
         $lookup: {
-          from: "comments", 
+          from: "comments",
           localField: "_id",
           foreignField: "postId",
           pipeline: [{ $project: { userId: 1 } }],
           as: "commentsData"
         }
       },
+
+      // 3. Chuẩn hóa dữ liệu tương tác
       {
         $addFields: {
           commenterIds: { $map: { input: "$commentsData", as: "c", in: "$$c.userId" } },
           totalLikes: { $size: { $ifNull: ["$likes", []] } }
         }
       },
+
+      // 4. Kiểm tra trạng thái tương tác của User hiện tại
       {
         $addFields: {
           isAuthorFollowed: { $in: ["$userId", followingListObj] },
@@ -231,24 +234,72 @@ exports.getFeed = async (req, res) => {
             $gt: [{ $size: { $setIntersection: ["$commenterIds", followingListObj] } }, 0] 
           },
           isLikedByMe: { $in: [currentUserIdObj, { $ifNull: ["$likes", []] }] },
-          isCommentedByMe: { $in: [currentUserIdObj, "$commenterIds"] }
+          isCommentedByMe: { $in: [currentUserIdObj, "$commenterIds"] },
+          isViewedByMe: { $in: [currentUserIdObj, { $ifNull: ["$viewedBy", []] }] }
         }
       },
+
+      // 5. LOẠI BỎ BÀI VIẾT: Chỉ lọc bỏ khi thỏa mãn CẢ 3 ĐIỀU KIỆN (Đã like AND Đã comment AND Đã xem)
+      // (Nếu muốn chỉ cần 1 trong 3 điều kiện là lọc bỏ thì đổi $and thành $or)
+      {
+        $match: {
+          $expr: {
+            $not: {
+              $and: [
+                "$isLikedByMe",
+                "$isCommentedByMe",
+                "$isViewedByMe"
+              ]
+            }
+          }
+        }
+      },
+
+      // 6. TÍNH SỐ NGÀY BÀI VIẾT ĐÃ TỒN TẠI
       {
         $addFields: {
-          feedScore: {
-            $add: [
-              { $cond: ["$isAuthorFollowed", 50, 0] },
-              { $cond: ["$isLikedByFollowed", 20, 0] },
-              { $cond: ["$isCommentedByFollowed", 20, 0] },
-              { $cond: ["$isLikedByMe", -500, 0] },
-              { $cond: ["$isCommentedByMe", -500, 0] },
-              { $multiply: ["$totalLikes", 2] }
+          ageInDays: {
+            $divide: [
+              { $subtract: [now, "$createdAt"] },
+              1000 * 60 * 60 * 24 // Quy đổi ms ra số ngày
             ]
           }
         }
       },
+      {
+        $addFields: {
+          // Tính số ngày vượt quá mốc 30 ngày (nếu <= 30 ngày thì = 0)
+          daysOver30: {
+            $max: [0, { $subtract: ["$ageInDays", 30] }]
+          }
+        }
+      },
+
+      // 7. TÍNH ĐIỂM BẢNG TIN (FEED SCORE) & TRỪ ĐIỂM SAU 30 NGÀY
+      {
+        $addFields: {
+          feedScore: {
+            $subtract: [
+              // Điểm cộng từ độ tương tác & theo dõi
+              {
+                $add: [
+                  { $cond: ["$isAuthorFollowed", 50, 0] },
+                  { $cond: ["$isLikedByFollowed", 20, 0] },
+                  { $cond: ["$isCommentedByFollowed", 20, 0] },
+                  { $multiply: ["$totalLikes", 2] }
+                ]
+              },
+              // Điểm trừ: Mỗi ngày vượt quá 30 ngày sẽ bị trừ 2 điểm
+              { $multiply: ["$daysOver30", 2] }
+            ]
+          }
+        }
+      },
+
+      // 8. SẮP XẾP THEO ĐIỂM CAO NHẤT ĐẾN THẤP NHẤT
       { $sort: { feedScore: -1, createdAt: -1 } },
+
+      // 9. POPULATE THÔNG TIN TÁC GIẢ
       {
         $lookup: {
           from: "users",
@@ -261,11 +312,14 @@ exports.getFeed = async (req, res) => {
         }
       },
       { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } },
+
+      // 10. LOẠI BỎ CÁC TRƯỜNG DỮ LIỆU TẠM
       { 
         $project: { 
           commentsData: 0, commenterIds: 0, isAuthorFollowed: 0, 
           isLikedByFollowed: 0, isCommentedByFollowed: 0, 
-          isLikedByMe: 0, isCommentedByMe: 0, totalLikes: 0, feedScore: 0 
+          isLikedByMe: 0, isCommentedByMe: 0, isViewedByMe: 0, 
+          totalLikes: 0, ageInDays: 0, daysOver30: 0, feedScore: 0 
         } 
       }
     ]);
@@ -278,15 +332,21 @@ exports.getFeed = async (req, res) => {
 
 exports.getPostById = async (req, res) => {
   try {
+    const userId = req.user ? (req.user.id || req.user._id) : null;
+
+    const updateQuery = { $inc: { viewsCount: 1 } };
+    if (userId) {
+      updateQuery.$addToSet = { viewedBy: userId }; // Thêm userId vào viewedBy nếu chưa có
+    }
+
     const post = await Post.findByIdAndUpdate(
       req.params.postId, 
-      { $inc: { viewsCount: 1 } },
+      updateQuery,
       { new: true }
     ).populate("userId", "name avatar role isLocked");
 
     if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
     
-    // 🌟 Kiểm tra status trực tiếp trên bài viết
     if (post.status !== 'approved') {
       return res.status(403).json({ success: false, message: "Bài viết này hiện không khả dụng." });
     }
@@ -296,7 +356,6 @@ exports.getPostById = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-
 // ==========================================
 // 5. TƯƠNG TÁC (LIKE / COMMENT)
 // ==========================================
