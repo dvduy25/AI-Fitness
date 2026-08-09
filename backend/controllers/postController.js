@@ -609,7 +609,40 @@ exports.getFollowingPosts = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+// ==========================================
+// 9b. LẤY BÀI VIẾT CỦA MỘT USER CỤ THỂ (TRANG CÁ NHÂN)
+// ==========================================
+exports.getUserPosts = async (req, res) => {
+  try {
+    const { userId } = req.params;
 
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, message: "userId không hợp lệ" });
+    }
+
+    const posts = await Post.aggregate([
+      { $match: {
+          userId: new mongoose.Types.ObjectId(userId),
+          status: 'approved'
+      }},
+      { $sort: { createdAt: -1 } },
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          pipeline: [{ $project: { name: 1, avatar: 1, role: 1, isVerified: 1, isLocked: 1 } }],
+          as: "userId"
+        }
+      },
+      { $unwind: { path: "$userId", preserveNullAndEmptyArrays: true } }
+    ]);
+
+    res.status(200).json({ success: true, posts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
 // ==========================================
 // 10. LẤY CÁC BÀI VIẾT MÌNH ĐÃ THẢ TIM (LIKE)
 // ==========================================
