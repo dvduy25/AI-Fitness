@@ -545,7 +545,7 @@ exports.adjustMealPlanByAI = async (req, res) => {
 exports.searchOrEstimateFood = async (req, res) => {
   try {
     const { query } = req.query; // Nhận tên món ăn từ người dùng
-    if (!query) return res.status(400).json({ message: "Vui lòng nhập tên món ăn." });
+    if (!query) return res.status(400).json({ success: false, message: "Vui lòng nhập tên món ăn." });
 
     const trimmedQuery = query.trim();
 
@@ -569,6 +569,11 @@ exports.searchOrEstimateFood = async (req, res) => {
       2. Kiểm tra xem tên món ăn có ĐỦ CỤ THỂ để tính toán calo và dinh dưỡng chính xác hay không.
          - Nếu tên món quá chung chung, mơ hồ (Ví dụ: "cơm cá", "cơm gà", "thịt", "cá", "bún", "canh", "bánh",... vì có vô số cách chế biến với lượng calo hoàn toàn khác nhau) -> Đánh giá "isSpecific": false.
          - Nếu là tên món ăn cụ thể có cách chế biến rõ ràng (Ví dụ: "Cơm gà xối mỡ", "Cơm cá kho tộ", "Ức gà luộc", "Phở bò chín",...) -> Đánh giá "isSpecific": true.
+      3. Đánh giá mức độ lành mạnh "healthStatus" dựa trên thành phần dinh dưỡng:
+         - "healthy": Thực phẩm giàu dinh dưỡng, ít mỡ xấu, giàu đạm/xơ (Ví dụ: ức gà luộc, rau củ, cá hấp...).
+         - "normal": Món ăn hàng ngày bình thường, cân bằng.
+         - "restricted": Đồ ăn chiên rán nhiều dầu mỡ, nhiều đường, thức ăn nhanh, chế biến sẵn nên hạn chế.
+      4. Đánh giá điểm dinh dưỡng "rating" (từ 1 đến 5 sao) dựa trên độ lành mạnh của món ăn.
 
       Trả về MỘT chuỗi JSON hợp lệ, KHÔNG chứa định dạng Markdown, KHÔNG kèm giải thích.
 
@@ -580,7 +585,9 @@ exports.searchOrEstimateFood = async (req, res) => {
         "caloriesPer100g": số nguyên,
         "proteinPer100g": số thực (1 chữ số thập phân),
         "carbsPer100g": số thực (1 chữ số thập phân),
-        "fatPer100g": số thực (1 chữ số thập phân)
+        "fatPer100g": số thực (1 chữ số thập phân),
+        "healthStatus": "healthy" | "normal" | "restricted",
+        "rating": số nguyên từ 1 đến 5
       }
     `;
 
@@ -611,19 +618,28 @@ exports.searchOrEstimateFood = async (req, res) => {
       });
     }
 
-    // 5. Nếu là đồ ăn hợp lệ VÀ cụ thể -> Lưu kết quả AI phân tích vào Database
+    // Kiểm tra và chuẩn hóa giá trị enum healthStatus
+    const validHealthStatuses = ["healthy", "normal", "restricted"];
+    const healthStatus = validHealthStatuses.includes(estimatedData.healthStatus) 
+      ? estimatedData.healthStatus 
+      : "normal";
+
+    // 5. Lưu thông tin đầy đủ vào Database theo FoodSchema mới
     food = new Food({
       name: trimmedQuery, 
+      imageUrl: "", // Mặc định để rỗng
       baseUnit: "100g",
-      caloriesPer100g: estimatedData.caloriesPer100g || 0,
-      proteinPer100g: estimatedData.proteinPer100g || 0,
-      carbsPer100g: estimatedData.carbsPer100g || 0,
-      fatPer100g: estimatedData.fatPer100g || 0
+      caloriesPer100g: Math.max(0, Math.round(Number(estimatedData.caloriesPer100g) || 0)),
+      proteinPer100g: Math.max(0, Number(estimatedData.proteinPer100g) || 0),
+      carbsPer100g: Math.max(0, Number(estimatedData.carbsPer100g) || 0),
+      fatPer100g: Math.max(0, Number(estimatedData.fatPer100g) || 0),
+      rating: Math.min(5, Math.max(1, Math.round(Number(estimatedData.rating) || 5))),
+      healthStatus: healthStatus
     });
 
     await food.save();
 
-    // 6. Trả về cho Frontend
+    // 6. Trả về kết quả cho Frontend
     return res.status(200).json({
       success: true,
       source: 'ai_estimated',
