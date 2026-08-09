@@ -241,17 +241,14 @@ exports.getFeed = async (req, res) => {
 
       // 5. LOẠI BỎ BÀI VIẾT: Chỉ lọc bỏ khi thỏa mãn CẢ 3 ĐIỀU KIỆN (Đã like AND Đã comment AND Đã xem)
       // (Nếu muốn chỉ cần 1 trong 3 điều kiện là lọc bỏ thì đổi $and thành $or)
+      // 5. LOẠI BỎ BÀI VIẾT: Ẩn bài viết nếu dính bất kỳ 1 trong 3 trạng thái
       {
         $match: {
-          $expr: {
-            $not: {
-              $and: [
-                "$isLikedByMe",
-                "$isCommentedByMe",
-                "$isViewedByMe"
-              ]
-            }
-          }
+          $nor: [
+            { isLikedByMe: true },
+            { isCommentedByMe: true },
+            { isViewedByMe: true }
+          ]
         }
       },
 
