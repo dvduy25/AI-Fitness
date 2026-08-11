@@ -53,6 +53,7 @@ router.delete("/notifications/:notiId", verifyToken, postController.deleteNotifi
 // 4. CHI TIẾT BÀI VIẾT, SỬA & XÓA (ROUTE ĐỘNG NẰM DƯỚI)
 // ==========================================
 router.get("/:postId", verifyToken, postController.getPostById);
+router.get("/user/:userId", verifyToken, postController.getUserPosts);
 router.put("/:postId", verifyToken, checkBannedWords, postController.updatePost); // Quét từ khóa khi sửa bài
 router.delete("/:postId", verifyToken, postController.deletePost);
 
