@@ -1,4 +1,4 @@
-import api from "./services/api";
+import api from "../services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { X, Activity, Bookmark, Utensils, Heart, MessageCircle, Eye, Share2, BadgeCheck, Send, Flag } from 'lucide-react';

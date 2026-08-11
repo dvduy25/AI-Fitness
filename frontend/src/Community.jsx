@@ -6,21 +6,22 @@ import {
   Heart, MessageCircle, Send, Activity, Utensils,
   Trash2, Image as ImageIcon, Film, X,
   Dumbbell, Apple, Bookmark, Flame, Search, User,
-  Eye, Share2, Bell, BadgeCheck, UserPlus, UserMinus, Info, Link, Edit, UserCircle, Users
+  Eye, Share2, Bell, BadgeCheck, UserPlus, UserMinus, Info, Link, Edit, UserCircle, Users, Sparkles
 } from 'lucide-react';
 
 // IMPORT CÁC COMPONENT CON
-import PlanDetailsModal from './PlanDetailsModal';
-import MediaCarousel from './MediaCarousel';
-import PostDetailsModal from './PostDetailsModal';
-import PostItem from './PostItem'; // Đảm bảo đã import
-import NotificationSidebar from './NotificationSidebar'; // Đảm bảo đã import
-
+import PlanDetailsModal from './post/PlanDetailsModal';
+import MediaCarousel from './post/MediaCarousel';
+import PostDetailsModal from './post/PostDetailsModal';
+import PostItem from './post/PostItem';
+import NotificationSidebar from './post/NotificationSidebar';
 
 export default function Community() {
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
+  const [userProfilePosts, setUserProfilePosts] = useState([]); // State riêng lưu bài viết trang cá nhân
   const [loading, setLoading] = useState(true);
+  const [loadingProfilePosts, setLoadingProfilePosts] = useState(false);
 
   const [activeTab, setActiveTab] = useState('feed');
 
@@ -57,6 +58,14 @@ export default function Community() {
   const videoInputRef = useRef(null);
   const token = localStorage.getItem("token");
 
+  // --- REQUEST GUARDS: chống race-condition khi đổi tab / đổi profile liên tục ---
+  // Đây là nguyên nhân gốc của bug "bài viết trang cá nhân hiện khác nhau tùy tab đến từ":
+  // nếu bấm đổi tab (feed/latest/liked) rồi mở nhanh trang cá nhân, các request cũ có thể
+  // trả về SAU request mới và ghi đè state bằng dữ liệu cũ/sai. Dùng token tăng dần để
+  // chỉ áp dụng kết quả của request MỚI NHẤT, bỏ qua mọi response đến muộn.
+  const feedFetchToken = useRef(0);
+  const profileFetchToken = useRef(0);
+
   const getCurrentUser = () => {
     if (!token) return null;
     try {
@@ -74,6 +83,7 @@ export default function Community() {
 
   // ================= TẢI DỮ LIỆU BAN ĐẦU =================
   const fetchPosts = async (type = activeTab) => {
+    const myToken = ++feedFetchToken.current;
     setLoading(true);
     try {
       let endpoint = `/posts/feed`;
@@ -82,13 +92,14 @@ export default function Community() {
       else if (type === 'liked') endpoint = `/posts/liked`;
 
       const response = await api.get(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      if (myToken !== feedFetchToken.current) return; // có request mới hơn, bỏ qua kết quả cũ này
       if (response.data.success) {
         setPosts(response.data.posts);
       }
     } catch (error) {
-      console.error(error);
+      if (myToken === feedFetchToken.current) console.error("Lỗi tải bài viết:", error);
     } finally {
-      setLoading(false);
+      if (myToken === feedFetchToken.current) setLoading(false);
     }
   };
 
@@ -115,33 +126,52 @@ export default function Community() {
 
   // ================= XỬ LÝ PROFILE =================
   const handleViewProfile = async (userId, basicInfo) => {
+    const myToken = ++profileFetchToken.current;
     setSavedScrollPos(window.scrollY);
+    setUserProfilePosts([]); // xóa ngay dữ liệu cũ, tránh nháy bài viết của user/tab trước đó
     setSelectedUserFilter({ id: userId, ...basicInfo, isLoading: true });
+    setLoadingProfilePosts(true);
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
-      const res = await api.get(`/users/${userId}/profile`, {
+      // 1. Tải thông tin Profile User
+      const resUser = await api.get(`/users/${userId}/profile`, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      if (res.data.success) {
+      if (myToken !== profileFetchToken.current) return; // đã có lượt xem profile mới hơn
+      if (resUser.data.success) {
         setSelectedUserFilter({
           id: userId,
-          ...res.data.user,
-          followersCount: res.data.user.followers?.length || 0,
-          followingCount: res.data.user.following?.length || 0,
+          ...resUser.data.user,
+          followersCount: resUser.data.user.followers?.length || 0,
+          followingCount: resUser.data.user.following?.length || 0,
           isLoading: false
         });
       }
+
+      // 2. Tải RIÊNG danh sách bài viết chuẩn của User này (không lọc theo Tab)
+      const resPosts = await api.get(`/posts/user/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (myToken !== profileFetchToken.current) return;
+      if (resPosts.data.success) {
+        setUserProfilePosts(resPosts.data.posts);
+      }
     } catch (error) {
+      if (myToken !== profileFetchToken.current) return;
       console.error("Lỗi tải thông tin user", error);
       setSelectedUserFilter(prev => ({
-        ...prev, followersCount: 0, followingCount: 0, bio: "Đang cập nhật tiểu sử...", isLoading: false
+        ...prev, followersCount: 0, followingCount: 0, bio: "Chưa cập nhật tiểu sử.", isLoading: false
       }));
+    } finally {
+      if (myToken === profileFetchToken.current) setLoadingProfilePosts(false);
     }
   };
 
   const handleCloseProfile = () => {
+    profileFetchToken.current++; // vô hiệu hóa mọi request profile đang bay
     setSelectedUserFilter(null);
+    setUserProfilePosts([]);
     setTimeout(() => {
       window.scrollTo({ top: savedScrollPos, behavior: 'instant' });
     }, 10);
@@ -213,7 +243,13 @@ export default function Community() {
         setNewPostContent(""); setSelectedImages([]); setSelectedVideo(null); setAttachPlan(null);
         if (imageInputRef.current) imageInputRef.current.value = "";
         if (videoInputRef.current) videoInputRef.current.value = "";
-        fetchPosts(activeTab);
+
+        // Nếu đang ở trang cá nhân của chính mình, cập nhật luôn
+        if (selectedUserFilter?.id === currentUserId) {
+          handleViewProfile(currentUserId, { name: currentUser?.name });
+        } else {
+          fetchPosts(activeTab);
+        }
       }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi đăng bài!"); }
   };
@@ -224,7 +260,9 @@ export default function Community() {
     try {
       const res = await api.put(`/posts/${postId}`, { content: editingPost.content }, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
-        setPosts(posts.map(p => p._id === postId ? { ...p, content: editingPost.content } : p));
+        const updateFn = list => list.map(p => p._id === postId ? { ...p, content: editingPost.content } : p);
+        setPosts(updateFn);
+        setUserProfilePosts(updateFn);
         setEditingPost(null);
       }
     } catch (error) {
@@ -236,7 +274,8 @@ export default function Community() {
     if (!window.confirm("Bạn có chắc muốn xóa bài viết này? Hành động này không thể hoàn tác.")) return;
     try {
       await api.delete(`/posts/${postId}`, { headers: { Authorization: `Bearer ${token}` } });
-      setPosts(posts.filter(p => p._id !== postId));
+      setPosts(prev => prev.filter(p => p._id !== postId));
+      setUserProfilePosts(prev => prev.filter(p => p._id !== postId));
       if (viewingPostDetails?._id === postId) setViewingPostDetails(null);
     } catch (error) {
       alert("Lỗi khi xóa bài viết.");
@@ -249,7 +288,9 @@ export default function Community() {
       const response = await api.post(`/library`, { postId, type }, { headers: { Authorization: `Bearer ${token}` } });
       if (response.data.success) {
         alert(`✅ ${response.data.message}`);
-        setPosts(posts.map(p => p._id === postId ? { ...p, savesCount: (p.savesCount || 0) + 1 } : p));
+        const updateSaves = list => list.map(p => p._id === postId ? { ...p, savesCount: (p.savesCount || 0) + 1 } : p);
+        setPosts(updateSaves);
+        setUserProfilePosts(updateSaves);
         if (viewingPostDetails?._id === postId) setViewingPostDetails(prev => ({ ...prev, savesCount: (prev.savesCount || 0) + 1 }));
       }
     } catch (error) { alert(error.response?.data?.message || "Lỗi khi lưu dữ liệu."); }
@@ -257,17 +298,32 @@ export default function Community() {
 
   const handleToggleLike = async (postId) => {
     try {
-      const postIndex = posts.findIndex(p => p._id === postId);
-      const isLiked = posts[postIndex].likes.includes(currentUserId);
-      const updatedPosts = [...posts];
+      const updateLikes = list => list.map(p => {
+        if (p._id === postId) {
+          const isLiked = p.likes?.includes(currentUserId);
+          const newLikes = isLiked ? p.likes.filter(id => id !== currentUserId) : [...(p.likes || []), currentUserId];
+          return { ...p, likes: newLikes };
+        }
+        return p;
+      });
 
-      if (isLiked) updatedPosts[postIndex].likes = updatedPosts[postIndex].likes.filter(id => id !== currentUserId);
-      else updatedPosts[postIndex].likes.push(currentUserId);
+      setPosts(updateLikes);
+      setUserProfilePosts(updateLikes);
 
-      setPosts(updatedPosts);
-      if (viewingPostDetails?._id === postId) setViewingPostDetails(updatedPosts[postIndex]);
+      if (viewingPostDetails?._id === postId) {
+        setViewingPostDetails(prev => {
+          const isLiked = prev.likes?.includes(currentUserId);
+          return {
+            ...prev,
+            likes: isLiked ? prev.likes.filter(id => id !== currentUserId) : [...(prev.likes || []), currentUserId]
+          };
+        });
+      }
+
       await api.post(`/posts/${postId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
-    } catch (error) { fetchPosts(activeTab); }
+    } catch (error) {
+      fetchPosts(activeTab);
+    }
   };
 
   const handleViewPostDetails = async (post) => {
@@ -276,7 +332,9 @@ export default function Community() {
       const res = await api.get(`/posts/${post._id}`, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
         setViewingPostDetails(res.data.post);
-        setPosts(posts.map(p => p._id === post._id ? res.data.post : p));
+        const updatePost = list => list.map(p => p._id === post._id ? res.data.post : p);
+        setPosts(updatePost);
+        setUserProfilePosts(updatePost);
       }
     } catch (error) { console.error(error); }
   };
@@ -291,7 +349,9 @@ export default function Community() {
     try {
       const res = await api.post(`/posts/${sharingPostId}/share`, {}, { headers: { Authorization: `Bearer ${token}` } });
       if (res.data.success) {
-        setPosts(posts.map(p => p._id === sharingPostId ? { ...p, sharesCount: res.data.sharesCount } : p));
+        const updateShare = list => list.map(p => p._id === sharingPostId ? { ...p, sharesCount: res.data.sharesCount } : p);
+        setPosts(updateShare);
+        setUserProfilePosts(updateShare);
         if (viewingPostDetails?._id === sharingPostId) setViewingPostDetails(prev => ({ ...prev, sharesCount: res.data.sharesCount }));
       }
     } catch (error) { console.error(error); }
@@ -313,15 +373,13 @@ export default function Community() {
     }
   };
 
-  // ================= XỬ LÝ THÔNG BÁO =================
+  // ================= XỬ LÝ THÔNG BÁO & BÁO CÁO =================
   const handleNotificationClick = async (noti) => {
     setRealNotifications(prev => prev.map(n => n._id === noti._id ? { ...n, isRead: true } : n));
     try { await api.patch(`/posts/notifications/${noti._id}/read`, {}, { headers: { Authorization: `Bearer ${token}` } }); } catch (e) { }
 
-    if (noti.type === 'follow') {
-      if (noti.senderId) {
-        handleViewProfile(noti.senderId._id, { name: noti.senderId.name, isVerified: noti.senderId.isVerified, avatar: noti.senderId.avatar });
-      }
+    if (noti.type === 'follow' && noti.senderId) {
+      handleViewProfile(noti.senderId._id, { name: noti.senderId.name, isVerified: noti.senderId.isVerified, avatar: noti.senderId.avatar });
       return;
     }
 
@@ -329,7 +387,7 @@ export default function Community() {
       try {
         const res = await api.get(`/posts/${noti.postId}`, { headers: { Authorization: `Bearer ${token}` } });
         if (res.data.success) setViewingPostDetails(res.data.post);
-        else alert("Bài viết này không còn tồn tại hoặc đã bị xóa.");
+        else alert("Bài viết này không còn tồn tại.");
       } catch (error) { alert("Không thể tải bài viết lúc này."); }
     }
   };
@@ -341,38 +399,44 @@ export default function Community() {
       setRealNotifications(prev => prev.filter(n => n._id !== notiId));
     } catch (error) { console.error("Lỗi xóa thông báo", error); }
   };
-  // ================= XỬ LÝ BÁO CÁO =================
-  // Thêm tham số 'reason' vào function
-const handleReportPost = async (postId, reason) => { 
-  // 1. Không dùng prompt() nữa vì chúng ta đã có Modal xịn rồi!
-  
-  // 2. Chặn nếu không có lý do (đề phòng thêm)
-  if (!reason) return; 
 
-  try {
-    // 3. Code gửi API của bạn giữ nguyên, ví dụ:
-    // await axios.post(`/api/posts/${postId}/report`, { reason });
-    
-    alert("Báo cáo thành công!"); // Hoặc dùng toast thông báo thành công
-  } catch (error) {
-    console.error("Lỗi khi báo cáo:", error);
-  }
-};
-
-  // ================= BỘ LỌC TÌM KIẾM =================
-  const filteredPosts = posts.filter(post => {
-    if (selectedUserFilter && post.userId?._id !== selectedUserFilter.id) return false;
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      return post.content?.toLowerCase().includes(term) || post.userId?.name?.toLowerCase().includes(term);
+  const handleReportPost = async (postId, reason) => {
+    if (!reason) return;
+    try {
+      await api.post(`/posts/${postId}/report`, { reason }, { headers: { Authorization: `Bearer ${token}` } });
+      alert("Đã gửi báo cáo bài viết tới Quản trị viên.");
+    } catch (error) {
+      alert(error.response?.data?.message || "Lỗi khi báo cáo bài viết.");
     }
-    return true;
-  });
+  };
 
-  if (loading && posts.length === 0) return <div className="flex justify-center items-center min-h-[70vh]"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div></div>;
+  // ================= TÍNH DANH SÁCH BÀI VIẾT HIỂN THỊ =================
+  const displayPosts = selectedUserFilter
+    ? userProfilePosts.filter(post => {
+        if (searchTerm) {
+          const term = searchTerm.toLowerCase();
+          return post.content?.toLowerCase().includes(term);
+        }
+        return true;
+      })
+    : posts.filter(post => {
+        if (searchTerm) {
+          const term = searchTerm.toLowerCase();
+          return post.content?.toLowerCase().includes(term) || post.userId?.name?.toLowerCase().includes(term);
+        }
+        return true;
+      });
+
+  if (loading && posts.length === 0 && !selectedUserFilter) {
+    return (
+      <div className="flex justify-center items-center min-h-[70vh]">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full flex gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
+    <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full flex gap-4 sm:gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
 
       {/* ================= CỘT TRÁI: ĐANG THEO DÕI ================= */}
       <div className="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-24 space-y-6 z-10">
@@ -416,7 +480,7 @@ const handleReportPost = async (postId, reason) => {
       </div>
 
       {/* ================= CỘT GIỮA: NỘI DUNG CHÍNH ================= */}
-      <div className="flex-1 max-w-2xl min-w-0 w-full flex flex-col gap-6">
+      <div className="flex-1 max-w-2xl min-w-0 w-full flex flex-col gap-4 sm:gap-6">
 
         {/* === MOBILE ACTION BAR === */}
         <div className="lg:hidden flex items-center justify-between bg-gray-800/90 backdrop-blur-md border border-gray-700/60 p-2.5 rounded-2xl shadow-xl z-20 relative">
@@ -441,13 +505,13 @@ const handleReportPost = async (postId, reason) => {
 
         {/* Thanh Tìm Kiếm */}
         <div className="relative z-10 shadow-lg">
-          <div className="absolute inset-y-0 left-0 pl-5 flex items-center pointer-events-none">
+          <div className="absolute inset-y-0 left-0 pl-4 sm:pl-5 flex items-center pointer-events-none">
             <Search className="h-5 w-5 text-gray-400" />
           </div>
           <input
             type="text"
             placeholder="Tìm kiếm nội dung bài viết, người dùng..."
-            className="block w-full pl-12 pr-4 py-4 border border-gray-700 rounded-2xl bg-gray-800/80 backdrop-blur-md text-gray-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 transition-all text-base"
+            className="block w-full pl-11 sm:pl-12 pr-4 py-3.5 sm:py-4 border border-gray-700 rounded-2xl bg-gray-800/80 backdrop-blur-md text-gray-100 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 transition-all text-base"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -455,7 +519,7 @@ const handleReportPost = async (postId, reason) => {
 
         {/* PROFILE CARD */}
         {selectedUserFilter && (
-          <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/80 p-6 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden animate-in slide-in-from-top-4 duration-300 group">
+          <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/80 p-5 sm:p-8 rounded-3xl shadow-2xl relative overflow-hidden animate-in slide-in-from-top-4 duration-300 group">
             <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-emerald-900/40 to-transparent"></div>
             <button
               onClick={handleCloseProfile}
@@ -468,14 +532,14 @@ const handleReportPost = async (postId, reason) => {
                 <img
                   src={selectedUserFilter.avatar || "https://ui-avatars.com/api/?name=U"}
                   alt="avatar"
-                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-800 shadow-xl ring-2 ring-emerald-500/30 group-hover:ring-emerald-500/60 transition-all"
+                  className="w-24 h-24 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-gray-800 shadow-xl ring-2 ring-emerald-500/30 group-hover:ring-emerald-500/60 transition-all"
                 />
                 {selectedUserFilter.isLoading && (
                   <div className="absolute inset-0 rounded-full border-4 border-emerald-500 border-t-transparent animate-spin"></div>
                 )}
               </div>
               <div className="flex-1 text-center sm:text-left w-full mt-2">
-                <h2 className="text-2xl sm:text-3xl font-bold text-white flex items-center justify-center sm:justify-start gap-2 mb-3">
+                <h2 className="text-xl sm:text-3xl font-bold text-white flex items-center justify-center sm:justify-start gap-2 mb-3">
                   {selectedUserFilter.name}
                   {selectedUserFilter.isVerified && <BadgeCheck className="w-6 h-6 sm:w-7 sm:h-7 text-blue-400" />}
                 </h2>
@@ -483,16 +547,16 @@ const handleReportPost = async (postId, reason) => {
                   {selectedUserFilter.bio || "Thành viên tích cực của AI Fitness Community. Chúc bạn một ngày tập luyện hiệu quả!"}
                 </p>
                 <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 mb-6">
-                  <div className="bg-gray-900/60 border border-gray-700/50 px-4 py-3 rounded-2xl text-center min-w-[100px]">
-                    <p className="text-xl sm:text-2xl font-bold text-white">{selectedUserFilter.isLoading ? "..." : (selectedUserFilter.followersCount || 0)}</p>
+                  <div className="bg-gray-900/60 border border-gray-700/50 px-4 py-3 rounded-2xl text-center min-w-[90px] sm:min-w-[100px]">
+                    <p className="text-lg sm:text-2xl font-bold text-white">{selectedUserFilter.isLoading ? "..." : (selectedUserFilter.followersCount || 0)}</p>
                     <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider font-semibold mt-1">Người theo dõi</p>
                   </div>
-                  <div className="bg-gray-900/60 border border-gray-700/50 px-4 py-3 rounded-2xl text-center min-w-[100px]">
-                    <p className="text-xl sm:text-2xl font-bold text-white">{selectedUserFilter.isLoading ? "..." : (selectedUserFilter.followingCount || 0)}</p>
+                  <div className="bg-gray-900/60 border border-gray-700/50 px-4 py-3 rounded-2xl text-center min-w-[90px] sm:min-w-[100px]">
+                    <p className="text-lg sm:text-2xl font-bold text-white">{selectedUserFilter.isLoading ? "..." : (selectedUserFilter.followingCount || 0)}</p>
                     <p className="text-[10px] sm:text-xs text-gray-400 uppercase tracking-wider font-semibold mt-1">Đang theo dõi</p>
                   </div>
-                  <div className="bg-emerald-900/20 border border-emerald-500/30 px-4 py-3 rounded-2xl text-center min-w-[100px]">
-                    <p className="text-xl sm:text-2xl font-bold text-emerald-400">{filteredPosts.length}</p>
+                  <div className="bg-emerald-900/20 border border-emerald-500/30 px-4 py-3 rounded-2xl text-center min-w-[90px] sm:min-w-[100px]">
+                    <p className="text-lg sm:text-2xl font-bold text-emerald-400">{displayPosts.length}</p>
                     <p className="text-[10px] sm:text-xs text-emerald-500/80 uppercase tracking-wider font-semibold mt-1">Bài viết</p>
                   </div>
                 </div>
@@ -518,13 +582,13 @@ const handleReportPost = async (postId, reason) => {
 
         {/* FORM ĐĂNG BÀI */}
         {!selectedUserFilter && (
-          <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/60 p-5 sm:p-6 rounded-3xl shadow-xl">
+          <div className="bg-gray-800/80 backdrop-blur-md border border-gray-700/60 p-4 sm:p-6 rounded-3xl shadow-xl">
             <form onSubmit={handleCreatePost} className="flex flex-col gap-4">
               <textarea
                 value={newPostContent}
                 onChange={(e) => setNewPostContent(e.target.value)}
                 placeholder="Hôm nay bạn đã tập luyện thế nào? Chia sẻ cùng mọi người nhé..."
-                className="w-full bg-gray-900/60 border border-gray-700/80 rounded-2xl p-5 text-gray-100 text-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 resize-none h-28 placeholder-gray-500"
+                className="w-full bg-gray-900/60 border border-gray-700/80 rounded-2xl p-4 sm:p-5 text-gray-100 text-base sm:text-lg focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 resize-none h-24 sm:h-28 placeholder-gray-500"
               />
 
               {attachPlan && (
@@ -542,9 +606,9 @@ const handleReportPost = async (postId, reason) => {
               )}
 
               {(selectedImages.length > 0 || selectedVideo) && (
-                <div className="flex gap-4 mt-2 overflow-x-auto pb-3 custom-scrollbar">
+                <div className="flex gap-3 sm:gap-4 mt-2 overflow-x-auto pb-3 custom-scrollbar">
                   {selectedImages.map((img, idx) => (
-                    <div key={idx} className="relative flex-shrink-0 w-24 h-24 rounded-2xl overflow-hidden border border-gray-600 shadow-md">
+                    <div key={idx} className="relative flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border border-gray-600 shadow-md">
                       <img src={URL.createObjectURL(img)} alt={`preview-${idx}`} className="w-full h-full object-cover" />
                       <button type="button" onClick={() => handleRemovePreviewImage(idx)} className="absolute top-1.5 right-1.5 bg-black/70 p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-red-500 transition-all z-10">
                         <X className="w-3.5 h-3.5" />
@@ -552,7 +616,7 @@ const handleReportPost = async (postId, reason) => {
                     </div>
                   ))}
                   {selectedVideo && (
-                    <div className="relative flex-shrink-0 w-24 h-24 rounded-2xl overflow-hidden border border-gray-600 bg-gray-900 flex items-center justify-center shadow-md">
+                    <div className="relative flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border border-gray-600 bg-gray-900 flex items-center justify-center shadow-md">
                       <video src={URL.createObjectURL(selectedVideo)} className="absolute inset-0 w-full h-full object-cover opacity-60" />
                       <Film className="w-8 h-8 text-emerald-400 z-10" />
                       <button type="button" onClick={handleRemovePreviewVideo} className="absolute top-1.5 right-1.5 bg-black/70 p-1.5 rounded-full text-gray-300 hover:text-white hover:bg-red-500 transition-all z-20">
@@ -589,28 +653,28 @@ const handleReportPost = async (postId, reason) => {
 
         {/* TABS BẢNG TIN */}
         {!selectedUserFilter && (
-          <div className="flex overflow-x-auto gap-3 pb-2 mb-2 custom-scrollbar">
+          <div className="flex overflow-x-auto gap-2 sm:gap-3 pb-2 mb-2 custom-scrollbar">
             <button
               onClick={() => setActiveTab('feed')}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'feed' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 shrink-0 ${activeTab === 'feed' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
             >
               <Flame className="w-4 h-4" /> Dành cho bạn
             </button>
             <button
               onClick={() => setActiveTab('latest')}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'latest' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 shrink-0 ${activeTab === 'latest' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
             >
               Mới nhất
             </button>
             <button
               onClick={() => setActiveTab('following')}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'following' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 shrink-0 ${activeTab === 'following' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
             >
               <User className="w-4 h-4" /> Đang theo dõi
             </button>
             <button
               onClick={() => setActiveTab('liked')}
-              className={`px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 ${activeTab === 'liked' ? 'bg-pink-600 text-white shadow-lg shadow-pink-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-bold text-sm whitespace-nowrap transition-all flex items-center gap-2 shrink-0 ${activeTab === 'liked' ? 'bg-pink-600 text-white shadow-lg shadow-pink-900/30' : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-gray-200'}`}
             >
               <Heart className="w-4 h-4" /> Đã thích
             </button>
@@ -618,11 +682,11 @@ const handleReportPost = async (postId, reason) => {
         )}
 
         {/* DANH SÁCH BÀI VIẾT */}
-        <div className="space-y-6">
-          {loading ? (
+        <div className="space-y-4 sm:space-y-6">
+          {(loading && !selectedUserFilter) || (loadingProfilePosts && selectedUserFilter) ? (
             <div className="flex justify-center py-10"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-emerald-500"></div></div>
-          ) : filteredPosts.length > 0 ? (
-            filteredPosts.map(post => (
+          ) : displayPosts.length > 0 ? (
+            displayPosts.map(post => (
               <PostItem
                 key={post._id}
                 post={post}
@@ -642,10 +706,10 @@ const handleReportPost = async (postId, reason) => {
               />
             ))
           ) : (
-            <div className="text-center py-16 bg-gray-800/40 border border-gray-700/50 rounded-3xl backdrop-blur-sm">
-              <Search className="w-16 h-16 text-gray-600 mx-auto mb-5" />
-              <p className="text-gray-300 font-bold text-lg mb-2">Không tìm thấy bài viết nào.</p>
-              <p className="text-base text-gray-500">Hãy thử tạo một bài viết mới hoặc chuyển sang tab khác nhé!</p>
+            <div className="text-center py-14 sm:py-16 bg-gray-800/40 border border-gray-700/50 rounded-3xl backdrop-blur-sm">
+              <Search className="w-14 h-14 sm:w-16 sm:h-16 text-gray-600 mx-auto mb-5" />
+              <p className="text-gray-300 font-bold text-base sm:text-lg mb-2">Không tìm thấy bài viết nào.</p>
+              <p className="text-sm sm:text-base text-gray-500">Hãy thử tạo một bài viết mới hoặc chuyển sang tab khác nhé!</p>
             </div>
           )}
         </div>

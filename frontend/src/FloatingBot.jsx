@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import api from "./services/api"; // Chỉnh lại đường dẫn import api cho khớp với cấu trúc thư mục của bạn
+import api from "./services/api"; 
 import { 
   Bot, Flame, Trophy, AlertTriangle, X, ChevronUp, 
   RefreshCw, Shield, MessageSquare, CheckCircle, PowerOff, Crown,
@@ -162,9 +162,24 @@ export default function FloatingBot() {
       } else {
         console.error("Lỗi khi lấy dữ liệu Bot:", error);
       }
-    } fontinally: {
+    } finally {
       setLoading(false);
     }
+  };
+
+  // Xử lý bật/tắt Trợ lý AI kèm xác nhận khi tắt
+  const handleToggleCoaching = () => {
+    const isCurrentlyEnabled = displayStats.isCoachingEnabled;
+
+    if (isCurrentlyEnabled) {
+      const isConfirmed = window.confirm(
+        "⚠️ CẢNH BÁO TẮT AI COACHING!\n\nNếu bạn tắt Trợ lý HLV AI, toàn bộ Điểm Rank và Chuỗi Streak hiện tại của bạn sẽ bị RESET VỀ 0 ngay lập tức.\n\nBạn có chắc chắn muốn tắt không?"
+      );
+
+      if (!isConfirmed) return;
+    }
+
+    handleConfigChange({ isEnabled: !isCurrentlyEnabled });
   };
 
   const handleConfigChange = async (updates) => {
@@ -177,9 +192,16 @@ export default function FloatingBot() {
       if (response.data.success) {
         setStats(prev => ({ 
           ...prev, 
-          coachingStyle: response.data.coachingStyle ?? prev.coachingStyle,
-          isCoachingEnabled: response.data.isCoachingEnabled ?? prev.isCoachingEnabled
+          coachingStyle: response.data.coachingStyle ?? prev?.coachingStyle,
+          isCoachingEnabled: response.data.isCoachingEnabled ?? prev?.isCoachingEnabled,
+          rankPoints: response.data.rankPoints ?? prev?.rankPoints,
+          streak: response.data.streak ?? prev?.streak
         }));
+        
+        if (response.data.message) {
+          alert(response.data.message);
+        }
+
         fetchGamificationStats(); 
       }
     } catch (error) {
@@ -400,7 +422,7 @@ export default function FloatingBot() {
                     </span>
                   </span>
                   <button
-                    onClick={() => handleConfigChange({ isEnabled: !isCoachingEnabled })}
+                    onClick={handleToggleCoaching}
                     disabled={updatingConfig}
                     className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${isCoachingEnabled ? 'bg-emerald-500' : 'bg-gray-600'}`}
                   >
@@ -477,21 +499,23 @@ export default function FloatingBot() {
                 </div>
               </div>
 
-              {/* NÚT CHỐT SỔ HOẶC THÔNG BÁO ĐÃ CHỐT */}
-              {showCloseButton ? (
-                <button 
-                  onClick={handleManualClose}
-                  disabled={closing}
-                  className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce"
-                >
-                  <CheckCircle className="w-4 h-4" />
-                  {closing ? "Đang xử lý..." : "Chốt Sổ Hoàn Thành Ngày!"}
-                </button>
-              ) : (
-                <div className="w-full mt-3 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 font-medium text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-inner">
-                  <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Đã chốt sổ ngày hôm nay</span>
-                </div>
+              {/* NÚT CHỐT SỔ HOẶC THÔNG BÁO ĐÃ CHỐT (CHỈ HIỂN THỊ KHIN BẬT AI) */}
+              {isCoachingEnabled && (
+                showCloseButton ? (
+                  <button 
+                    onClick={handleManualClose}
+                    disabled={closing}
+                    className="w-full mt-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] active:scale-95 duration-150 animate-bounce cursor-pointer"
+                  >
+                    <CheckCircle className="w-4 h-4" />
+                    {closing ? "Đang xử lý..." : "Chốt Sổ Hoàn Thành Ngày!"}
+                  </button>
+                ) : (
+                  <div className="w-full mt-3 bg-emerald-950/40 border border-emerald-500/40 text-emerald-300 font-medium text-xs py-2.5 px-3 rounded-xl flex items-center justify-center gap-1.5 shadow-inner">
+                    <CheckCircle className="w-4 h-4 text-emerald-400 shrink-0" />
+                    <span>Đã chốt sổ ngày hôm nay</span>
+                  </div>
+                )
               )}
             </div>
           </div>

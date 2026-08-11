@@ -1,6 +1,4 @@
-import api from "./services/api";
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { 
   RadialBarChart, RadialBar, ResponsiveContainer, Tooltip as RechartsTooltip,
@@ -8,13 +6,19 @@ import {
 } from 'recharts';
 import { 
   CheckCircle, Clock, Zap, BrainCircuit, Loader2, 
-  Trash2, X, AlertTriangle, Sparkles, Edit2, RefreshCw,
-  TrendingUp, Dumbbell, Calendar, Info, Target, PlayCircle, Activity, BellRing, Video, Utensils
+  Trash2, AlertTriangle, Sparkles, Edit2, RefreshCw,
+  TrendingUp, Dumbbell, Calendar, Info, Target, PlayCircle, BellRing, Utensils
 } from 'lucide-react'; 
 
+import api from "./services/api";
 import DietEvaluation from './DietEvaluation'; 
 import WorkoutTracker from './WorkoutTracker';
 import PremiumRequireModal from './PremiumRequireModal'; 
+
+import LogMealModal from './dashboard/LogMealModal';
+import WeightModal from './dashboard/WeightModal';
+import ExerciseDetailModal from './dashboard/ExerciseDetailModal';
+import MealDetailModal from './dashboard/MealDetailModal';
 
 export default function DailyDashboard() {
   const navigate = useNavigate();
@@ -39,9 +43,14 @@ export default function DailyDashboard() {
   const [showWorkoutTracker, setShowWorkoutTracker] = useState(false);
   
   const [isLogging, setIsLogging] = useState(false);
+  
+  // Đã bỏ mealId và thay bằng cờ isOverwrite
   const [logForm, setLogForm] = useState({
-    mealId: null, mealType: '', logType: 'EXACT', extraFoodText: ''
+    mealType: '', logType: 'EXACT', extraFoodText: '', consumedFoods: [], isOverwrite: false
   });
+
+  // State danh sách món ăn có sẵn
+  const [availableFoods, setAvailableFoods] = useState([]);
 
   // State Premium / Quảng cáo
   const [showPremiumModal, setShowPremiumModal] = useState(false);
@@ -65,11 +74,24 @@ export default function DailyDashboard() {
 
   useEffect(() => {
     fetchDashboardData();
+    fetchAvailableFoods();
   }, []);
 
   useEffect(() => {
     fetchWeightHistory(weightPeriod);
   }, [weightPeriod]);
+
+  // Lấy danh sách món ăn từ API
+  const fetchAvailableFoods = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await api.get('/foods', config);
+      setAvailableFoods(res.data?.foods || res.data?.data || res.data || []);
+    } catch (err) {
+      console.error("Lỗi lấy danh sách món ăn:", err);
+    }
+  };
 
   const fetchDashboardData = async () => {
     setIsLoading(true);
@@ -206,6 +228,130 @@ export default function DailyDashboard() {
     } catch (err) { alert(err.response?.data?.message || "Đã xảy ra lỗi khi đồng bộ lịch ăn mới."); } finally { setIsSyncing(false); }
   };
 
+  // ----------------------------------------------------
+  // HÀM MỚI: XỬ LÝ LƯU & CẬP NHẬT (THAY THẾ BẢN CŨ)
+  // ----------------------------------------------------
+
+  // 1. Mở Modal (Cập nhật cờ isOverwrite)
+ const openLogModal = (mealOrType, isEditMode = false) => { 
+  let mealObj = null;
+  let mealType = '';
+
+  if (typeof mealOrType === 'string') {
+    mealType = mealOrType;
+    if (isEditMode) {
+      mealObj = dashboardData.diet.consumed.find(m => m.mealType === mealType);
+    } else {
+      mealObj = dashboardData.diet.upcoming.find(m => m.mealType === mealType) 
+             || dashboardData.diet.consumed.find(m => m.mealType === mealType);
+    }
+  } else {
+    mealObj = mealOrType;
+    mealType = mealObj?.mealType || '';
+  }
+
+  const isAlreadyConsumed = dashboardData.diet.consumed.some(m => m.mealType === mealType);
+  const initialItems = mealObj?.items || mealObj?.foods || mealObj?.consumedFoods || [];
+  
+  // Xác định cờ sửa
+  const isOverwriteMode = isEditMode || isAlreadyConsumed;
+
+  setLogForm({ 
+    mealType: mealType, 
+    logType: isOverwriteMode ? 'CUSTOM' : 'EXACT',
+    extraFoodText: mealObj?.extraFoodText || '',
+    isOverwrite: isOverwriteMode,
+    
+    // ĐÃ SỬA LỖI Ở ĐÂY: Quét sâu để lấy chính xác ID và Tên của món ăn cũ
+    consumedFoods: initialItems.map(item => {
+      // 1. Tìm ID món ăn chuẩn xác (Backend có thể trả về item.foodId, item.food._id, hoặc item._id)
+      let foundId = item.foodId || item._id || null;
+      if (item.food) {
+        if (typeof item.food === 'object') {
+          foundId = item.food._id || item.food.id || foundId;
+        } else if (typeof item.food === 'string') {
+          foundId = item.food; // Trường hợp MongoDB trả về ObjectId dạng text
+        }
+      }
+
+      // 2. Tìm Tên món ăn
+      let foundName = item.foodName || item.name || 'Món ăn';
+      if (item.food && typeof item.food === 'object' && item.food.name) {
+        foundName = item.food.name;
+      }
+
+      return {
+        foodId: foundId,
+        foodName: foundName,
+        quantityInGrams: Number(item.quantityInGrams || item.amount || item.grams || 100),
+        calories: Number(item.calories || item.caloriesPer100g || 0),
+        protein: Number(item.protein || item.proteinPer100g || 0),
+        carbs: Number(item.carbs || item.carbsPer100g || 0),
+        fat: Number(item.fat || item.fatPer100g || 0)
+      };
+    })
+  }); 
+
+  setShowLogModal(true); 
+};
+
+  // 2. Mở Modal chỉnh sửa
+  const openEditModal = (meal) => { 
+    if (!checkAiAccess()) {
+      setShowPremiumModal(true);
+      return;
+    }
+    openLogModal(meal, true);
+  };
+
+  // 3. Submit Lưu/Sửa bữa ăn (Chỉ sử dụng API POST)
+  const submitLogMeal = async () => {
+  // ĐIỀU CHỈNH LOGIC CHẶN: Chỉ báo lỗi khi (không có text) VÀ (không có món ăn nào trong danh sách)
+  if (
+    (logForm.logType === 'CUSTOM' || logForm.logType === 'ADD_EXTRA') && 
+    !logForm.extraFoodText.trim() && 
+    logForm.consumedFoods.length === 0
+  ) { 
+    alert("Vui lòng nhập món ăn bạn đã ăn hoặc thêm món ăn vào danh sách!"); 
+    return; 
+  }
+  
+  if (logForm.logType !== 'EXACT' && !checkAiAccess()) {
+    setShowPremiumModal(true);
+    return;
+  }
+
+  setIsLogging(true);
+  try {
+    const token = localStorage.getItem('token');
+    const config = { headers: { Authorization: `Bearer ${token}` } };
+    const today = new Date().toISOString().split('T')[0];
+
+    // CHỐT CHẶN CUỐI CÙNG: Nếu đang là Ghi đè (Sửa), ép kiểu gửi đi phải là CUSTOM
+    const finalLogType = logForm.isOverwrite ? 'CUSTOM' : (logForm.logType || "EXACT");
+
+    const payload = {
+      date: today,
+      mealType: logForm.mealType,
+      logType: finalLogType, // Dùng finalLogType ở đây
+      isOverwrite: logForm.isOverwrite,
+      extraFoodText: logForm.extraFoodText,
+      consumedFoods: logForm.consumedFoods
+    };
+
+    await api.post(`/ai/log-meal`, payload, config); 
+    
+    setShowLogModal(false); 
+    await fetchDashboardData();
+  } catch (err) { 
+    alert(err.response?.data?.message || "Có lỗi xảy ra khi ghi nhận."); 
+  } finally { 
+    setIsLogging(false); 
+  }
+};
+
+  // 4. Xóa bữa ăn (Kích hoạt logic xóa thông qua API POST + isOverwrite)
+  // Vẫn giữ mealId ở tham số đề phòng UI cũ gọi, nhưng ta ko dùng nó
   const handleDeleteMeal = async (mealId, mealType) => {
     if (!checkAiAccess()) {
       setShowPremiumModal(true);
@@ -215,54 +361,23 @@ export default function DailyDashboard() {
     setIsLoading(true);
     try {
       const token = localStorage.getItem('token');
-      await api.delete(`/ai/daily-log/meal/${mealId}`, { headers: { Authorization: `Bearer ${token}` } });
-      await fetchDashboardData(); 
-    } catch (err) { alert(err.response?.data?.message || "Đã xảy ra lỗi khi xóa bữa ăn."); setIsLoading(false); }
-  };
-
-  const openLogModal = (mealType) => { 
-    setLogForm({ mealId: null, mealType, logType: 'EXACT', extraFoodText: '' }); 
-    setShowLogModal(true); 
-  };
-  
-  const openEditModal = (meal) => { 
-    if (!checkAiAccess()) {
-      setShowPremiumModal(true);
-      return;
-    }
-    const text = meal.items.map(i => `${i.foodName} (${i.quantityInGrams}g)`).join(', '); 
-    setLogForm({ mealId: meal._id, mealType: meal.mealType, logType: 'CUSTOM', extraFoodText: text }); 
-    setShowLogModal(true); 
-  };
-
-  const submitLogMeal = async () => {
-    if ((logForm.logType === 'CUSTOM' || logForm.logType === 'ADD_EXTRA') && !logForm.extraFoodText.trim()) { alert("Vui lòng nhập món ăn bạn đã ăn!"); return; }
-    
-    if (logForm.logType !== 'EXACT' && !checkAiAccess()) {
-      setShowPremiumModal(true);
-      return;
-    }
-
-    setIsLogging(true);
-    try {
-      const token = localStorage.getItem('token');
       const config = { headers: { Authorization: `Bearer ${token}` } };
       const today = new Date().toISOString().split('T')[0];
-      if (logForm.mealId) { await api.put(`/ai/daily-log/meal/${logForm.mealId}`, { extraFoodText: logForm.extraFoodText }, config); } 
-      else { await api.post(`/ai/log-meal`, { date: today, mealType: logForm.mealType, logType: logForm.logType, extraFoodText: logForm.extraFoodText }, config); }
-      setShowLogModal(false); await fetchDashboardData();
-    } catch (err) { alert(err.response?.data?.message || "Có lỗi xảy ra khi ghi nhận."); } finally { setIsLogging(false); }
-  };
 
-  const getYouTubeEmbedUrl = (url) => {
-    if (!url) return null;
-    let videoId = '';
-    if (url.includes('youtube.com/watch')) {
-      videoId = new URL(url).searchParams.get('v');
-    } else if (url.includes('youtu.be/')) {
-      videoId = url.split('youtu.be/')[1].split('?')[0];
+      const payload = {
+        date: today,
+        mealType: mealType,
+        isOverwrite: true,
+        consumedFoods: [], // Mảng rỗng = Kích hoạt tự động xóa ở Backend
+        extraFoodText: ""
+      };
+
+      await api.post(`/ai/log-meal`, payload, config);
+      await fetchDashboardData(); 
+    } catch (err) { 
+      alert(err.response?.data?.message || "Đã xảy ra lỗi khi xóa bữa ăn."); 
+      setIsLoading(false); 
     }
-    return videoId ? `https://www.youtube.com/embed/${videoId}` : null;
   };
 
   const getExerciseDetails = (ex) => {
@@ -294,11 +409,9 @@ export default function DailyDashboard() {
     );
   };
 
-  // --- HÀM TẠO TIMELINE (GỘP ĂN VÀ TẬP) ---
   const generateTimeline = () => {
     const timeline = [];
 
-    // Helper map mealType to approximate time for sorting
     const getMealTime = (mealType) => {
       const type = mealType?.toLowerCase() || '';
       if (type.includes('sáng') && !type.includes('phụ') && !type.includes('vặt')) return { time: '07:00', order: 7 };
@@ -307,30 +420,25 @@ export default function DailyDashboard() {
       if (type.includes('phụ chiều') || type.includes('vặt chiều')) return { time: '15:30', order: 15.5 };
       if (type.includes('tối')) return { time: '19:00', order: 19 };
       if (type.includes('đêm')) return { time: '21:30', order: 21.5 };
-      return { time: '12:00', order: 12 }; // Default
+      return { time: '12:00', order: 12 };
     };
 
-    // 1. Thêm Bữa ăn đã hoàn thành
     dashboardData.diet.consumed.forEach(meal => {
       const { time, order } = getMealTime(meal.mealType);
       timeline.push({ id: `c_${meal._id || Math.random()}`, type: 'MEAL', status: 'COMPLETED', time, order, title: meal.mealType, data: meal });
     });
 
-    // 2. Thêm Bữa ăn sắp tới
     dashboardData.diet.upcoming.forEach(meal => {
       const { time, order } = getMealTime(meal.mealType);
       timeline.push({ id: `u_${Math.random()}`, type: 'MEAL', status: 'UPCOMING', time, order, title: meal.mealType, data: meal });
     });
 
-    // 3. Thêm Lịch Tập
     if (!dashboardData.workout.isRestDay && dashboardData.workout.title) {
       let timeStr = dashboardData.workout.scheduledTime || '16:00';
       let order = parseInt(timeStr.split(':')[0]) + (timeStr.includes('30') ? 0.5 : 0);
-      // Tạm coi lịch tập luôn hiển thị để user click Bắt đầu. (Nếu có tracking workout completed thì xử lý status riêng)
       timeline.push({ id: `w_${Math.random()}`, type: 'WORKOUT', status: 'UPCOMING', time: timeStr, order, title: dashboardData.workout.title, data: dashboardData.workout });
     }
 
-    // Sắp xếp theo trình tự thời gian
     timeline.sort((a, b) => a.order - b.order);
     return timeline;
   };
@@ -349,7 +457,7 @@ export default function DailyDashboard() {
   const calorieChartData = [
     { name: 'Thực tế', calo: dashboardData.macros.calories.actual, fill: '#10b981' }, 
     { name: 'Kế hoạch', calo: dashboardData.macros.calories.planned, fill: '#a855f7' }, 
-    { name: 'Đề xuất', calo: dashboardData.macros.calories.target, fill: '#eab308' }   
+    { name: 'Đề xuất', calo: dashboardData.macros.calories.target, fill: '#eab308' }    
   ];
 
   const hasOffPlanMeals = dashboardData.diet.consumed.some(m => m.isExactlyAsPlanned === false);
@@ -359,6 +467,8 @@ export default function DailyDashboard() {
   const plannedCal = dashboardData.macros.calories.planned;
   const isCalorieMismatched = targetCal > 0 && plannedCal > 0 && Math.abs(targetCal - plannedCal) > 100;
 
+  // PHẦN UI BÊN DƯỚI BẠN GIỮ NGUYÊN (Từ lệnh return trở đi)
+// ...
   return (
     <div className="bg-gray-950 min-h-screen text-gray-200 pb-20">
       
@@ -486,7 +596,13 @@ export default function DailyDashboard() {
                 {weightData.length > 0 ? (
                   <div className="h-56 w-full">
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={weightData}><CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} /><XAxis dataKey="displayDate" stroke="#9ca3af" tick={{fontSize: 12}} tickLine={false} axisLine={false} dy={10} /><YAxis domain={['dataMin - 1', 'dataMax + 1']} stroke="#9ca3af" tick={{fontSize: 12}} tickLine={false} axisLine={false} width={35} /><RechartsTooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }} itemStyle={{ color: '#10b981' }} formatter={(value) => [`${value} kg`, 'Cân nặng']} /><Line type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#1f2937' }} activeDot={{ r: 6 }} /></LineChart>
+                      <LineChart data={weightData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
+                        <XAxis dataKey="displayDate" stroke="#9ca3af" tick={{fontSize: 12}} tickLine={false} axisLine={false} dy={10} />
+                        <YAxis domain={['dataMin - 1', 'dataMax + 1']} stroke="#9ca3af" tick={{fontSize: 12}} tickLine={false} axisLine={false} width={35} />
+                        <RechartsTooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }} itemStyle={{ color: '#10b981' }} formatter={(value) => [`${value} kg`, 'Cân nặng']} />
+                        <Line type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#1f2937' }} activeDot={{ r: 6 }} />
+                      </LineChart>
                     </ResponsiveContainer>
                   </div>
                 ) : (
@@ -520,12 +636,11 @@ export default function DailyDashboard() {
                   <p className="text-gray-500 text-sm text-center py-6 bg-gray-800/30 rounded-xl border border-gray-800">Chưa có lịch trình nào hôm nay.</p>
                 ) : (
                   <div className="relative pl-6 border-l-2 border-gray-800 space-y-8 pb-4">
-                    {timelineItems.map((item, idx) => {
+                    {timelineItems.map((item) => {
                       const isCompletedMeal = item.type === 'MEAL' && item.status === 'COMPLETED';
                       const isUpcomingMeal = item.type === 'MEAL' && item.status === 'UPCOMING';
                       const isWorkout = item.type === 'WORKOUT';
                       
-                      // Xác định màu sắc của Node (chấm tròn trên timeline)
                       let nodeColor = "bg-gray-700 border-gray-800";
                       let NodeIcon = Clock;
                       
@@ -541,9 +656,9 @@ export default function DailyDashboard() {
                         <div key={item.id} className="relative">
                           {/* Dot / Node */}
                           <div className={`absolute -left-[35px] top-1 w-7 h-7 rounded-full border-4 flex items-center justify-center ${nodeColor} z-10 shadow-lg`}>
-                             {isCompletedMeal ? <NodeIcon className="w-3.5 h-3.5 text-white" /> : 
-                              isWorkout ? <NodeIcon className="w-3.5 h-3.5 text-white" /> : 
-                              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>}
+                            {isCompletedMeal ? <NodeIcon className="w-3.5 h-3.5 text-white" /> : 
+                             isWorkout ? <NodeIcon className="w-3.5 h-3.5 text-white" /> : 
+                             <div className="w-2 h-2 bg-gray-400 rounded-full"></div>}
                           </div>
 
                           {/* Time label */}
@@ -617,10 +732,9 @@ export default function DailyDashboard() {
                                 </button>
                               </div>
                             )}
-
                           </div>
                         </div>
-                      )
+                      );
                     })}
                   </div>
                 )}
@@ -658,47 +772,35 @@ export default function DailyDashboard() {
         <DietEvaluation onClose={() => setShowAiEvaluation(false)} />
       )}
 
-      {/* =========================================================
-      // CÁC MODALS (NHẬP BỮA ĂN, CÂN NẶNG, TẬP LUYỆN...)
-      // ========================================================= */}
-      {showLogModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 w-full max-w-sm rounded-2xl border border-gray-800 shadow-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-5 border-b border-gray-800">
-              <h3 className="font-bold text-lg text-white">{logForm.mealId ? `Sửa: ${logForm.mealType}` : `Ghi nhận: ${logForm.mealType}`}</h3>
-              <button onClick={() => setShowLogModal(false)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 rounded-full transition-colors"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="p-5 space-y-4">
-              {!logForm.mealId && (
-                <>
-                  <p className="text-sm text-gray-400">Bạn đã ăn bữa này như thế nào?</p>
-                  <div className="space-y-2.5">
-                    {[{ val: 'EXACT', label: 'Ăn chuẩn 100% theo lịch' }, { val: 'ADD_EXTRA', label: 'Ăn theo lịch + Ăn thêm món khác' }, { val: 'CUSTOM', label: 'Ăn món khác hoàn toàn' }].map((opt) => (
-                      <label key={opt.val} className={`flex items-center gap-3 p-3 border rounded-xl cursor-pointer transition-colors ${logForm.logType === opt.val ? 'bg-emerald-900/20 border-emerald-500/50' : 'bg-gray-800 border-gray-700 hover:bg-gray-700/50'}`}>
-                        <input type="radio" name="logType" value={opt.val} checked={logForm.logType === opt.val} onChange={(e) => setLogForm({...logForm, logType: e.target.value})} className="w-4 h-4 text-emerald-500 bg-gray-900 border-gray-600 focus:ring-emerald-500 focus:ring-offset-gray-900" />
-                        <span className={`text-sm font-medium ${logForm.logType === opt.val ? 'text-emerald-400' : 'text-gray-300'}`}>{opt.label}</span>
-                      </label>
-                    ))}
-                  </div>
-                </>
-              )}
-              
-              {(logForm.mealId || logForm.logType === 'ADD_EXTRA' || logForm.logType === 'CUSTOM') && (
-                <div className="mt-4">
-                  <label className="block text-xs font-semibold text-gray-400 mb-2 uppercase tracking-wide">{logForm.mealId ? "Cập nhật món ăn:" : "Bạn đã ăn thêm gì (AI sẽ ước lượng):"}</label>
-                  <textarea rows="3" className="w-full p-3 border border-gray-700 rounded-xl bg-gray-950 text-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all resize-none placeholder-gray-600" placeholder="VD: 1 bát phở bò, 1 ly cafe sữa..." value={logForm.extraFoodText} onChange={(e) => setLogForm({...logForm, extraFoodText: e.target.value})}></textarea>
-                </div>
-              )}
-            </div>
-            <div className="p-5 border-t border-gray-800 bg-gray-900/50 flex gap-3">
-              <button onClick={() => setShowLogModal(false)} className="flex-1 py-2.5 bg-gray-800 border border-gray-700 rounded-xl text-sm font-semibold text-gray-300 hover:bg-gray-700 transition-colors">Hủy</button>
-              <button onClick={submitLogMeal} disabled={isLogging} className="flex-1 py-2.5 bg-emerald-600 rounded-xl text-sm font-bold text-white hover:bg-emerald-500 transition-colors flex justify-center items-center">
-                {isLogging ? <Loader2 className="w-4 h-4 animate-spin" /> : "Ghi nhận"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* EXTRACTED MODALS */}
+      <LogMealModal 
+        isOpen={showLogModal} 
+        onClose={() => setShowLogModal(false)} 
+        logForm={logForm} 
+        setLogForm={setLogForm} 
+        submitLogMeal={submitLogMeal} 
+        isLogging={isLogging} 
+        availableFoodsList={availableFoods}
+      />
+
+      <WeightModal 
+        isOpen={showWeightPrompt} 
+        onClose={() => setShowWeightPrompt(false)} 
+        newWeight={newWeight} 
+        setNewWeight={setNewWeight} 
+        handleWeightSubmit={handleWeightSubmit} 
+        isSubmittingWeight={isSubmittingWeight} 
+      />
+
+      <ExerciseDetailModal 
+        exercise={selectedExercise} 
+        onClose={() => setSelectedExercise(null)} 
+      />
+
+      <MealDetailModal 
+        meal={selectedMealDetail} 
+        onClose={() => setSelectedMealDetail(null)} 
+      />
 
       {showWorkoutTracker && (
         <WorkoutTracker 
@@ -708,146 +810,6 @@ export default function DailyDashboard() {
         />
       )}
 
-      {/* MODAL CẬP NHẬT CÂN NẶNG */}
-      {showWeightPrompt && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
-          <div className="bg-gray-900 w-full max-w-sm rounded-2xl border border-gray-800 shadow-2xl overflow-hidden">
-            <div className="flex justify-between items-center p-5 border-b border-gray-800">
-              <h3 className="font-bold text-lg text-emerald-400 flex items-center gap-2"><TrendingUp className="w-5 h-5"/> Nhập cân nặng</h3>
-              <button onClick={() => setShowWeightPrompt(false)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 rounded-full"><X className="w-4 h-4" /></button>
-            </div>
-            <div className="p-5">
-              <label className="block text-sm text-gray-400 mb-2">Cân nặng hiện tại (kg)</label>
-              <input type="number" value={newWeight} onChange={(e) => setNewWeight(e.target.value)} autoFocus className="w-full bg-gray-950 border border-gray-700 rounded-xl p-3 text-white text-lg focus:border-emerald-500 outline-none" placeholder="VD: 65.5" />
-            </div>
-            <div className="p-5 border-t border-gray-800 bg-gray-900/50 flex gap-3">
-              <button onClick={() => setShowWeightPrompt(false)} className="flex-1 py-3 bg-gray-800 border border-gray-700 rounded-xl text-sm font-semibold text-gray-300">Hủy</button>
-              <button onClick={handleWeightSubmit} disabled={isSubmittingWeight} className="flex-1 py-3 bg-emerald-600 rounded-xl text-sm font-bold text-white flex justify-center items-center">
-                {isSubmittingWeight ? <Loader2 className="w-4 h-4 animate-spin" /> : "Cập nhật"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CHI TIẾT BÀI TẬP */}
-      {selectedExercise && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in duration-200" onClick={() => setSelectedExercise(null)}>
-          <div className="bg-gray-900 w-full max-w-2xl rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-800 bg-gray-900/50 shrink-0">
-              <h3 className="font-black text-white text-base md:text-xl flex items-center gap-2 truncate">
-                <Dumbbell className="w-5 h-5 text-emerald-500 shrink-0" />
-                <span className="truncate">{selectedExercise.name}</span>
-              </h3>
-              <button onClick={() => setSelectedExercise(null)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 md:p-2 rounded-full transition-colors shrink-0 ml-2">
-                <X className="w-4 h-4 md:w-5 md:h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 md:p-6 overflow-y-auto custom-scrollbar">
-              <div className="w-full aspect-video bg-black rounded-xl overflow-hidden mb-5 border border-gray-800 flex items-center justify-center relative shadow-inner">
-                {selectedExercise.videoUrl ? (
-                  selectedExercise.videoUrl.includes('youtube') || selectedExercise.videoUrl.includes('youtu.be') ? (
-                    <iframe className="w-full h-full" src={getYouTubeEmbedUrl(selectedExercise.videoUrl)} frameBorder="0" allowFullScreen></iframe>
-                  ) : (
-                    <video className="w-full h-full object-contain" controls autoPlay src={selectedExercise.videoUrl.startsWith('http') ? selectedExercise.videoUrl : `${import.meta.env.VITE_API_URL || ""}${selectedExercise.videoUrl}`}></video>
-                  )
-                ) : (
-                  <div className="text-gray-600 flex flex-col items-center">
-                    <Video size={36} className="mb-2 opacity-30"/>
-                    <span className="text-sm font-medium">Chưa có video minh họa</span>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 mb-5">
-                <div className="bg-gray-800/80 p-3 md:p-4 rounded-xl border border-gray-700">
-                  <p className="text-gray-400 text-[10px] md:text-xs font-bold uppercase mb-1 tracking-wider">Nhóm cơ</p>
-                  <p className="text-sm md:text-base text-blue-400 font-bold">{selectedExercise.muscleGroup}</p>
-                </div>
-                <div className="bg-gray-800/80 p-3 md:p-4 rounded-xl border border-gray-700">
-                  <p className="text-gray-400 text-[10px] md:text-xs font-bold uppercase mb-1 tracking-wider">Dụng cụ</p>
-                  <p className="text-sm md:text-base text-purple-400 font-bold">{selectedExercise.equipmentRequired || 'Bodyweight'}</p>
-                </div>
-              </div>
-
-              <div className="bg-gray-950 p-4 md:p-5 rounded-2xl border border-gray-800">
-                <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-2 flex items-center gap-1.5"><Info className="w-4 h-4" /> Hướng dẫn chi tiết</h4>
-                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">{selectedExercise.description || 'Chưa có hướng dẫn chi tiết.'}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* CHI TIẾT BỮA ĂN */}
-      {selectedMealDetail && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-3 md:p-4 animate-in fade-in duration-200" onClick={() => setSelectedMealDetail(null)}>
-          <div className="bg-gray-900 w-full max-w-md rounded-2xl md:rounded-3xl border border-gray-800 shadow-2xl overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center p-4 md:p-5 border-b border-gray-800 bg-gray-900/50 shrink-0">
-              <h3 className="font-black text-white text-base md:text-xl flex items-center gap-2 truncate">
-                <Utensils className="w-5 h-5 text-emerald-500 shrink-0" />
-                <span className="truncate">Chi tiết {selectedMealDetail.mealType}</span>
-              </h3>
-              <button onClick={() => setSelectedMealDetail(null)} className="text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 p-1.5 md:p-2 rounded-full transition-colors shrink-0 ml-2">
-                <X className="w-4 h-4 md:w-5 md:h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 md:p-5 overflow-y-auto custom-scrollbar">
-              <div className="flex flex-col items-center justify-center py-4 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl mb-5">
-                 <span className="text-gray-400 text-xs font-bold uppercase tracking-widest mb-1">Tổng Năng Lượng</span>
-                 <span className="text-emerald-400 font-black text-4xl">{selectedMealDetail.mealTotal?.calories || 0} <span className="text-lg text-emerald-500/50 font-semibold">kcal</span></span>
-              </div>
-
-              <div className="flex gap-3 mb-6">
-                 <div className="flex-1 bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 text-center">
-                   <span className="block text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Protein</span>
-                   <span className="font-black text-blue-400 text-lg">{selectedMealDetail.mealTotal?.protein || 0}g</span>
-                 </div>
-                 <div className="flex-1 bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 text-center">
-                   <span className="block text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Carbs</span>
-                   <span className="font-black text-yellow-400 text-lg">{selectedMealDetail.mealTotal?.carbs || 0}g</span>
-                 </div>
-                 <div className="flex-1 bg-gray-800/50 p-3 rounded-xl border border-gray-700/50 text-center">
-                   <span className="block text-[10px] text-gray-400 uppercase font-bold tracking-wider mb-1">Fat</span>
-                   <span className="font-black text-red-400 text-lg">{selectedMealDetail.mealTotal?.fat || 0}g</span>
-                 </div>
-              </div>
-
-              <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                Danh sách món ăn
-              </h4>
-
-              <div className="space-y-2.5">
-                {selectedMealDetail.items && selectedMealDetail.items.length > 0 ? (
-                  selectedMealDetail.items.map((item, i) => (
-                    <div key={i} className="flex justify-between items-center bg-gray-950 p-3.5 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors">
-                      <div className="flex-1 min-w-0 pr-3">
-                        <span className="text-sm font-bold text-gray-200 block truncate">{item.foodName}</span>
-                      </div>
-                      <span className="text-xs text-emerald-400 font-black bg-emerald-500/10 px-2.5 py-1.5 rounded-lg border border-emerald-500/20 whitespace-nowrap">
-                        {item.quantityInGrams} gram
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-500 italic text-center py-4 bg-gray-950 rounded-xl border border-gray-800 border-dashed">Không có dữ liệu món ăn chi tiết.</p>
-                )}
-              </div>
-            </div>
-            
-            <div className="p-4 border-t border-gray-800 bg-gray-900/50">
-               <button onClick={() => setSelectedMealDetail(null)} className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white font-bold rounded-xl transition-colors">Đóng</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================= */}
-      {/* BẢNG YÊU CẦU PREMIUM / XEM QUẢNG CÁO */}
-      {/* ========================================================= */}
       <PremiumRequireModal 
         isOpen={showPremiumModal}
         onClose={() => setShowPremiumModal(false)}
