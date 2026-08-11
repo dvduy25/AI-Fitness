@@ -1,45 +1,86 @@
+// 📄 backend/routes/postRoutes.js
 const express = require("express");
 const router = express.Router();
 const postController = require("../controllers/postController");
-const { verifyToken } = require("../middleware/authMiddleware");
 
-// ===== BẢNG TIN =====
-router.get("/feed", verifyToken, postController.getFeed);           // "Dành cho bạn" — CẦN verifyToken vì dùng req.user.id
-router.get("/latest", verifyToken, postController.getLatestPosts);  // "Mới nhất"
-router.get("/following", verifyToken, postController.getFollowingPosts); // "Đang theo dõi"
-router.get("/liked", verifyToken, postController.getLikedPosts);    // "Đã thích"
-router.get("/user/:userId", verifyToken, postController.getUserPosts); // Bài viết trang cá nhân
+// Middleware xác thực, Upload & Bộ lọc từ khóa cấm
+const { verifyToken } = require("../middleware/authMiddleware"); 
+const uploadMedia = require("../middleware/uploadMiddleware");
+const { checkBannedWords } = require("../middleware/contentFilter"); // 🌟 Đã tích hợp bộ quét từ khóa
 
-// ===== ĐĂNG BÀI =====
-router.post("/", verifyToken, postController.createPost);
-router.post("/share-master", verifyToken, postController.shareMasterPlan);
-router.post("/share-library", verifyToken, postController.shareFromLibrary);
+// Cấu hình upload chung cho các bài đăng có kèm media
+const mediaUpload = uploadMedia.fields([
+  { name: "images", maxCount: 10 }, 
+  { name: "video", maxCount: 1 }
+]);
 
-// ===== CHI TIẾT / SỬA / XÓA =====
-router.get("/:postId", verifyToken, postController.getPostById);
-router.put("/:postId", verifyToken, postController.updatePost);     // đổi PATCH -> PUT cho khớp frontend (api.put)
-router.delete("/:postId", verifyToken, postController.deletePost);
+// ==========================================
+// 1. QUẢN LÝ BÀI VIẾT (POSTS) - CÓ QUÉT TỪ KHÓA CẤM
+// ==========================================
 
-// ===== TƯƠNG TÁC =====
-router.post("/:postId/like", verifyToken, postController.toggleLike);
-router.post("/:postId/comment", verifyToken, postController.addComment);
-router.get("/:postId/comments", verifyToken, postController.getComments);
-router.put("/comments/:commentId", verifyToken, postController.updateComment);
-router.delete("/comments/:commentId", verifyToken, postController.deleteComment);
+// Tạo bài viết từ nhật ký hàng ngày (WorkoutLog/DietLog)
+router.post("/", verifyToken, mediaUpload, checkBannedWords, postController.createPost);
 
-// ===== LƯU VỀ KHO =====
-router.post("/clone", verifyToken, postController.cloneSnapshot);
+// Chia sẻ lịch Master (Lịch tập/ăn gốc của bản thân)
+router.post("/share-master", verifyToken, mediaUpload, checkBannedWords, postController.shareMasterPlan);
 
-// ===== CHIA SẺ / BÁO CÁO =====
-router.post("/:postId/share", verifyToken, postController.incrementShare);
-router.post("/:postId/share-to-user", verifyToken, postController.sharePostToUser);
-router.post("/:postId/report", verifyToken, postController.reportPost);
+// Chia sẻ bài viết từ Kho lưu trữ (Saved Library)
+router.post("/share-library", verifyToken, mediaUpload, checkBannedWords, postController.shareFromLibrary);
 
-// ===== THÔNG BÁO =====
+// ==========================================
+// 2. CÁC TÍNH NĂNG LẤY BẢNG TIN (FEED) & THÔNG BÁO
+// ⚠️ LƯU Ý: CÁC ROUTE CỐ ĐỊNH PHẢI ĐỨNG TRÊN ROUTE BIẾN ĐỘNG /:postId
+// ==========================================
+router.get("/feed", verifyToken, postController.getFeed);
+router.get("/latest", verifyToken, postController.getLatestPosts);
+router.get("/following", verifyToken, postController.getFollowingPosts);
+router.get("/liked", verifyToken, postController.getLikedPosts);
+
+// Các Route quản lý thông báo
 router.get("/notifications", verifyToken, postController.getNotifications);
 router.get("/notifications/unread-count", verifyToken, postController.getUnreadNotificationCount);
-router.patch("/notifications/:notiId/read", verifyToken, postController.markNotificationAsRead);
 router.patch("/notifications/read-all", verifyToken, postController.markAllNotificationsAsRead);
+router.patch("/notifications/:notiId/read", verifyToken, postController.markNotificationAsRead);
 router.delete("/notifications/:notiId", verifyToken, postController.deleteNotification);
+
+// ==========================================
+// 3. HỆ THỐNG BÁO CÁO VI PHẠM (REPORT)
+// ⚠️ Phải đặt trên các route biến động để tránh bị lỗi nuốt route
+// ==========================================
+
+
+// ==========================================
+// 4. CHI TIẾT BÀI VIẾT, SỬA & XÓA (ROUTE ĐỘNG NẰM DƯỚI)
+// ==========================================
+router.get("/:postId", verifyToken, postController.getPostById);
+router.put("/:postId", verifyToken, checkBannedWords, postController.updatePost); // Quét từ khóa khi sửa bài
+router.delete("/:postId", verifyToken, postController.deletePost);
+
+// ==========================================
+// 5. TƯƠNG TÁC (LIKE, COMMENT, SHARE & REPORT ACTION)
+// ==========================================
+
+// Thả tim & Chia sẻ (Share công khai)
+router.post("/:postId/like", verifyToken, postController.toggleLike);
+router.post("/:postId/share", verifyToken, postController.incrementShare);
+
+// Gửi bài viết trực tiếp cho người đang Follow
+router.post("/:postId/share-to-user", verifyToken, postController.sharePostToUser);
+
+// Gửi báo cáo vi phạm bài viết lên hệ thống
+router.post("/:postId/report", verifyToken, postController.reportPost);
+
+// Bình luận (Gắn bộ lọc từ khóa cấm để chặn bình luận thô tục)
+router.get("/:postId/comments", postController.getComments);
+router.post("/:postId/comments", verifyToken, checkBannedWords, postController.addComment);
+router.put("/comment/:commentId", verifyToken, checkBannedWords, postController.updateComment);
+router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
+
+// ==========================================
+// 6. TÍNH NĂNG CLONE (SAO CHÉP)
+// ==========================================
+
+// Lưu lịch từ bài đăng của người khác về nhật ký của mình
+router.post("/clone", verifyToken, postController.cloneSnapshot);
 
 module.exports = router;
