@@ -14,7 +14,7 @@ const {
   removeFoodFromMeal,
   initManualMealPlan,
   deleteEntireMealPlan,
-  checkMealPlanDeviation // <-- Đã thêm hàm kiểm tra độ lệch Calo từ MealPlanController
+  checkMealPlanDeviation,updateMeal // <-- Đã thêm hàm kiểm tra độ lệch Calo từ MealPlanController
 } = require("../controllers/mealPlanController");
 
 const libraryController = require("../controllers/libraryController");
@@ -37,7 +37,7 @@ router.post("/apply-library", verifyToken, libraryController.applyFromLibrary);
 
 // [GET] /api/meals/check-deviation - Kiểm tra lịch ăn thủ công hiện tại có bị lệch chuẩn Calo mục tiêu không
 router.get("/check-deviation", verifyToken, checkMealPlanDeviation);
-
+router.put("/update-meal", verifyToken, updateMeal);
 // ==========================================
 // 3. ROUTES QUẢN LÝ BỮA ĂN (MEALS)
 // ==========================================

@@ -1,8 +1,8 @@
 const MealPlan = require("../models/MealPlan");
 const Food = require("../models/Food");
-const User = require("../models/User"); // <-- Đã thêm để lấy thông tin targetMacros.calories của User
+const User = require("../models/User");
 
-// Tiện ích làm tròn (Calo và Gram thường lấy số nguyên, Macros có thể lấy 1 số thập phân hoặc nguyên tùy bạn)
+// Tiện ích làm tròn (Calo và Gram lấy số nguyên, Macros lấy 1 số thập phân)
 const formatCal = (val) => Math.round(Number(val)) || 0;
 const formatMacro = (val) => Math.round(Number(val) * 10) / 10 || 0;
 
@@ -74,15 +74,17 @@ exports.getUserMealPlan = async (req, res) => {
   }
 };
 
-// 1. Thêm một bữa ăn mới (Ví dụ: Thêm "Bữa xế chiều")
+// 1. Thêm một bữa ăn mới
 exports.addMeal = async (req, res) => {
   try {
-    const { mealType, scheduledTime } = req.body;
+    const { mealType, mealName, name, scheduledTime } = req.body;
     const plan = await MealPlan.findOne({ userId: req.user.id });
     if (!plan) return res.status(404).json({ message: "Không tìm thấy lịch ăn!" });
 
+    const newMealName = mealType || mealName || name || "Bữa xế";
+
     plan.meals.push({ 
-      mealType, 
+      mealType: newMealName, 
       scheduledTime: scheduledTime || "12:00", 
       items: [], 
       mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } 
@@ -95,7 +97,37 @@ exports.addMeal = async (req, res) => {
   }
 };
 
-// 2. Xóa một bữa ăn
+// 2. Chỉnh sửa Tên bữa ăn & Giờ ăn
+// [PUT] /api/meals/update-meal
+exports.updateMeal = async (req, res) => {
+  try {
+    const { mealId, mealType, mealName, name, scheduledTime } = req.body;
+    const plan = await MealPlan.findOne({ userId: req.user.id });
+
+    if (!plan) return res.status(404).json({ message: "Không tìm thấy lịch ăn!" });
+
+    const meal = plan.meals.id(mealId);
+    if (!meal) return res.status(404).json({ message: "Không tìm thấy bữa ăn này!" });
+
+    // Hỗ trợ đổi tên bữa ăn (nhận linh hoạt từ mealType, mealName hoặc name)
+    const newName = mealType || mealName || name;
+    if (newName !== undefined && newName.trim() !== "") {
+      meal.mealType = newName.trim();
+    }
+
+    // Cập nhật Giờ ăn (nếu có truyền lên)
+    if (scheduledTime !== undefined && scheduledTime.trim() !== "") {
+      meal.scheduledTime = scheduledTime.trim();
+    }
+
+    await plan.save();
+    res.status(200).json({ message: "Đã cập nhật thông tin bữa ăn!", masterMealPlan: plan });
+  } catch (error) {
+    res.status(500).json({ message: "Lỗi cập nhật bữa ăn", error: error.message });
+  }
+};
+
+// 3. Xóa một bữa ăn
 exports.deleteMeal = async (req, res) => {
   try {
     const { mealId } = req.params;
@@ -115,7 +147,7 @@ exports.deleteMeal = async (req, res) => {
 // QUẢN LÝ MÓN ĂN (ITEMS) TRONG BỮA
 // ==========================================
 
-// 3. Thêm món ăn vào bữa
+// 4. Thêm món ăn vào bữa
 exports.addFoodToMeal = async (req, res) => {
   try {
     const { mealId, foodId, quantityInGrams } = req.body;
@@ -129,7 +161,6 @@ exports.addFoodToMeal = async (req, res) => {
 
     const ratio = quantityInGrams / 100;
     
-    // Ép kiểu làm tròn ngay từ bước thêm món
     meal.items.push({
       foodId: food._id,
       foodName: food.name,
@@ -148,7 +179,7 @@ exports.addFoodToMeal = async (req, res) => {
   }
 };
 
-// 4. Sửa số lượng (Grams) của món ăn
+// 5. Sửa số lượng (Grams) của món ăn
 exports.updateFoodQuantity = async (req, res) => {
   try {
     const { mealId, itemId, newQuantity } = req.body;
@@ -165,7 +196,6 @@ exports.updateFoodQuantity = async (req, res) => {
 
     const ratio = newQuantity / 100;
     
-    // Gán lại giá trị đã làm tròn
     item.quantityInGrams = formatCal(newQuantity);
     item.calories = formatCal(food.caloriesPer100g * ratio);
     item.protein = formatMacro(food.proteinPer100g * ratio);
@@ -180,7 +210,7 @@ exports.updateFoodQuantity = async (req, res) => {
   }
 };
 
-// 5. Xóa món ăn khỏi bữa
+// 6. Xóa món ăn khỏi bữa
 exports.removeFoodFromMeal = async (req, res) => {
   try {
     const { mealId, itemId } = req.params;
@@ -203,16 +233,13 @@ exports.removeFoodFromMeal = async (req, res) => {
 exports.initManualMealPlan = async (req, res) => {
   try {
     const userId = req.user.id;
-    // Nhận số bữa ăn từ Frontend (Mặc định là 3 nếu không có)
     const mealsPerDay = Number(req.body.mealsPerDay) || 3; 
 
     let plan = await MealPlan.findOne({ userId });
 
-    // Nếu chưa có lịch thì tiến hành tạo
     if (!plan) {
       let initialMeals = [];
 
-      // Logic sinh số bữa ăn linh hoạt
       if (mealsPerDay === 2) {
         initialMeals = [
           { mealType: "Bữa 1", scheduledTime: "12:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
@@ -234,7 +261,6 @@ exports.initManualMealPlan = async (req, res) => {
           { mealType: "Bữa Tối", scheduledTime: "19:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } }
         ];
       } else if (mealsPerDay === 6) {
-        // Bổ sung thêm tùy chọn 6 bữa / ngày
         initialMeals = [
           { mealType: "Bữa Sáng", scheduledTime: "07:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
           { mealType: "Bữa Phụ Sáng", scheduledTime: "09:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
@@ -244,7 +270,6 @@ exports.initManualMealPlan = async (req, res) => {
           { mealType: "Bữa Phụ Tối", scheduledTime: "21:30", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } }
         ];
       } else {
-        // Mặc định 3 bữa chuẩn
         initialMeals = [
           { mealType: "Bữa Sáng", scheduledTime: "07:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
           { mealType: "Bữa Trưa", scheduledTime: "12:00", items: [], mealTotal: { calories: 0, protein: 0, carbs: 0, fat: 0 } },
@@ -252,7 +277,6 @@ exports.initManualMealPlan = async (req, res) => {
         ];
       }
 
-      // Lưu vào database
       plan = new MealPlan({
         userId,
         meals: initialMeals,
@@ -284,14 +308,13 @@ exports.deleteEntireMealPlan = async (req, res) => {
 };
 
 // ==========================================
-// KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN (ĐÃ FIX BUG)
+// KIỂM TRA ĐỘ LỆCH CALO THỰC ĐƠN
 // ==========================================
 // [GET] /api/ai/check-meal-plan
 exports.checkMealPlanDeviation = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Lấy thông tin mục tiêu calo của người dùng và lịch ăn hiện tại
     const user = await User.findById(userId);
     const mealPlan = await MealPlan.findOne({ userId });
 
@@ -299,7 +322,6 @@ exports.checkMealPlanDeviation = async (req, res) => {
       return res.status(404).json({ message: "Không tìm thấy thông tin người dùng!" });
     }
     
-    // Nếu chưa tạo thực đơn thì chưa có gì để tính toán độ lệch
     if (!mealPlan) {
       return res.status(200).json({
         success: true,
@@ -309,41 +331,29 @@ exports.checkMealPlanDeviation = async (req, res) => {
       });
     }
 
-    // 🔥 FIX BUG 2: Ép hệ thống tính toán lại tổng Calo thời gian thực từ các món ăn hiện tại.
-    // Điều này giúp tránh trường hợp AI tạo thực đơn nhưng quên cập nhật trường dailyTotal trong DB.
     recalculateTotals(mealPlan);
 
-    // Lấy calories mục tiêu (mặc định 2000 nếu chưa cấu hình) và calories thực tế sau khi đã tính lại
     const targetCalories = user.targetMacros?.calories || 2000;
     const currentCalories = mealPlan.dailyTotal?.calories || 0;
 
-    // Định nghĩa ngưỡng lệch cho phép: Chỉ cho phép sai số cố định tối đa 100 calo
     const maxDiffAllowed = 100; 
     const diff = Math.abs(targetCalories - currentCalories);
 
     let isDeviated = false;
     let message = "Dinh dưỡng nằm trong ngưỡng an toàn cho phép.";
 
-    // Kích hoạt trạng thái cảnh báo nếu vượt ngưỡng cho phép (100 calo)
     if (targetCalories > 0 && diff > maxDiffAllowed) {
       isDeviated = true;
       const statusText = currentCalories > targetCalories ? "vượt quá" : "chưa đủ";
       message = `Tổng Calo lịch ăn hiện tại (${currentCalories} kcal) đang ${statusText} và lệch ${Math.round(diff)} kcal so với mục tiêu (${targetCalories} kcal) của bạn.`;
     }
 
-    // 🔥 FIX BUG 1: Trả về đồng thời cả 2 kiểu đặt tên biến (isDeviated và isDeviationHigh)
-    // để đảm bảo dù Frontend đang viết theo chuẩn nào cũng sẽ nhận được dữ liệu chính xác!
     return res.status(200).json({
       success: true,
-      
-      // Cặp biến kiểu 1 (Khuyên dùng cho Frontend của bạn)
       isDeviated: isDeviated, 
       message: isDeviated ? message : "Dinh dưỡng đạt tiêu chuẩn!",
-
-      // Cặp biến kiểu 2 (Giữ lại để không làm lỗi các logic cũ nếu có)
       isDeviationHigh: isDeviated, 
       warningMessage: isDeviated ? message : null,  
-
       analysis: {
         targetCalories,
         currentCalories,
