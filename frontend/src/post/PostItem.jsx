@@ -6,6 +6,26 @@ import {
 } from 'lucide-react';
 import MediaCarousel from './MediaCarousel';
 
+// ================= HUY HIỆU XÁC THỰC =================
+// Hiện tích xanh nếu: đã verify (isVerified) HOẶC là Personal Trainer (role === 'trainer').
+// Đồng bộ logic với Community.jsx.
+const isBadgeUser = (u) => !!(u?.isVerified || u?.role === 'trainer');
+
+const VerifiedBadge = ({ user, className = "w-4 h-4" }) => {
+  if (!isBadgeUser(user)) return null;
+  return (
+    <BadgeCheck
+      className={`${className} text-sky-400 fill-sky-400/20 shrink-0`}
+      title={user?.role === 'trainer' ? 'Personal Trainer' : 'Đã xác thực'}
+    />
+  );
+};
+
+const avatarRingClass = (u) =>
+  u?.role === 'trainer'
+    ? 'ring-2 ring-sky-400/70 group-hover/avatar:ring-sky-400'
+    : 'ring-2 ring-gray-700 group-hover/avatar:ring-emerald-500';
+
 export default function PostItem({
   post,
   currentUserId,
@@ -75,7 +95,8 @@ export default function PostItem({
                 handleViewProfile(post.userId?._id, { 
                   name: post.userId?.name || "Người dùng", 
                   isVerified: post.userId?.isVerified, 
-                  avatar: post.userId?.avatar 
+                  avatar: post.userId?.avatar,
+                  role: post.userId?.role
                 });
               }
             }}
@@ -83,14 +104,21 @@ export default function PostItem({
             <img 
               src={post.userId?.avatar || "https://ui-avatars.com/api/?name=U"} 
               alt="avatar" 
-              className="w-12 h-12 rounded-full object-cover ring-2 ring-gray-700 group-hover/avatar:ring-emerald-500 transition-all shadow-md" 
+              className={`w-12 h-12 rounded-full object-cover transition-all shadow-md ${avatarRingClass(post.userId)}`}
             />
             <div>
               <h4 className="font-bold text-base text-gray-100 group-hover/avatar:text-emerald-400 transition-colors flex items-center gap-1.5">
                 {post.userId?.name || "Người dùng"}
-                {post.userId?.isVerified && <BadgeCheck className="w-4 h-4 text-blue-400" />}
+                <VerifiedBadge user={post.userId} className="w-4 h-4" />
               </h4>
-              <p className="text-xs text-gray-400 mt-0.5">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <p className="text-xs text-gray-400">{new Date(post.createdAt).toLocaleString('vi-VN')}</p>
+                {post.userId?.role === 'trainer' && (
+                  <span className="text-[10px] font-semibold text-sky-400/90 bg-sky-500/10 border border-sky-500/20 px-1.5 py-0.5 rounded-full">
+                    Personal Trainer
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
