@@ -98,26 +98,31 @@ exports.addMeal = async (req, res) => {
 };
 
 // 2. Chỉnh sửa Tên bữa ăn & Giờ ăn
-// [PUT] /api/meals/update-meal
+// [PUT] /api/meal-plan/update-meal
 exports.updateMeal = async (req, res) => {
   try {
     const { mealId, mealType, mealName, name, scheduledTime } = req.body;
-    const plan = await MealPlan.findOne({ userId: req.user.id });
 
+    if (!mealId) {
+      return res.status(400).json({ message: "Thiếu mealId!" });
+    }
+
+    const plan = await MealPlan.findOne({ userId: req.user.id });
     if (!plan) return res.status(404).json({ message: "Không tìm thấy lịch ăn!" });
 
     const meal = plan.meals.id(mealId);
     if (!meal) return res.status(404).json({ message: "Không tìm thấy bữa ăn này!" });
 
     // Hỗ trợ đổi tên bữa ăn (nhận linh hoạt từ mealType, mealName hoặc name)
-    const newName = mealType || mealName || name;
-    if (newName !== undefined && newName.trim() !== "") {
-      meal.mealType = newName.trim();
+    // Luôn ép về String trước khi .trim() để tránh crash khi FE gửi thiếu field / null
+    const newName = mealType ?? mealName ?? name;
+    if (newName !== undefined && newName !== null && String(newName).trim() !== "") {
+      meal.mealType = String(newName).trim();
     }
 
     // Cập nhật Giờ ăn (nếu có truyền lên)
-    if (scheduledTime !== undefined && scheduledTime.trim() !== "") {
-      meal.scheduledTime = scheduledTime.trim();
+    if (scheduledTime !== undefined && scheduledTime !== null && String(scheduledTime).trim() !== "") {
+      meal.scheduledTime = String(scheduledTime).trim();
     }
 
     await plan.save();
