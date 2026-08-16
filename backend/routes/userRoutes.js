@@ -13,7 +13,8 @@ const {
   getFollowing,
   getFollowers,
   getUserProfileById,
-  changePassword
+  changePassword,
+  getPersonalQRCode
 } = require("../controllers/userController");
 
 // ==========================================
@@ -51,6 +52,7 @@ router.put("/change-password", verifyToken, validate(schemas.changePassword), ch
 // ==========================================
 // MẠNG XÃ HỘI
 // ==========================================
+router.get("/qr-code", verifyToken,   getPersonalQRCode);
 router.post("/:id/follow", verifyToken, toggleFollow);
 router.get("/:id/following", verifyToken, getFollowing);
 router.get("/:id/followers", verifyToken, getFollowers);

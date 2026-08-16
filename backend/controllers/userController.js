@@ -6,6 +6,7 @@ const crypto = require('crypto');
 const Transaction = require('../models/Transaction');  
 const fs = require("fs");
 const path = require("path");
+const QRCode = require("qrcode"); // <-- Thêm thư viện QRCode
 require("dotenv").config();
 
 // ==========================================
@@ -70,7 +71,6 @@ const calculateMacros = (age, gender, height, weight, goal, fitnessLevel, leanBo
 
   let bmr = 0;
 
-  // Ưu tiên Katch-McArdle dựa trên LBM để tránh ảo số ở người béo phì
   if (leanBodyMass && leanBodyMass > 0) {
     bmr = 370 + (21.6 * leanBodyMass);
   } else {
@@ -78,7 +78,6 @@ const calculateMacros = (age, gender, height, weight, goal, fitnessLevel, leanBo
     bmr = gender === "male" ? bmr + 5 : bmr - 161;
   }
 
-  // Hệ số vận động
   let tdeeMultiplier = 1.2; 
   if (fitnessLevel === "beginner") tdeeMultiplier = 1.375; 
   if (fitnessLevel === "intermediate") tdeeMultiplier = 1.55; 
@@ -87,22 +86,17 @@ const calculateMacros = (age, gender, height, weight, goal, fitnessLevel, leanBo
   let tdee = bmr * tdeeMultiplier;
   let targetCalories = tdee;
 
-  // Xử lý mục tiêu Calo
   if (goal === "lose_weight") {
     const heightInMeters = height / 100;
     const bmi = weight / (heightInMeters * heightInMeters);
 
     if (bmi >= 30) {
-      // Người béo phì: Giảm 20% TDEE
       targetCalories = tdee * 0.8;
-      
-      // Chặn trần Calo tối đa an toàn khi giảm cân
       const maxAllowedCalories = gender === "male" ? 2400 : 1900;
       if (targetCalories > maxAllowedCalories) {
         targetCalories = maxAllowedCalories;
       }
     } else {
-      // Người bình thường: Giảm 500 calo cố định
       targetCalories -= 500;
     }
   } else if (goal === "gain_muscle") {
@@ -111,7 +105,6 @@ const calculateMacros = (age, gender, height, weight, goal, fitnessLevel, leanBo
 
   targetCalories = Math.round(targetCalories);
 
-  // Phân bổ Macros
   const protein = Math.round((targetCalories * 0.3) / 4);
   const carbs = Math.round((targetCalories * 0.45) / 4);
   const fat = Math.round((targetCalories * 0.25) / 9);
@@ -138,10 +131,7 @@ exports.register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    // 1. Tính Body Stats trước
     const bodyStats = calculateBodyStats(age, gender, height, weight, neck, waist, hip);
-    
-    // 2. Truyền LBM vừa tính được vào hàm calculateMacros
     const generatedMacros = calculateMacros(age, gender, height, weight, goal, fitnessLevel, bodyStats.leanBodyMass);
 
     const newUser = new User({
@@ -253,7 +243,6 @@ exports.updateProfile = async (req, res) => {
     const currentUser = await User.findById(userId);
     if (!currentUser) return res.status(404).json({ message: "Người dùng không tồn tại" });
 
-    // 1. Lọc thông tin cập nhật hợp lệ
     const updates = {};
     for (const field of ALLOWED_PROFILE_FIELDS) {
       if (Object.prototype.hasOwnProperty.call(req.body, field)) {
@@ -261,7 +250,6 @@ exports.updateProfile = async (req, res) => {
       }
     }
 
-    // 2. Tổng hợp dữ liệu mới nhất
     const age = updates.age ?? currentUser.age;
     const gender = updates.gender ?? currentUser.gender;
     const height = updates.height ?? currentUser.height;
@@ -272,14 +260,12 @@ exports.updateProfile = async (req, res) => {
     const goal = updates.goal ?? currentUser.goal;
     const fitnessLevel = updates.fitnessLevel ?? currentUser.fitnessLevel;
 
-    // 3. Tính toán lại Body Stats & Macros
     const bodyStats = calculateBodyStats(age, gender, height, weight, neck, waist, hip);
     const newMacros = calculateMacros(age, gender, height, weight, goal, fitnessLevel, bodyStats.leanBodyMass);
 
     updates.targetMacros = newMacros;
     Object.assign(updates, bodyStats);
 
-    // 4. Lưu trực tiếp vào DB
     const updatedUser = await User.findByIdAndUpdate(
       userId, 
       { $set: updates }, 
@@ -310,8 +296,6 @@ exports.uploadAvatar = async (req, res) => {
       return res.status(404).json({ success: false, message: "Người dùng không tồn tại!" });
     }
 
-    // Xóa file avatar cũ trên disk nếu đó là ảnh do hệ thống tự lưu (tránh rác tích lũy theo thời gian).
-    // Không đụng vào avatar mặc định (ui-avatars.com) hay ảnh từ nguồn ngoài khác.
     const oldAvatar = currentUser.avatar;
     if (oldAvatar && oldAvatar.includes("/uploads/media/")) {
       const oldFilename = oldAvatar.split("/uploads/media/")[1];
@@ -460,6 +444,56 @@ exports.changePassword = async (req, res) => {
       success: false, 
       message: "Lỗi server khi đổi mật khẩu", 
       error: error.message 
+    });
+  }
+};
+
+// ==========================================
+// CHỨC NĂNG MÃ QR CÁ NHÂN (MỚI BỔ SUNG)
+// ==========================================
+// [GET] /api/users/qr-code
+exports.getPersonalQRCode = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const user = await User.findById(userId).select("name email avatar role");
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
+    }
+
+    // Đóng gói thông tin người dùng vào payload của QR
+    const qrPayload = JSON.stringify({
+      type: "USER_PROFILE",
+      userId: user._id,
+      name: user.name,
+      avatar: user.avatar
+    });
+
+    // Tạo mã QR dạng Base64 Image String (Data URL)
+    const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+      errorCorrectionLevel: "H",
+      type: "image/png",
+      margin: 2,
+      width: 300,
+      color: {
+        dark: "#000000",
+        light: "#FFFFFF"
+      }
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Tạo mã QR cá nhân thành công!",
+      qrCode: qrCodeDataUrl,
+      user: user
+    });
+
+  } catch (error) {
+    console.error("Lỗi khi tạo mã QR cá nhân:", error);
+    res.status(500).json({
+      success: false,
+      message: "Lỗi server khi tạo mã QR cá nhân",
+      error: error.message
     });
   }
 };
