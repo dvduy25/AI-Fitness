@@ -313,9 +313,9 @@ exports.uploadAvatar = async (req, res) => {
     // Xóa file avatar cũ trên disk nếu đó là ảnh do hệ thống tự lưu (tránh rác tích lũy theo thời gian).
     // Không đụng vào avatar mặc định (ui-avatars.com) hay ảnh từ nguồn ngoài khác.
     const oldAvatar = currentUser.avatar;
-    if (oldAvatar && oldAvatar.includes("/uploads/avatars/")) {
-      const oldFilename = oldAvatar.split("/uploads/avatars/")[1];
-      const oldFilePath = path.join(__dirname, "../uploads/avatars", oldFilename || "");
+    if (oldAvatar && oldAvatar.includes("/uploads/media/")) {
+      const oldFilename = oldAvatar.split("/uploads/media/")[1];
+      const oldFilePath = path.join(__dirname, "../uploads/media", oldFilename || "");
       fs.unlink(oldFilePath, (err) => {
         if (err && err.code !== "ENOENT") {
           console.error("Không xóa được avatar cũ:", err.message);
@@ -324,7 +324,7 @@ exports.uploadAvatar = async (req, res) => {
     }
 
     const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
+    const avatarUrl = `${baseUrl}/uploads/media/${req.file.filename}`;
 
     const updatedUser = await User.findByIdAndUpdate(
       userId,
