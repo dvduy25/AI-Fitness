@@ -475,7 +475,7 @@ exports.getPersonalQRCode = async (req, res) => {
     // ⚠️ Cần thêm biến môi trường FRONTEND_URL vào file .env, ví dụ:
     // FRONTEND_URL=https://ai-fitness-frontend.vercel.app
     // (đây là domain của FRONTEND, khác với domain backend đang chạy request này)
-    const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const frontendBaseUrl = (process.env.ALLOWED_ORIGINS || "http://localhost:5173").replace(/\/$/, "");
     const qrTargetUrl = `${frontendBaseUrl}/community?viewUser=${user._id}`;
 
     // Tạo mã QR dạng Base64 Image String (Data URL) — encode thẳng URL, không phải JSON
