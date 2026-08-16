@@ -2,7 +2,7 @@ const router = require("express").Router();
 const { verifyToken } = require("../middleware/authMiddleware");
 const { authLimiter } = require("../middleware/rateLimiter");
 const { validate, schemas } = require("../middleware/validation");
-const uploadAvatarMiddleware = require("../middleware/uploadMiddleware");
+const uploadAvatarMiddleware = require("../middleware/uploadAvatarMiddleware");
 const {
   login,
   register,
