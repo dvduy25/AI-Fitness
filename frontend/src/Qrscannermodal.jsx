@@ -7,12 +7,18 @@ const SCANNER_ELEMENT_ID = "qr-scanner-region";
 
 /**
  * Modal quét mã QR bằng camera thiết bị.
- * Khi quét thành công và payload hợp lệ (type === "USER_PROFILE"),
- * gọi onScanSuccess(userId) rồi tự đóng modal.
+ *
+ * Mã QR hồ sơ hiện tại là 1 URL dạng: https://<frontend>/community?viewUser=<userId>
+ * (xem userController.getPersonalQRCode ở backend). Component này đọc userId từ URL đó.
+ *
+ * Vẫn giữ khả năng đọc định dạng JSON cũ ({ type: "USER_PROFILE", userId }) để không phá vỡ
+ * các mã QR cũ người dùng có thể đã lưu/in ra trước khi đổi sang định dạng URL.
+ *
+ * Khi quét thành công, gọi onScanSuccess(userId) rồi tự đóng modal.
  *
  * Props:
  * - onClose: () => void
- * - onScanSuccess: (userId: string, payload: object) => void
+ * - onScanSuccess: (userId: string) => void
  */
 export default function QRScannerModal({ onClose, onScanSuccess }) {
   const scannerRef = useRef(null);
@@ -31,19 +37,38 @@ export default function QRScannerModal({ onClose, onScanSuccess }) {
       aspectRatio: 1.0
     };
 
+    // Trích xuất userId từ nội dung quét được — ưu tiên định dạng URL (mới),
+    // fallback sang JSON (cũ) để tương thích ngược.
+    const extractUserId = (decodedText) => {
+      // 1. Định dạng mới: URL trực tiếp, vd https://.../community?viewUser=<id>
+      try {
+        const url = new URL(decodedText);
+        const viewUserId = url.searchParams.get('viewUser');
+        if (viewUserId) return viewUserId;
+      } catch (e) {
+        // decodedText không phải URL hợp lệ, thử định dạng JSON cũ bên dưới
+      }
+
+      // 2. Định dạng cũ: JSON { type: "USER_PROFILE", userId }
+      try {
+        const payload = JSON.parse(decodedText);
+        if (payload?.type === "USER_PROFILE" && payload?.userId) {
+          return payload.userId;
+        }
+      } catch (e) {
+        // không phải JSON hợp lệ
+      }
+
+      return null;
+    };
+
     const handleDecodedText = (decodedText) => {
       if (hasHandledRef.current) return; // đã xử lý 1 lần rồi thì bỏ qua các frame sau
 
-      let payload;
-      try {
-        payload = JSON.parse(decodedText);
-      } catch (e) {
-        setError("Mã QR không hợp lệ hoặc không phải mã của hệ thống AI Fitness.");
-        return;
-      }
+      const userId = extractUserId(decodedText);
 
-      if (payload?.type !== "USER_PROFILE" || !payload?.userId) {
-        setError("Đây không phải là mã QR hồ sơ người dùng hợp lệ.");
+      if (!userId) {
+        setError("Mã QR không hợp lệ hoặc không phải mã hồ sơ người dùng của AI Fitness.");
         return;
       }
 
@@ -52,7 +77,7 @@ export default function QRScannerModal({ onClose, onScanSuccess }) {
 
       // Dừng camera trước khi điều hướng để tránh giữ quyền camera không cần thiết
       html5QrCode.stop().catch(() => {}).finally(() => {
-        if (isMounted) onScanSuccess(payload.userId, payload);
+        if (isMounted) onScanSuccess(userId);
       });
     };
 

@@ -449,7 +449,7 @@ exports.changePassword = async (req, res) => {
 };
 
 // ==========================================
-// CHỨC NĂNG MÃ QR CÁ NHÂN (MỚI BỔ SUNG)
+// CHỨC NĂNG MÃ QR CÁ NHÂN
 // ==========================================
 // [GET] /api/users/qr-code
 exports.getPersonalQRCode = async (req, res) => {
@@ -461,16 +461,25 @@ exports.getPersonalQRCode = async (req, res) => {
       return res.status(404).json({ success: false, message: "Không tìm thấy người dùng!" });
     }
 
-    // Đóng gói thông tin người dùng vào payload của QR
-    const qrPayload = JSON.stringify({
-      type: "USER_PROFILE",
-      userId: user._id,
-      name: user.name,
-      avatar: user.avatar
-    });
+    // 🛠️ FIX: Mã QR phải là 1 URL DUY NHẤT trỏ thẳng tới trang cá nhân mạng xã hội,
+    // KHÔNG được đóng gói dạng JSON như trước.
+    //
+    // Lý do: JSON payload trước đây chứa cả link avatar (dạng https://...). Camera mặc định
+    // của điện thoại (Google Camera/Lens, camera iOS...) không hiểu JSON — nó chỉ tự dò tìm
+    // xem trong chuỗi quét được có URL nào không, thấy URL avatar là mở luôn URL đó, khiến
+    // người dùng bị đưa thẳng tới ảnh đại diện thay vì trang cá nhân trong app.
+    //
+    // Dùng 1 URL duy nhất thì bất kỳ ứng dụng quét QR nào (kể cả không phải app của mình)
+    // cũng sẽ mở đúng trang, vì lúc này toàn bộ nội dung QR CHÍNH LÀ đường link cần mở.
+    //
+    // ⚠️ Cần thêm biến môi trường FRONTEND_URL vào file .env, ví dụ:
+    // FRONTEND_URL=https://ai-fitness-frontend.vercel.app
+    // (đây là domain của FRONTEND, khác với domain backend đang chạy request này)
+    const frontendBaseUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const qrTargetUrl = `${frontendBaseUrl}/community?viewUser=${user._id}`;
 
-    // Tạo mã QR dạng Base64 Image String (Data URL)
-    const qrCodeDataUrl = await QRCode.toDataURL(qrPayload, {
+    // Tạo mã QR dạng Base64 Image String (Data URL) — encode thẳng URL, không phải JSON
+    const qrCodeDataUrl = await QRCode.toDataURL(qrTargetUrl, {
       errorCorrectionLevel: "H",
       type: "image/png",
       margin: 2,
@@ -485,6 +494,7 @@ exports.getPersonalQRCode = async (req, res) => {
       success: true,
       message: "Tạo mã QR cá nhân thành công!",
       qrCode: qrCodeDataUrl,
+      qrTargetUrl, // trả kèm link gốc, hữu ích để debug hoặc hiển thị nút "Sao chép liên kết"
       user: user
     });
 
