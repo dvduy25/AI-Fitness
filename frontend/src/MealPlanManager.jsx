@@ -33,6 +33,10 @@ export default function MealPlanManager() {
   const [showAddMealModal, setShowAddMealModal] = useState(false);
   const [showAddFoodModal, setShowAddFoodModal] = useState(false);
 
+  // --- STATE CHO TÍNH NĂNG SỬA TÊN & GIỜ BỮA ĂN ---
+  const [showEditMealModal, setShowEditMealModal] = useState(false);
+  const [editMealData, setEditMealData] = useState({ mealId: '', mealType: '', scheduledTime: '' });
+
   const [selectedFoodDetail, setSelectedFoodDetail] = useState(null);
 
   const [editItemData, setEditItemData] = useState({ mealId: '', itemId: '', foodName: '', grams: 100 });
@@ -305,6 +309,30 @@ export default function MealPlanManager() {
     } catch (error) { alert("Lỗi xóa bữa ăn!"); } finally { setIsProcessing(false); }
   };
 
+  // --- SỬA TÊN & GIỜ BỮA ĂN ---
+  const handleOpenEditMeal = (meal) => {
+    setEditMealData({
+      mealId: meal._id,
+      mealType: meal.mealType || '',
+      scheduledTime: meal.scheduledTime || '12:00'
+    });
+    setShowEditMealModal(true);
+  };
+
+  const handleUpdateMeal = async () => {
+    if (!editMealData.mealType.trim()) return alert("Tên bữa ăn không được để trống!");
+    setIsProcessing(true);
+    try {
+      const res = await api.put(`/meal-plan/update-meal`, editMealData, getHeaders());
+      setGeneratedPlan(res.data.masterMealPlan);
+      setShowEditMealModal(false);
+    } catch (error) {
+      alert(error.response?.data?.message || "Lỗi cập nhật bữa ăn!");
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const handleAddFoodToMeal = async (foodId) => {
     setIsProcessing(true);
     try {
@@ -338,6 +366,13 @@ export default function MealPlanManager() {
   const filteredFoods = foodDatabase.filter(food => 
     food.name.toLowerCase().includes(searchFoodQuery.toLowerCase())
   );
+
+  // Danh sách bữa ăn hiển thị theo thứ tự giờ ăn tăng dần (bữa chưa đặt giờ xếp cuối)
+  const sortedMeals = [...(generatedPlan?.meals || [])].sort((a, b) => {
+    const timeA = a.scheduledTime || "99:99";
+    const timeB = b.scheduledTime || "99:99";
+    return timeA.localeCompare(timeB);
+  });
 
   return (
     <div className="bg-gray-950 min-h-screen text-gray-200 pb-12">
@@ -598,10 +633,10 @@ export default function MealPlanManager() {
                     </div>
                   )}
 
-                  {/* TIMELINE DANH SÁCH BỮA ĂN */}
+                  {/* TIMELINE DANH SÁCH BỮA ĂN (ĐÃ SẮP XẾP THEO GIỜ ĂN TĂNG DẦN) */}
                   <div className="relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-700 before:to-transparent pt-4 pb-4">
-                    {generatedPlan?.meals?.map((meal, index) => (
-                      <div key={index} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group mb-8 last:mb-0">
+                    {sortedMeals.map((meal, index) => (
+                      <div key={meal._id || index} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group mb-8 last:mb-0">
                         <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-gray-900 bg-gray-800 text-gray-400 z-10 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2">
                           <Clock className="w-4 h-4" />
                         </div>
@@ -616,7 +651,12 @@ export default function MealPlanManager() {
                               <span className="bg-orange-500/10 text-orange-400 text-sm font-bold px-3 py-1 rounded-lg">
                                 {Math.round(meal.mealTotal?.calories || 0)} kcal
                               </span>
-                              <button onClick={() => handleDeleteMeal(meal._id)} className="text-gray-500 hover:text-red-400 p-1.5 hover:bg-gray-800 rounded-md transition-colors"><Trash2 className="w-4 h-4" /></button>
+                              <button onClick={() => handleOpenEditMeal(meal)} className="text-gray-500 hover:text-blue-400 p-1.5 hover:bg-gray-800 rounded-md transition-colors" title="Sửa tên / giờ bữa ăn">
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button onClick={() => handleDeleteMeal(meal._id)} className="text-gray-500 hover:text-red-400 p-1.5 hover:bg-gray-800 rounded-md transition-colors" title="Xóa bữa ăn">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
                           
@@ -757,6 +797,44 @@ export default function MealPlanManager() {
               <button onClick={() => setShowAddMealModal(false)} className="flex-1 py-3 bg-gray-800 text-gray-400 rounded-xl">Hủy</button>
               <button onClick={handleAddMeal} className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl flex justify-center items-center">
                 {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Tạo bữa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 2.5: SỬA TÊN & GIỜ BỮA ĂN */}
+      {showEditMealModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+          <div className="bg-gray-900 w-full max-w-sm rounded-2xl border border-gray-800 overflow-hidden">
+            <div className="p-5 border-b border-gray-800 flex justify-between items-center">
+              <h3 className="font-bold text-white">Sửa bữa ăn</h3>
+              <button onClick={() => setShowEditMealModal(false)} className="text-gray-400 hover:text-white"><X className="w-5 h-5" /></button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-2">Tên bữa ăn</label>
+                <input
+                  type="text"
+                  value={editMealData.mealType}
+                  onChange={(e) => setEditMealData({ ...editMealData, mealType: e.target.value })}
+                  className="w-full p-3 bg-gray-950 border border-gray-700 rounded-xl text-white outline-none"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-400 block mb-2">Giờ ăn dự kiến</label>
+                <input
+                  type="time"
+                  value={editMealData.scheduledTime}
+                  onChange={(e) => setEditMealData({ ...editMealData, scheduledTime: e.target.value })}
+                  className="w-full p-3 bg-gray-950 border border-gray-700 rounded-xl text-white outline-none"
+                />
+              </div>
+            </div>
+            <div className="p-4 bg-gray-950 flex gap-3">
+              <button onClick={() => setShowEditMealModal(false)} className="flex-1 py-3 bg-gray-800 text-gray-400 rounded-xl">Hủy</button>
+              <button onClick={handleUpdateMeal} className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl flex justify-center items-center">
+                {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Lưu lại'}
               </button>
             </div>
           </div>

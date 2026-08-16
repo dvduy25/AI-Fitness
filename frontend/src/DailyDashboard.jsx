@@ -122,6 +122,18 @@ export default function DailyDashboard() {
         plannedTotals = user.targetMacros;
       }
 
+      // Bản đồ tra cứu giờ ăn chuẩn (scheduledTime) theo tên bữa ăn,
+      // lấy từ lịch ăn gốc (Master Meal Plan) để timeline luôn đúng giờ thật
+      // ngay cả khi API daily-log không trả kèm scheduledTime.
+      const scheduledTimeByMealType = {};
+      if (mealPlan?.meals?.length) {
+        mealPlan.meals.forEach(m => {
+          if (m?.mealType && m?.scheduledTime) {
+            scheduledTimeByMealType[m.mealType] = m.scheduledTime;
+          }
+        });
+      }
+
       setDashboardData({
         user: user, 
         macros: {
@@ -143,7 +155,8 @@ export default function DailyDashboard() {
         diet: {
           consumed: diet.consumedMeals || [],
           upcoming: diet.adjustedUpcomingMeals || [],
-          aiNote: diet.dailyAiSummary || diet.adjustmentNote || "" 
+          aiNote: diet.dailyAiSummary || diet.adjustmentNote || "",
+          scheduledTimeByMealType
         },
         workout: workoutPlan.hasPlan && workoutPlan.todayWorkout ? {
           isRestDay: workoutPlan.todayWorkout.isRestDay, title: workoutPlan.todayWorkout.title, scheduledTime: workoutPlan.todayWorkout.scheduledTime, exercises: workoutPlan.todayWorkout.exercises || []
@@ -409,33 +422,57 @@ export default function DailyDashboard() {
     );
   };
 
+  // ----------------------------------------------------
+  // TIMELINE: Sắp xếp lịch trình hôm nay CHUẨN THEO GIỜ THẬT
+  // ----------------------------------------------------
+  // Ưu tiên tuyệt đối: meal.scheduledTime hoặc meal.time có sẵn trong dữ liệu
+  // (đến từ log hôm nay hoặc từ Master Meal Plan qua scheduledTimeByMealType).
+  // Chỉ khi hoàn toàn không có giờ nào mới suy đoán theo tên bữa ăn (fallback).
+  const parseTimeToOrder = (timeStr) => {
+    if (!timeStr || typeof timeStr !== 'string' || !timeStr.includes(':')) return null;
+    const [h, m] = timeStr.split(':').map(Number);
+    if (Number.isNaN(h)) return null;
+    return h + (Number.isNaN(m) ? 0 : m / 60);
+  };
+
+  const guessMealTimeByName = (mealType) => {
+    const type = mealType?.toLowerCase() || '';
+    if (type.includes('sáng') && !type.includes('phụ') && !type.includes('vặt')) return '07:00';
+    if (type.includes('phụ sáng') || type.includes('vặt sáng')) return '10:00';
+    if (type.includes('trưa')) return '12:30';
+    if (type.includes('phụ chiều') || type.includes('vặt chiều')) return '15:30';
+    if (type.includes('tối')) return '19:00';
+    if (type.includes('đêm')) return '21:30';
+    return '12:00';
+  };
+
+  const getMealTime = (meal) => {
+    // 1. Giờ thật gắn trực tiếp trên bữa ăn hôm nay (nếu Backend trả về)
+    const directTime = meal?.scheduledTime || meal?.time;
+    // 2. Giờ thật lấy từ Master Meal Plan theo đúng tên bữa ăn
+    const mappedTime = dashboardData.diet.scheduledTimeByMealType?.[meal?.mealType];
+    // 3. Suy đoán theo tên bữa ăn (chỉ dùng khi không có giờ thật nào)
+    const finalTime = directTime || mappedTime || guessMealTimeByName(meal?.mealType);
+
+    return { time: finalTime, order: parseTimeToOrder(finalTime) ?? 12 };
+  };
+
   const generateTimeline = () => {
     const timeline = [];
 
-    const getMealTime = (mealType) => {
-      const type = mealType?.toLowerCase() || '';
-      if (type.includes('sáng') && !type.includes('phụ') && !type.includes('vặt')) return { time: '07:00', order: 7 };
-      if (type.includes('phụ sáng') || type.includes('vặt sáng')) return { time: '10:00', order: 10 };
-      if (type.includes('trưa')) return { time: '12:30', order: 12.5 };
-      if (type.includes('phụ chiều') || type.includes('vặt chiều')) return { time: '15:30', order: 15.5 };
-      if (type.includes('tối')) return { time: '19:00', order: 19 };
-      if (type.includes('đêm')) return { time: '21:30', order: 21.5 };
-      return { time: '12:00', order: 12 };
-    };
-
     dashboardData.diet.consumed.forEach(meal => {
-      const { time, order } = getMealTime(meal.mealType);
+      const { time, order } = getMealTime(meal);
       timeline.push({ id: `c_${meal._id || Math.random()}`, type: 'MEAL', status: 'COMPLETED', time, order, title: meal.mealType, data: meal });
     });
 
     dashboardData.diet.upcoming.forEach(meal => {
-      const { time, order } = getMealTime(meal.mealType);
+      const { time, order } = getMealTime(meal);
       timeline.push({ id: `u_${Math.random()}`, type: 'MEAL', status: 'UPCOMING', time, order, title: meal.mealType, data: meal });
     });
 
     if (!dashboardData.workout.isRestDay && dashboardData.workout.title) {
       let timeStr = dashboardData.workout.scheduledTime || '16:00';
-      let order = parseInt(timeStr.split(':')[0]) + (timeStr.includes('30') ? 0.5 : 0);
+      let order = parseTimeToOrder(timeStr) ?? 16;
       timeline.push({ id: `w_${Math.random()}`, type: 'WORKOUT', status: 'UPCOMING', time: timeStr, order, title: dashboardData.workout.title, data: dashboardData.workout });
     }
 
@@ -580,35 +617,6 @@ export default function DailyDashboard() {
                 </div>
               </div>
 
-              {/* CÂN NẶNG */}
-              <div className="bg-gray-900 p-5 md:p-6 rounded-2xl border border-gray-800 shadow-lg">
-                <div className="flex flex-col sm:flex-row justify-between sm:items-center mb-6 gap-3">
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2"><TrendingUp className="w-5 h-5 text-emerald-400" /> Theo dõi Cân nặng</h2>
-                  <div className="flex items-center gap-3 self-start sm:self-auto">
-                    <button onClick={() => setShowWeightPrompt(true)} className="px-3 py-1.5 text-xs font-semibold rounded-md border border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 flex items-center gap-1">+ Nhập</button>
-                    <div className="flex bg-gray-800 rounded-lg p-1">
-                      <button onClick={() => setWeightPeriod('week')} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${weightPeriod === 'week' ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-400 hover:text-white'}`}>Tuần</button>
-                      <button onClick={() => setWeightPeriod('month')} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${weightPeriod === 'month' ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-400 hover:text-white'}`}>Tháng</button>
-                      <button onClick={() => setWeightPeriod('all')} className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${weightPeriod === 'all' ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-400 hover:text-white'}`}>Tất cả</button>
-                    </div>
-                  </div>
-                </div>
-                {weightData.length > 0 ? (
-                  <div className="h-56 w-full">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={weightData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#374151" vertical={false} />
-                        <XAxis dataKey="displayDate" stroke="#9ca3af" tick={{fontSize: 12}} tickLine={false} axisLine={false} dy={10} />
-                        <YAxis domain={['dataMin - 1', 'dataMax + 1']} stroke="#9ca3af" tick={{fontSize: 12}} tickLine={false} axisLine={false} width={35} />
-                        <RechartsTooltip contentStyle={{ backgroundColor: '#1f2937', borderColor: '#374151', color: '#fff', borderRadius: '8px' }} itemStyle={{ color: '#10b981' }} formatter={(value) => [`${value} kg`, 'Cân nặng']} />
-                        <Line type="monotone" dataKey="weight" stroke="#10b981" strokeWidth={3} dot={{ r: 4, fill: '#10b981', strokeWidth: 2, stroke: '#1f2937' }} activeDot={{ r: 6 }} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                ) : (
-                  <div className="h-40 flex flex-col items-center justify-center text-gray-500 border border-dashed border-gray-700 rounded-xl"><Info className="w-6 h-6 mb-2 opacity-50" /><p className="text-sm">Chưa có dữ liệu.</p></div>
-                )}
-              </div>
             </div>
 
             {/* CỘT PHẢI: LỊCH TRÌNH TRONG NGÀY (TIMELINE) */}
