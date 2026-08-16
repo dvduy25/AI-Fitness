@@ -1,7 +1,7 @@
 import api from "./services/api";
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Heart, MessageCircle, Send, Activity, Utensils,
   Trash2, Image as ImageIcon, Film, X,
@@ -40,6 +40,7 @@ const avatarRingClass = (u) =>
 
 export default function Community() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [posts, setPosts] = useState([]);
   const [userProfilePosts, setUserProfilePosts] = useState([]); // State riêng lưu bài viết trang cá nhân
   const [loading, setLoading] = useState(true);
@@ -196,6 +197,22 @@ export default function Community() {
       window.scrollTo({ top: savedScrollPos, behavior: 'instant' });
     }, 10);
   };
+
+  // ================= MỞ PROFILE TỪ QUÉT MÃ QR =================
+  // Khi được điều hướng tới đây kèm ?viewUser=<id> (ví dụ từ màn hình quét QR),
+  // tự động mở đúng profile card đó — giống hệt hành vi bấm vào 1 người trong danh sách theo dõi.
+  useEffect(() => {
+    const viewUserId = searchParams.get('viewUser');
+    if (!viewUserId) return;
+
+    handleViewProfile(viewUserId, {});
+
+    // Xóa query param khỏi URL sau khi đã xử lý, tránh việc refresh/back lại mở lại profile này
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('viewUser');
+    setSearchParams(nextParams, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   const handleToggleFollow = async (userId) => {
     try {

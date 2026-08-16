@@ -37,6 +37,17 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+
+    // 🛡️ FIX: Instance này set mặc định "Content-Type: application/json" cho
+    // MỌI request. Khi body là FormData (upload avatar, ảnh/video bài đăng...),
+    // header đó phải được gỡ bỏ để axios/trình duyệt tự sinh
+    // "multipart/form-data; boundary=----WebKitFormBoundaryXXXX" — thiếu boundary
+    // này thì Multer ở backend không parse được file, upload luôn thất bại (400).
+    // Áp dụng tự động ở đây để không phải nhớ set thủ công ở từng component.
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"];
+    }
+
     return config;
   },
   (error) => Promise.reject(error)

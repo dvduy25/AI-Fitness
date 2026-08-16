@@ -5,8 +5,16 @@ import {
   User, Crown, Ticket, Zap, Target, Activity, 
   MapPin, Save, Loader2, Mail, Weight, Ruler, HeartPulse,
   CheckCircle, AlertTriangle, Camera, Calculator, Lock, Percent, Bone,
-  Edit, X, Sparkles, ChevronRight
+  Edit, X, Sparkles, ChevronRight, QrCode, Download, ScanLine
 } from 'lucide-react';
+import QRScannerModal from './QRScannerModal'; // ⚠️ chỉnh lại path cho đúng vị trí thực tế trong project
+
+// ⚠️ CẤU HÌNH: đường dẫn tới trang MẠNG XÃ HỘI (component Community.jsx).
+// Trang cá nhân ở đó KHÔNG phải route riêng — nó là 1 state (selectedUserFilter) render
+// ngay trong Community. Nên ở đây mình trỏ tới route Community kèm query ?viewUser=<id>,
+// và Community.jsx sẽ tự đọc query đó để mở đúng profile card (xem useEffect đọc searchParams).
+// Nếu route mount Community trong project khác '/community', chỉ cần sửa DUY NHẤT dòng dưới.
+const getSocialProfilePath = (userId) => `/community?viewUser=${userId}`;
 
 export default function UserProfile() {
   const navigate = useNavigate(); // Hook chuyển trang SPA không reload
@@ -19,6 +27,14 @@ export default function UserProfile() {
   const [successMsg, setSuccessMsg] = useState("");
 
   const [userData, setUserData] = useState(null);
+
+  // State cho mã QR cá nhân
+  const [showQRModal, setShowQRModal] = useState(false);
+  const [qrData, setQrData] = useState(null);
+  const [isLoadingQR, setIsLoadingQR] = useState(false);
+
+  // State cho việc quét mã QR của người khác
+  const [showScannerModal, setShowScannerModal] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '', age: '', gender: 'male', height: '', weight: '',
@@ -111,10 +127,12 @@ export default function UserProfile() {
 
     try {
       const token = localStorage.getItem('token');
+      // 🛡️ FIX: KHÔNG tự set Content-Type ở đây nữa — interceptor trong api.js
+      // đã tự động gỡ Content-Type mặc định khi phát hiện body là FormData, để
+      // axios/trình duyệt tự sinh boundary đúng chuẩn cho Multer parse được file.
       const config = {
         headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data'
+          Authorization: `Bearer ${token}`
         }
       };
       
@@ -124,9 +142,14 @@ export default function UserProfile() {
       if (newAvatarUrl) {
         setUserData(prev => ({ ...prev, avatar: newAvatarUrl }));
         setSuccessMsg("Cập nhật ảnh đại diện thành công!");
+        // Avatar đổi -> mã QR cũ (nếu đã cache) không còn khớp ảnh mới, xoá cache để lần sau tạo lại
+        setQrData(null);
+      } else {
+        setError("Tải ảnh lên thành công nhưng không nhận được đường dẫn ảnh mới. Vui lòng tải lại trang.");
       }
     } catch (err) {
-      setError("Có lỗi khi tải lên ảnh đại diện. Vui lòng thử lại.");
+      const backendMsg = err.response?.data?.message;
+      setError(backendMsg || "Có lỗi khi tải lên ảnh đại diện. Vui lòng thử lại.");
     } finally {
       setIsUploadingAvatar(false);
       setTimeout(() => setSuccessMsg(""), 4000);
@@ -181,6 +204,9 @@ export default function UserProfile() {
         }));
         
         setIsEditing(false);
+
+        // Tên hiển thị có thể đã đổi -> mã QR cũ (nếu đã cache) không còn khớp thông tin mới
+        setQrData(null);
       } else {
         await fetchProfile();
       }
@@ -205,6 +231,45 @@ export default function UserProfile() {
     fetchProfile();
     setIsEditing(false);
     setError(null);
+  };
+
+  // ==========================================
+  // MÃ QR CÁ NHÂN
+  // ==========================================
+  const handleShowQRCode = async () => {
+    setShowQRModal(true);
+    if (qrData) return; // đã có sẵn từ lần trước, không cần gọi lại API
+
+    setIsLoadingQR(true);
+    try {
+      const token = localStorage.getItem('token');
+      const config = { headers: { Authorization: `Bearer ${token}` } };
+      const res = await api.get('/users/qr-code', config);
+
+      if (res.data?.success && res.data?.qrCode) {
+        setQrData(res.data.qrCode);
+      } else {
+        throw new Error("Không nhận được dữ liệu mã QR.");
+      }
+    } catch (err) {
+      setError("Không thể tạo mã QR. Vui lòng thử lại sau.");
+      setShowQRModal(false);
+    } finally {
+      setIsLoadingQR(false);
+    }
+  };
+
+  const handleScanSuccess = (scannedUserId) => {
+    setShowScannerModal(false);
+
+    // Nếu tự quét QR của chính mình thì không cần điều hướng đi đâu cả
+    if (scannedUserId === userData?._id) {
+      setSuccessMsg("Đây là mã QR của chính bạn!");
+      setTimeout(() => setSuccessMsg(""), 3000);
+      return;
+    }
+
+    navigate(getSocialProfilePath(scannedUserId));
   };
 
   const getPremiumDate = (dateStr) => {
@@ -581,7 +646,7 @@ export default function UserProfile() {
 
           </div>
 
-          {/* CỘT PHẢI: GÓI TÀI KHOẢN, CHỈ SỐ DINH DƯỠNG & CƠ THỂ */}
+          {/* CỘT PHẢI: GÓI TÀI KHOẢN, MÃ QR, CHỈ SỐ DINH DƯỠNG & CƠ THỂ */}
           <div className="lg:col-span-4 space-y-6">
             
             {/* THẺ TÀI KHOẢN / NÂNG CẤP PREMIUM */}
@@ -646,6 +711,34 @@ export default function UserProfile() {
                   </button>
                 </div>
               )}
+            </div>
+
+            {/* MÃ QR CÁ NHÂN */}
+            <div className="bg-gray-900 p-5 rounded-2xl border border-gray-800 shadow-lg space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-500/10 rounded-xl text-blue-400">
+                    <QrCode className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-sm">Mã QR cá nhân</h3>
+                    <p className="text-xs text-gray-400">Chia sẻ hồ sơ nhanh chóng</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleShowQRCode}
+                  className="px-3 py-2 bg-gray-800 hover:bg-gray-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  Xem <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                onClick={() => setShowScannerModal(true)}
+                className="w-full py-2.5 bg-blue-600/10 hover:bg-blue-600/20 border border-blue-500/30 text-blue-300 text-xs font-semibold rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                <ScanLine className="w-4 h-4" /> Quét mã QR bạn bè
+              </button>
             </div>
 
             {/* CHỈ SỐ DINH DƯỠNG KHUYẾN NGHỊ */}
@@ -749,6 +842,64 @@ export default function UserProfile() {
 
         </div>
       </div>
+
+      {/* MODAL MÃ QR */}
+      {showQRModal && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          onClick={() => setShowQRModal(false)}
+        >
+          <div 
+            className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <QrCode className="w-5 h-5 text-blue-400" /> Mã QR cá nhân
+              </h3>
+              <button 
+                onClick={() => setShowQRModal(false)} 
+                className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {isLoadingQR ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 text-blue-500 animate-spin mb-3" />
+                <p className="text-sm text-gray-400">Đang tạo mã QR...</p>
+              </div>
+            ) : qrData ? (
+              <>
+                <div className="bg-white p-4 rounded-xl inline-block">
+                  <img src={qrData} alt="Mã QR cá nhân" className="w-56 h-56 object-contain" />
+                </div>
+                <p className="text-xs text-gray-400 mt-4 leading-relaxed">
+                  Chia sẻ mã này để bạn bè quét và xem hồ sơ hoặc theo dõi bạn.
+                </p>
+                <a
+                  href={qrData}
+                  download={`qr-code-${formData.name || 'profile'}.png`}
+                  className="mt-4 w-full py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                >
+                  <Download className="w-4 h-4" /> Tải mã QR
+                </a>
+              </>
+            ) : (
+              <p className="text-sm text-gray-500 py-12">Không thể tải mã QR. Vui lòng thử lại.</p>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL QUÉT QR NGƯỜI KHÁC */}
+      {showScannerModal && (
+        <QRScannerModal
+          onClose={() => setShowScannerModal(false)}
+          onScanSuccess={handleScanSuccess}
+        />
+      )}
     </div>
   );
 }
