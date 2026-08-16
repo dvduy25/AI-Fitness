@@ -4,6 +4,8 @@ const jwt = require("jsonwebtoken");
 const WeightLog = require("../models/WeightLog");
 const crypto = require('crypto');
 const Transaction = require('../models/Transaction');  
+const fs = require("fs");
+const path = require("path");
 require("dotenv").config();
 
 // ==========================================
@@ -290,6 +292,55 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ message: "Lỗi cập nhật", error: error.message });
+  }
+};
+
+// ==========================================
+// TẢI LÊN / CẬP NHẬT ẢNH ĐẠI DIỆN
+// ==========================================
+exports.uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "Vui lòng chọn 1 ảnh để tải lên!" });
+    }
+
+    const userId = req.user.id;
+    const currentUser = await User.findById(userId);
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "Người dùng không tồn tại!" });
+    }
+
+    // Xóa file avatar cũ trên disk nếu đó là ảnh do hệ thống tự lưu (tránh rác tích lũy theo thời gian).
+    // Không đụng vào avatar mặc định (ui-avatars.com) hay ảnh từ nguồn ngoài khác.
+    const oldAvatar = currentUser.avatar;
+    if (oldAvatar && oldAvatar.includes("/uploads/avatars/")) {
+      const oldFilename = oldAvatar.split("/uploads/avatars/")[1];
+      const oldFilePath = path.join(__dirname, "../uploads/avatars", oldFilename || "");
+      fs.unlink(oldFilePath, (err) => {
+        if (err && err.code !== "ENOENT") {
+          console.error("Không xóa được avatar cũ:", err.message);
+        }
+      });
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const avatarUrl = `${baseUrl}/uploads/avatars/${req.file.filename}`;
+
+    const updatedUser = await User.findByIdAndUpdate(
+      userId,
+      { $set: { avatar: avatarUrl } },
+      { new: true }
+    ).select("-password");
+
+    res.status(200).json({
+      success: true,
+      message: "Cập nhật ảnh đại diện thành công!",
+      avatarUrl: avatarUrl,
+      user: updatedUser
+    });
+  } catch (error) {
+    console.error("Lỗi khi tải avatar:", error);
+    res.status(500).json({ success: false, message: "Lỗi server khi tải ảnh đại diện", error: error.message });
   }
 };
 
