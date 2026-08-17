@@ -947,26 +947,33 @@ exports.reportPost = async (req, res) => {
 // ==========================================
 // 15. GỢI Ý FOLLOW NGƯỜI DÙNG
 // ==========================================
+// Sắp xếp ưu tiên theo "bạn chung": số người mà mình đang theo dõi (following)
+// và họ cũng đang theo dõi ứng viên gợi ý (mutualCount) — giống kiểu gợi ý
+// "X người bạn theo dõi cũng đang theo dõi người này". Nếu bằng nhau mới xét
+// tới ưu tiên Personal Trainer rồi đến tổng lượng follower.
 exports.getSuggestedUsers = async (req, res) => {
   try {
     const currentUserId = req.user.id || req.user._id;
     const currentUser = await User.findById(currentUserId);
     if (!currentUser) return res.status(404).json({ success: false, message: "Không tìm thấy user" });
 
-    const excludeIds = [...(currentUser.following || []), currentUserId]
-      .map(id => new mongoose.Types.ObjectId(id));
+    const followingListObj = (currentUser.following || []).map(id => new mongoose.Types.ObjectId(id));
+    const excludeIds = [...followingListObj, new mongoose.Types.ObjectId(currentUserId)];
 
-    // Ưu tiên Personal Trainer, sau đó xếp theo lượng người theo dõi
     const suggestions = await User.aggregate([
       { $match: { _id: { $nin: excludeIds } } },
       { $addFields: {
           followersCount: { $size: { $ifNull: ["$followers", []] } },
+          // Số người mình đang follow mà cũng đang follow ứng viên này ("bạn chung")
+          mutualCount: {
+            $size: { $setIntersection: [{ $ifNull: ["$followers", []] }, followingListObj] }
+          },
           priority: { $cond: [{ $eq: ["$role", "trainer"] }, 1, 0] }
         }
       },
-      { $sort: { priority: -1, followersCount: -1 } },
+      { $sort: { mutualCount: -1, priority: -1, followersCount: -1 } },
       { $limit: 10 },
-      { $project: { name: 1, avatar: 1, role: 1, isVerified: 1, followersCount: 1, bio: 1 } }
+      { $project: { name: 1, avatar: 1, role: 1, isVerified: 1, followersCount: 1, mutualCount: 1, bio: 1 } }
     ]);
 
     res.status(200).json({ success: true, users: suggestions });
