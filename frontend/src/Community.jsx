@@ -15,7 +15,7 @@ import MediaCarousel from './post/MediaCarousel';
 import PostDetailsModal from './post/PostDetailsModal';
 import PostItem from './post/PostItem';
 import NotificationSidebar from './post/NotificationSidebar';
-import FollowSuggestions from './post/FollowSuggestions';
+import FollowSuggestions from './post/Followsuggestions';
 
 // ================= HUY HIỆU XÁC THỰC =================
 // Hiện tích xanh nếu: đã verify (isVerified) HOẶC là Personal Trainer (role === 'trainer').
