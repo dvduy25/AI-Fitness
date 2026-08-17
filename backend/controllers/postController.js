@@ -31,8 +31,6 @@ const handleMediaFiles = (req) => {
   return { images, video };
 };
 
-// ❌ Đã xóa bỏ getLockedUserIds và isPostAuthorLocked vì không còn cần thiết nữa.
-
 // ==========================================
 // 1. TẠO BÀI VIẾT TỪ NHẬT KÝ (WORKOUT/DIET LOG)
 // ==========================================
@@ -239,8 +237,6 @@ exports.getFeed = async (req, res) => {
         }
       },
 
-      // 5. LOẠI BỎ BÀI VIẾT: Chỉ lọc bỏ khi thỏa mãn CẢ 3 ĐIỀU KIỆN (Đã like AND Đã comment AND Đã xem)
-      // (Nếu muốn chỉ cần 1 trong 3 điều kiện là lọc bỏ thì đổi $and thành $or)
       // 5. LOẠI BỎ BÀI VIẾT: Ẩn bài viết nếu dính bất kỳ 1 trong 3 trạng thái
       {
         $match: {
@@ -385,18 +381,27 @@ exports.toggleLike = async (req, res) => {
   }
 };
 
+// ==========================================
+// 5b. BÌNH LUẬN (TẠO / TRẢ LỜI)
+// ==========================================
+// req.body có thể chứa:
+//   - content: nội dung bình luận
+//   - parentCommentId: ID của comment/reply đang được bấm nút "Trả lời"
+//     (không nhất thiết là comment gốc — nếu là 1 reply khác, hệ thống
+//      sẽ tự truy ngược về đúng bình luận gốc để giữ cấu trúc phẳng 1 tầng)
 exports.addComment = async (req, res) => {
   try {
-    const { content, parentCommentId } = req.body; // parentCommentId ở đây là ID của comment/reply mà user bấm nút "Trả lời"
+    const { content, parentCommentId } = req.body;
     const post = await Post.findById(req.params.postId);
     const senderId = req.user.id;
 
     if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
+
     if (post.status !== 'approved') {
       return res.status(403).json({ message: "Không thể bình luận, bài viết hiện không khả dụng." });
     }
 
-    let rootParentId = null;      // ID của bình luận gốc (cấp cao nhất) để lưu vào parentCommentId
+    let rootParentId = null;      // ID của bình luận gốc (cấp cao nhất), lưu vào parentCommentId
     let replyToUserId = null;
     let replyToUserName = null;
     let notifyTargetUserId = null;
@@ -414,9 +419,9 @@ exports.addComment = async (req, res) => {
       notifyTargetUserId = targetComment.userId._id;
     }
 
-    const newComment = new Comment({
-      postId: post._id,
-      userId: senderId,
+    const newComment = new Comment({ 
+      postId: post._id, 
+      userId: senderId, 
       content,
       parentCommentId: rootParentId,
       replyToUserId,
@@ -427,7 +432,7 @@ exports.addComment = async (req, res) => {
     post.commentsCount += 1;
     await post.save();
 
-    // Gửi thông báo
+    // Gửi thông báo tương ứng
     if (notifyTargetUserId) {
       if (notifyTargetUserId.toString() !== senderId.toString()) {
         await Notification.create({
@@ -443,10 +448,42 @@ exports.addComment = async (req, res) => {
       await Notification.create({ userId: post.userId, senderId, type: 'comment', postId: post._id, isRead: false });
     }
 
-    const populatedComment = await Comment.findById(newComment._id)
-      .populate("userId", "name avatar role isVerified");
+    const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar role isVerified");
 
     res.status(201).json({ success: true, comment: populatedComment });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// 5c. LIKE BÌNH LUẬN (áp dụng cho cả comment gốc và reply)
+// ==========================================
+exports.toggleLikeComment = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
+
+    const isLiked = comment.likes.includes(userId);
+    if (isLiked) {
+      comment.likes.pull(userId);
+    } else {
+      comment.likes.push(userId);
+      if (comment.userId.toString() !== userId.toString()) {
+        await Notification.create({
+          userId: comment.userId,
+          senderId: userId,
+          type: 'like_comment',
+          postId: comment.postId,
+          commentId: comment._id,
+          isRead: false
+        });
+      }
+    }
+
+    await comment.save();
+    res.status(200).json({ success: true, isLiked: !isLiked, likeCount: comment.likes.length });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -538,10 +575,13 @@ exports.deletePost = async (req, res) => {
 };
 
 // CRUD Comment
+// getComments: trả về danh sách bình luận GỐC, mỗi bình luận gốc kèm mảng
+// "replies" (đã gom phẳng 1 tầng, bao gồm cả reply-của-reply) để FE dễ render.
 exports.getComments = async (req, res) => {
   try {
     const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
+    
     if (post.status !== 'approved') {
       return res.status(403).json({ message: "Bài viết hiện không khả dụng, không thể xem bình luận." });
     }
@@ -551,6 +591,7 @@ exports.getComments = async (req, res) => {
       .sort({ createdAt: 1 });
 
     const topLevel = allComments.filter(c => !c.parentCommentId);
+
     const repliesMap = {};
     allComments.filter(c => c.parentCommentId).forEach(r => {
       const key = r.parentCommentId.toString();
@@ -558,14 +599,16 @@ exports.getComments = async (req, res) => {
       repliesMap[key].push(r);
     });
 
-    const result = topLevel
+    const comments = topLevel
       .map(c => ({
         ...c.toObject(),
-        replies: (repliesMap[c._id.toString()] || []).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+        replies: (repliesMap[c._id.toString()] || []).sort(
+          (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
+        )
       }))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
-    res.status(200).json({ success: true, comments: result });
+    res.status(200).json({ success: true, comments });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -593,9 +636,14 @@ exports.deleteComment = async (req, res) => {
       return res.status(403).json({ message: "Không có quyền xóa" });
     }
 
-    await Comment.findByIdAndDelete(req.params.commentId);
+    // Xóa comment và toàn bộ reply gắn với nó (nếu đây là comment gốc)
+    const repliesToDelete = await Comment.find({ parentCommentId: comment._id });
+    const totalRemoved = 1 + repliesToDelete.length;
+
+    await Comment.deleteMany({ $or: [{ _id: comment._id }, { parentCommentId: comment._id }] });
+
     if (post) {
-      post.commentsCount = Math.max(0, post.commentsCount - 1);
+      post.commentsCount = Math.max(0, post.commentsCount - totalRemoved);
       await post.save();
     }
     res.status(200).json({ success: true, message: "Đã xóa bình luận" });
@@ -637,7 +685,6 @@ exports.getFollowingPosts = async (req, res) => {
     const followingList = currentUser.following || [];
     
     const posts = await Post.aggregate([
-      // 🌟 TỐI ƯU: Không cần $nin lockedUserIds nữa
       { $match: { 
           userId: { $in: followingList },
           status: 'approved' 
@@ -702,7 +749,6 @@ exports.getLikedPosts = async (req, res) => {
     const currentUserId = req.user.id || req.user._id;
     
     const posts = await Post.aggregate([
-      // 🌟 TỐI ƯU
       { $match: { 
           likes: new mongoose.Types.ObjectId(currentUserId),
           status: 'approved'
@@ -732,7 +778,6 @@ exports.getLikedPosts = async (req, res) => {
 exports.getLatestPosts = async (req, res) => {
   try {
     const posts = await Post.aggregate([
-      // 🌟 TỐI ƯU
       { $match: { status: 'approved' } },
       { $sort: { createdAt: -1 } }, 
       { $limit: 100 }, 
@@ -898,41 +943,9 @@ exports.reportPost = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
-// ==========================================
-// LIKE BÌNH LUẬN
-// ==========================================
-exports.toggleLikeComment = async (req, res) => {
-  try {
-    const userId = req.user.id || req.user._id;
-    const comment = await Comment.findById(req.params.commentId);
-    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
-
-    const isLiked = comment.likes.includes(userId);
-    if (isLiked) {
-      comment.likes.pull(userId);
-    } else {
-      comment.likes.push(userId);
-      if (comment.userId.toString() !== userId.toString()) {
-        await Notification.create({
-          userId: comment.userId,
-          senderId: userId,
-          type: 'like_comment',
-          postId: comment.postId,
-          commentId: comment._id,
-          isRead: false
-        });
-      }
-    }
-
-    await comment.save();
-    res.status(200).json({ success: true, isLiked: !isLiked, likeCount: comment.likes.length });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
 
 // ==========================================
-// GỢI Ý FOLLOW NGƯỜI DÙNG
+// 15. GỢI Ý FOLLOW NGƯỜI DÙNG
 // ==========================================
 exports.getSuggestedUsers = async (req, res) => {
   try {

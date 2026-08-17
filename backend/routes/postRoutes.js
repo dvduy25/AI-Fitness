@@ -36,6 +36,9 @@ router.get("/latest", verifyToken, postController.getLatestPosts);
 router.get("/following", verifyToken, postController.getFollowingPosts);
 router.get("/liked", verifyToken, postController.getLikedPosts);
 
+// 🌟 Gợi ý người dùng để theo dõi (Follow suggestions)
+router.get("/suggested-users", verifyToken, postController.getSuggestedUsers);
+
 // Các Route quản lý thông báo
 router.get("/notifications", verifyToken, postController.getNotifications);
 router.get("/notifications/unread-count", verifyToken, postController.getUnreadNotificationCount);
@@ -72,15 +75,16 @@ router.post("/:postId/share-to-user", verifyToken, postController.sharePostToUse
 router.post("/:postId/report", verifyToken, postController.reportPost);
 
 // Bình luận (Gắn bộ lọc từ khóa cấm để chặn bình luận thô tục)
+// Lưu ý: cùng 1 route POST /:postId/comments được dùng cho cả bình luận gốc
+// và trả lời (reply) — phân biệt bằng việc có/không có "parentCommentId" trong body.
 router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/comments", verifyToken, checkBannedWords, postController.addComment);
 router.put("/comment/:commentId", verifyToken, checkBannedWords, postController.updateComment);
 router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
-// Like bình luận
+
+// 🌟 Thích / bỏ thích một bình luận (áp dụng cho cả bình luận gốc và reply)
 router.post("/comment/:commentId/like", verifyToken, postController.toggleLikeComment);
 
-// Gợi ý người dùng để follow
-router.get("/suggested-users", verifyToken, postController.getSuggestedUsers);
 // ==========================================
 // 6. TÍNH NĂNG CLONE (SAO CHÉP)
 // ==========================================
