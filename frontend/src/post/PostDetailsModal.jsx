@@ -1,15 +1,21 @@
 import api from "../services/api";
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, Activity, Bookmark, Utensils, Heart, MessageCircle, Eye, Share2, BadgeCheck, Send, Flag } from 'lucide-react';
+import { X, Activity, Bookmark, Utensils, Heart, MessageCircle, Eye, Share2, BadgeCheck, Send, Flag, ChevronDown, ChevronUp } from 'lucide-react';
 import MediaCarousel from './MediaCarousel'; 
-
 
 const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, handleShare, handleSaveToLibrary, setViewingPlan, setSelectedUserFilter }) => {
   const [comments, setComments] = useState([]);
   const [newComment, setNewComment] = useState("");
   const [loadingComments, setLoadingComments] = useState(true);
-  
+
+  // --- STATE QUẢN LÝ THU GỌN / MỞ RỘNG BÌNH LUẬN TRẢ LỜI ---
+  const [expandedComments, setExpandedComments] = useState({});
+
+  // --- STATE CHỨC NĂNG TRẢ LỜI BÌNH LUẬN (REPLY) ---
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyContent, setReplyContent] = useState("");
+
   // --- STATE CHỨC NĂNG BÁO CÁO (REPORT) ---
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportReason, setReportReason] = useState("");
@@ -34,6 +40,14 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
     fetchComments();
   }, [post._id, token]);
 
+  // Hàm bật/tắt hiển thị mảng reply của 1 comment
+  const toggleExpandComment = (commentId) => {
+    setExpandedComments(prev => ({
+      ...prev,
+      [commentId]: !prev[commentId]
+    }));
+  };
+
   const handlePostComment = async (e) => {
     e.preventDefault();
     if (!newComment.trim()) return;
@@ -42,7 +56,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
         headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data.success) {
-        setComments([...comments, response.data.comment]);
+        setComments(prev => [{ ...response.data.comment, replies: [] }, ...prev]);
         setNewComment("");
       }
     } catch (error) {
@@ -51,12 +65,79 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
     }
   };
 
+  // ================= TRẢ LỜI BÌNH LUẬN (REPLY) =================
+  const handlePostReply = async (e) => {
+    e.preventDefault();
+    if (!replyContent.trim() || !replyingTo) return;
+    try {
+      const response = await api.post(
+        `/posts/${post._id}/comments`,
+        { content: replyContent, parentCommentId: replyingTo.targetCommentId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (response.data.success) {
+        setComments(prev => prev.map(c =>
+          c._id === replyingTo.rootCommentId
+            ? { ...c, replies: [...(c.replies || []), response.data.comment] }
+            : c
+        ));
+        
+        // Tự động mở rộng danh sách reply của bình luận gốc khi đăng thành công
+        setExpandedComments(prev => ({ ...prev, [replyingTo.rootCommentId]: true }));
+        
+        setReplyContent("");
+        setReplyingTo(null);
+      }
+    } catch (error) {
+      alert("Lỗi khi gửi trả lời!");
+      console.error(error);
+    }
+  };
+
+  // ================= LIKE BÌNH LUẬN / REPLY =================
+  const handleToggleCommentLike = async (commentId) => {
+    setComments(prev => prev.map(c => {
+      if (c._id === commentId) {
+        const liked = c.likes?.includes(currentUserId);
+        return {
+          ...c,
+          likes: liked
+            ? c.likes.filter(id => id !== currentUserId)
+            : [...(c.likes || []), currentUserId]
+        };
+      }
+      if (c.replies?.length) {
+        return {
+          ...c,
+          replies: c.replies.map(r => {
+            if (r._id === commentId) {
+              const liked = r.likes?.includes(currentUserId);
+              return {
+                ...r,
+                likes: liked
+                  ? r.likes.filter(id => id !== currentUserId)
+                  : [...(r.likes || []), currentUserId]
+              };
+            }
+            return r;
+          })
+        };
+      }
+      return c;
+    }));
+
+    try {
+      await api.post(`/posts/comment/${commentId}/like`, {}, { headers: { Authorization: `Bearer ${token}` } });
+    } catch (error) {
+      console.error("Lỗi khi thích bình luận:", error);
+    }
+  };
+
   const handleUserClick = () => {
     setSelectedUserFilter({ id: post.userId?._id, name: post.userId?.name || "Người dùng", isVerified: post.userId?.isVerified });
     onClose();
   };
 
-  // --- HÀM XỬ LÝ GỬI BÁO CÁO ---
   const handleSubmitReport = async (e) => {
     e.preventDefault();
     if (!reportReason.trim()) {
@@ -71,7 +152,6 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
       );
       alert("Cảm ơn đóng góp của bạn. Báo cáo đã được gửi tới đội ngũ kiểm duyệt.");
     } catch (error) {
-      // Fallback ghi nhận tương thích với hệ thống backend cũ/mới
       alert("Hệ thống đã ghi nhận báo cáo của bạn.");
     } finally {
       setShowReportModal(false);
@@ -106,7 +186,6 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
               </div>
             </div>
 
-            {/* NHÓM NÚT ĐIỀU KHIỂN (BÁO CÁO & ĐÓNG) */}
             <div className="flex items-center gap-2">
               {post.userId?._id !== currentUserId && (
                 <button 
@@ -160,7 +239,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
                 </button>
                 <div className="flex items-center gap-1.5 text-gray-400">
                   <MessageCircle className="w-5 h-5" />
-                  <span className="font-bold text-sm">{comments.length || post.commentsCount || 0}</span>
+                  <span className="font-bold text-sm">{post.commentsCount || 0}</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-gray-500 cursor-default" title="Lượt xem">
                   <Eye className="w-5 h-5" />
@@ -180,23 +259,133 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
               )}
             </div>
 
-            {/* HIỂN THỊ DANH SÁCH BÌNH LUẬN */}
+            {/* HIỂN THỊ DANH SÁCH BÌNH LUẬN + REPLY */}
             <div className="space-y-4 pb-2">
               {loadingComments ? (
                 <p className="text-center text-gray-500 text-sm">Đang tải bình luận...</p>
               ) : comments.length > 0 ? (
-                comments.map((comment, idx) => (
-                  <div key={idx} className="flex gap-3">
-                    <img src={comment.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-8 h-8 rounded-full object-cover mt-1" />
-                    <div className="bg-gray-800 px-4 py-2.5 rounded-2xl rounded-tl-none max-w-[85%] border border-gray-700/50">
-                      <p className="font-bold text-sm text-gray-200 flex items-center gap-1">
-                        {comment.userId?.name || "Người dùng"}
-                        {comment.userId?.isVerified && <BadgeCheck className="w-3 h-3 text-blue-400" />}
-                      </p>
-                      <p className="text-sm text-gray-300 mt-0.5">{comment.content}</p>
+                comments.map((comment) => {
+                  const commentLiked = comment.likes?.includes(currentUserId);
+                  const isExpanded = expandedComments[comment._id];
+
+                  return (
+                    <div key={comment._id} className="space-y-2">
+                      {/* BÌNH LUẬN GỐC */}
+                      <div className="flex gap-3">
+                        <img src={comment.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-8 h-8 rounded-full object-cover mt-1" />
+                        <div className="flex-1">
+                          <div className="bg-gray-800 px-4 py-2.5 rounded-2xl rounded-tl-none max-w-[85%] border border-gray-700/50">
+                            <p className="font-bold text-sm text-gray-200 flex items-center gap-1">
+                              {comment.userId?.name || "Người dùng"}
+                              {comment.userId?.isVerified && <BadgeCheck className="w-3 h-3 text-blue-400" />}
+                            </p>
+                            <p className="text-sm text-gray-300 mt-0.5">{comment.content}</p>
+                          </div>
+
+                          <div className="flex items-center gap-4 mt-1 ml-2">
+                            <button
+                              onClick={() => handleToggleCommentLike(comment._id)}
+                              className={`flex items-center gap-1 text-xs font-semibold transition-colors ${commentLiked ? 'text-pink-500' : 'text-gray-500 hover:text-pink-400'}`}
+                            >
+                              <Heart className={`w-3.5 h-3.5 ${commentLiked ? 'fill-pink-500' : ''}`} />
+                              {comment.likes?.length > 0 && comment.likes.length}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setReplyingTo({ targetCommentId: comment._id, rootCommentId: comment._id, userName: comment.userId?.name });
+                                setExpandedComments(prev => ({ ...prev, [comment._id]: true }));
+                              }}
+                              className="text-xs font-semibold text-gray-500 hover:text-emerald-400 transition-colors"
+                            >
+                              Trả lời
+                            </button>
+                          </div>
+
+                          {/* KHU VỰC QUẢN LÝ REPLIES (THU GỌN / MỞ RỘNG) */}
+                          {comment.replies?.length > 0 && (
+                            <div className="mt-2 ml-2 border-l-2 border-gray-800 pl-3">
+                              {/* Nút bấm chuyển đổi trạng thái THU GỌN / MỞ RỘNG */}
+                              <button
+                                onClick={() => toggleExpandComment(comment._id)}
+                                className="flex items-center gap-1 text-xs font-bold text-emerald-400 hover:text-emerald-300 transition-colors py-1"
+                              >
+                                {isExpanded ? (
+                                  <>
+                                    <ChevronUp className="w-3.5 h-3.5" />
+                                    Ẩn phản hồi
+                                  </>
+                                ) : (
+                                  <>
+                                    <ChevronDown className="w-3.5 h-3.5" />
+                                    Xem {comment.replies.length} phản hồi
+                                  </>
+                                )}
+                              </button>
+
+                              {/* DANH SÁCH REPLIES (Chỉ render khi isExpanded === true) */}
+                              {isExpanded && (
+                                <div className="mt-2 space-y-2 animate-in fade-in duration-200">
+                                  {comment.replies.map(reply => {
+                                    const replyLiked = reply.likes?.includes(currentUserId);
+                                    return (
+                                      <div key={reply._id} className="flex gap-2">
+                                        <img src={reply.userId?.avatar || "https://ui-avatars.com/api/?name=U"} alt="avatar" className="w-6 h-6 rounded-full object-cover mt-1" />
+                                        <div className="flex-1">
+                                          <div className="bg-gray-800/70 px-3 py-2 rounded-xl rounded-tl-none max-w-[90%] border border-gray-700/40">
+                                            <p className="font-bold text-xs text-gray-200 flex items-center gap-1">
+                                              {reply.userId?.name || "Người dùng"}
+                                              {reply.userId?.isVerified && <BadgeCheck className="w-3 h-3 text-blue-400" />}
+                                            </p>
+                                            {reply.replyToUserId && reply.replyToUserId !== comment.userId?._id && (
+                                              <p className="text-[11px] text-emerald-400/80 font-medium">@{reply.replyToUserName}</p>
+                                            )}
+                                            <p className="text-xs text-gray-300 mt-0.5">{reply.content}</p>
+                                          </div>
+
+                                          <div className="flex items-center gap-3 mt-1 ml-1">
+                                            <button
+                                              onClick={() => handleToggleCommentLike(reply._id)}
+                                              className={`flex items-center gap-1 text-[11px] font-semibold transition-colors ${replyLiked ? 'text-pink-500' : 'text-gray-500 hover:text-pink-400'}`}
+                                            >
+                                              <Heart className={`w-3 h-3 ${replyLiked ? 'fill-pink-500' : ''}`} />
+                                              {reply.likes?.length > 0 && reply.likes.length}
+                                            </button>
+                                            <button
+                                              onClick={() => setReplyingTo({ targetCommentId: reply._id, rootCommentId: comment._id, userName: reply.userId?.name })}
+                                              className="text-[11px] font-semibold text-gray-500 hover:text-emerald-400 transition-colors"
+                                            >
+                                              Trả lời
+                                            </button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Ô NHẬP REPLY - chỉ hiện đúng dưới bình luận gốc đang được chọn */}
+                          {replyingTo?.rootCommentId === comment._id && (
+                            <form onSubmit={handlePostReply} className="flex items-center gap-2 mt-2 ml-4">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={replyContent}
+                                onChange={(e) => setReplyContent(e.target.value)}
+                                placeholder={`Trả lời ${replyingTo.userName || "..."}...`}
+                                className="flex-1 bg-gray-800 border border-gray-700 rounded-full px-3 py-1.5 text-xs text-white focus:outline-none focus:border-emerald-500 transition-colors"
+                              />
+                              <button type="submit" disabled={!replyContent.trim()} className="text-emerald-400 disabled:opacity-40 text-xs font-bold">Gửi</button>
+                              <button type="button" onClick={() => { setReplyingTo(null); setReplyContent(""); }} className="text-gray-500 text-xs">Hủy</button>
+                            </form>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <p className="text-center text-gray-500 text-sm italic">Chưa có bình luận nào. Hãy là người đầu tiên!</p>
               )}
@@ -222,7 +411,7 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
         </div>
       </div>
 
-      {/* ================= THÀNH PHẦN LỚP PHỦ: MODAL NHẬP LÝ DO BÁO CÁO ================= */}
+      {/* MODAL NHẬP LÝ DO BÁO CÁO */}
       {showReportModal && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setShowReportModal(false)}>
           <div className="bg-gray-850 border border-gray-700 rounded-2xl w-full max-w-md p-6 shadow-2xl relative" onClick={e => e.stopPropagation()}>

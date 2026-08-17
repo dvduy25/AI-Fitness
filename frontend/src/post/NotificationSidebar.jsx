@@ -23,6 +23,8 @@ export default function NotificationSidebar({
               switch (noti.type) {
                 case 'like': icon = <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />; text = "đã thích bài viết của bạn."; break;
                 case 'comment': icon = <MessageCircle className="w-4 h-4 text-blue-400" />; text = "đã bình luận về bài viết của bạn."; break;
+                case 'like_comment': icon = <Heart className="w-4 h-4 text-pink-500 fill-pink-500" />; text = "đã thích bình luận của bạn."; break;
+                case 'reply_comment': icon = <MessageCircle className="w-4 h-4 text-emerald-400" />; text = "đã trả lời bình luận của bạn."; break;
                 case 'share_post': icon = <Share2 className="w-4 h-4 text-emerald-400" />; text = "đã chia sẻ một bài viết với bạn."; break;
                 case 'save_plan': icon = <Bookmark className="w-4 h-4 text-yellow-400 fill-yellow-400" />; text = "đã lưu lịch của bạn về kho."; break;
                 case 'new_post': icon = <Activity className="w-4 h-4 text-purple-400" />; text = "vừa đăng một bài viết mới."; break;

@@ -1,12 +1,13 @@
 import api from "./services/api";
 import React, { useState, useEffect } from "react";
-import { BrowserRouter, Routes, Route, NavLink, Navigate, Link } from "react-router-dom";
+import { BrowserRouter, Routes, Route, NavLink, Navigate, Link, useNavigate } from "react-router-dom";
 import {
   LogOut, Home, User, Utensils, Dumbbell, Activity, History,
   Crown, Globe, Bookmark, Menu, X, Calculator, Settings, Bell, Lock,
-  MessageSquare, Send, CheckCircle2
+  MessageSquare, Send, CheckCircle2, ScanLine, QrCode, Download
 } from 'lucide-react';
 import axios from 'axios';
+import QRScannerModal from "./QRScannerModal";
 
 // Import các trang (Components)
 // 🚀 HIỆU NĂNG: Lazy-load các trang theo route để giảm kích thước bundle đầu vào.
@@ -46,6 +47,35 @@ axios.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// =========================================================
+// 📷🖼️ TÍNH NĂNG MÃ QR (Quét mã người khác + Hiện mã của mình)
+// =========================================================
+// QRScannerLauncher là 1 component riêng vì cần dùng useNavigate() để điều hướng sau khi
+// quét xong — useNavigate() chỉ hoạt động được bên trong <BrowserRouter>. App là nơi TẠO
+// RA BrowserRouter nên bản thân App không được coi là "con" của Router khi hook chạy.
+//
+// ⚠️ QUAN TRỌNG: state điều khiển việc HIỂN THỊ 2 modal này (showQRScanner, showQRDisplay,
+// qrData...) đều đặt Ở CẤP APP (không đặt trong component nút bấm), và cả 2 modal đều
+// được render Ở NGOÀI khối Sidebar Menu (`{isMenuOpen && (...)}`).
+//
+// Lý do: bản trước đặt state ngay trong nút bấm nằm bên trong Sidebar Menu. Khi bấm nút,
+// code vừa gọi setShowScanner(true) (mở modal) vừa gọi onAfterClick() → setIsMenuOpen(false)
+// (đóng sidebar) trong CÙNG 1 lần render. React unmount toàn bộ khối Sidebar Menu ngay lập
+// tức — cuốn theo luôn component chứa modal vừa được bật, nên bấm nút mà không thấy gì cả.
+function QRScannerLauncher({ onClose }) {
+  const navigate = useNavigate();
+
+  const handleScanSuccess = (scannedUserId) => {
+    onClose();
+    // Đưa thẳng tới trang Cộng đồng kèm query ?viewUser=<id> — Community.jsx đã có sẵn
+    // useEffect đọc query này để tự mở đúng profile card, y hệt khi bấm vào 1 người
+    // trong danh sách đang theo dõi.
+    navigate(`/community?viewUser=${scannedUserId}`);
+  };
+
+  return <QRScannerModal onClose={onClose} onScanSuccess={handleScanSuccess} />;
+}
 
 const App = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -167,6 +197,48 @@ const App = () => {
     setIsLoggedIn(false);
     setIsAdmin(false);
     setIsMenuOpen(false);
+  };
+
+  // =========================================================
+  // STATE CHO TÍNH NĂNG MÃ QR (đặt ở cấp App — xem giải thích tại component
+  // QRScannerLauncher phía trên để hiểu vì sao KHÔNG được đặt state này bên trong
+  // nút bấm nằm trong Sidebar Menu)
+  // =========================================================
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [showQRDisplay, setShowQRDisplay] = useState(false);
+  const [qrData, setQrData] = useState(null);
+  const [isLoadingQR, setIsLoadingQR] = useState(false);
+  const [qrError, setQrError] = useState(null);
+
+  const handleOpenQRScanner = () => {
+    setIsMenuOpen(false);
+    setShowQRScanner(true);
+  };
+
+  const handleOpenQRDisplay = async () => {
+    setIsMenuOpen(false);
+    setShowQRDisplay(true);
+
+    if (qrData) return; // đã tải sẵn từ lần mở trước, không cần gọi lại API
+
+    setIsLoadingQR(true);
+    setQrError(null);
+    try {
+      const token = localStorage.getItem("token") || localStorage.getItem("adminToken");
+      const res = await api.get("/users/qr-code", {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (res.data?.success && res.data?.qrCode) {
+        setQrData(res.data.qrCode);
+      } else {
+        throw new Error("Không nhận được dữ liệu mã QR.");
+      }
+    } catch (err) {
+      setQrError("Không thể tạo mã QR. Vui lòng thử lại sau.");
+    } finally {
+      setIsLoadingQR(false);
+    }
   };
 
   const handleAcknowledgeLock = () => {
@@ -502,6 +574,22 @@ const App = () => {
 
                 <div className="h-px bg-gray-800 my-4 mx-2"></div>
 
+                {/* 📷 NÚT QUÉT MÃ QR */}
+                <button
+                  onClick={handleOpenQRScanner}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-800 border border-transparent hover:border-gray-700 text-gray-300 hover:text-blue-400 transition-all font-semibold"
+                >
+                  <ScanLine className="w-5 h-5" /> Quét Mã QR
+                </button>
+
+                {/* 🖼️ NÚT HIỆN MÃ QR CỦA CHÍNH MÌNH */}
+                <button
+                  onClick={handleOpenQRDisplay}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-gray-800 border border-transparent hover:border-gray-700 text-gray-300 hover:text-emerald-400 transition-all font-semibold"
+                >
+                  <QrCode className="w-5 h-5" /> Mã QR Của Tôi
+                </button>
+
                 {/* 🌟 NÚT LIÊN HỆ ĐƯỢC THÊM VÀO ĐÂY */}
                 <button
                   onClick={() => {
@@ -527,6 +615,61 @@ const App = () => {
                   <LogOut className="w-5 h-5" /> Đăng Xuất
                 </button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 📷 MODAL QUÉT MÃ QR — render ở NGOÀI khối Sidebar Menu, không bị unmount khi Sidebar đóng */}
+        {showQRScanner && (
+          <QRScannerLauncher onClose={() => setShowQRScanner(false)} />
+        )}
+
+        {/* 🖼️ MODAL HIỆN MÃ QR CỦA CHÍNH MÌNH — cũng render ở NGOÀI khối Sidebar Menu */}
+        {showQRDisplay && (
+          <div
+            className="fixed inset-0 z-[160] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            onClick={() => setShowQRDisplay(false)}
+          >
+            <div
+              className="bg-gray-900 border border-gray-800 rounded-2xl p-6 max-w-sm w-full text-center shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                  <QrCode className="w-5 h-5 text-emerald-400" /> Mã QR Của Tôi
+                </h3>
+                <button
+                  onClick={() => setShowQRDisplay(false)}
+                  className="p-1.5 rounded-lg hover:bg-gray-800 text-gray-400 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {isLoadingQR ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Activity className="w-8 h-8 text-emerald-500 animate-spin mb-3" />
+                  <p className="text-sm text-gray-400">Đang tạo mã QR...</p>
+                </div>
+              ) : qrData ? (
+                <>
+                  <div className="bg-white p-4 rounded-xl inline-block">
+                    <img src={qrData} alt="Mã QR cá nhân" className="w-56 h-56 object-contain" />
+                  </div>
+                  <p className="text-xs text-gray-400 mt-4 leading-relaxed">
+                    Bạn bè quét mã này để vào thẳng trang cá nhân của bạn trên Cộng đồng.
+                  </p>
+                  <a
+                    href={qrData}
+                    download="qr-code-ai-fitness.png"
+                    className="mt-4 w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold rounded-xl transition-colors text-sm flex items-center justify-center gap-2"
+                  >
+                    <Download className="w-4 h-4" /> Tải mã QR
+                  </a>
+                </>
+              ) : (
+                <p className="text-sm text-gray-500 py-12">{qrError || "Không thể tải mã QR."}</p>
+              )}
             </div>
           </div>
         )}

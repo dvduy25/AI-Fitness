@@ -15,6 +15,7 @@ import MediaCarousel from './post/MediaCarousel';
 import PostDetailsModal from './post/PostDetailsModal';
 import PostItem from './post/PostItem';
 import NotificationSidebar from './post/NotificationSidebar';
+import FollowSuggestions from './post/FollowSuggestions';
 
 // ================= HUY HIỆU XÁC THỰC =================
 // Hiện tích xanh nếu: đã verify (isVerified) HOẶC là Personal Trainer (role === 'trainer').
@@ -488,7 +489,7 @@ export default function Community() {
     <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-emerald-950/30 via-gray-950 to-gray-950">
       <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full flex gap-4 sm:gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
 
-        {/* ================= CỘT TRÁI: ĐANG THEO DÕI ================= */}
+        {/* ================= CỘT TRÁI: ĐANG THEO DÕI + GỢI Ý FOLLOW ================= */}
         <div className="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-24 space-y-5 z-10">
           <button
             onClick={handleViewMyProfile}
@@ -532,6 +533,13 @@ export default function Community() {
               )}
             </div>
           </div>
+
+          {/* 🌟 GỢI Ý FOLLOW NGƯỜI DÙNG */}
+          <FollowSuggestions
+            token={token}
+            onFollow={handleToggleFollow}
+            onViewProfile={handleViewProfile}
+          />
         </div>
 
         {/* ================= CỘT GIỮA: NỘI DUNG CHÍNH ================= */}
@@ -944,6 +952,8 @@ export default function Community() {
                     switch (noti.type) {
                       case 'like': icon = <Heart className="w-4 h-4 text-rose-400 fill-rose-400" />; text = "đã thích bài viết của bạn."; break;
                       case 'comment': icon = <MessageCircle className="w-4 h-4 text-sky-400" />; text = "đã bình luận về bài viết của bạn."; break;
+                      case 'like_comment': icon = <Heart className="w-4 h-4 text-rose-400 fill-rose-400" />; text = "đã thích bình luận của bạn."; break;
+                      case 'reply_comment': icon = <MessageCircle className="w-4 h-4 text-emerald-400" />; text = "đã trả lời bình luận của bạn."; break;
                       case 'share_post': icon = <Share2 className="w-4 h-4 text-emerald-400" />; text = "đã chia sẻ một bài viết với bạn."; break;
                       case 'save_plan': icon = <Bookmark className="w-4 h-4 text-amber-400 fill-amber-400" />; text = "đã lưu lịch của bạn về kho."; break;
                       case 'new_post': icon = <Activity className="w-4 h-4 text-fuchsia-400" />; text = "vừa đăng một bài viết mới."; break;
