@@ -76,7 +76,11 @@ router.get("/:postId/comments", postController.getComments);
 router.post("/:postId/comments", verifyToken, checkBannedWords, postController.addComment);
 router.put("/comment/:commentId", verifyToken, checkBannedWords, postController.updateComment);
 router.delete("/comment/:commentId", verifyToken, postController.deleteComment);
+// Like bình luận
+router.post("/comment/:commentId/like", verifyToken, postController.toggleLikeComment);
 
+// Gợi ý người dùng để follow
+router.get("/suggested-users", verifyToken, postController.getSuggestedUsers);
 // ==========================================
 // 6. TÍNH NĂNG CLONE (SAO CHÉP)
 // ==========================================

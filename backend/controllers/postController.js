@@ -387,30 +387,64 @@ exports.toggleLike = async (req, res) => {
 
 exports.addComment = async (req, res) => {
   try {
-    const { content } = req.body;
+    const { content, parentCommentId } = req.body; // parentCommentId ở đây là ID của comment/reply mà user bấm nút "Trả lời"
     const post = await Post.findById(req.params.postId);
-    
+    const senderId = req.user.id;
+
     if (!post) return res.status(404).json({ message: "Không thấy bài viết" });
-    
     if (post.status !== 'approved') {
       return res.status(403).json({ message: "Không thể bình luận, bài viết hiện không khả dụng." });
     }
 
-    const newComment = new Comment({ 
-      postId: post._id, 
-      userId: req.user.id, 
-      content 
+    let rootParentId = null;      // ID của bình luận gốc (cấp cao nhất) để lưu vào parentCommentId
+    let replyToUserId = null;
+    let replyToUserName = null;
+    let notifyTargetUserId = null;
+
+    if (parentCommentId) {
+      const targetComment = await Comment.findById(parentCommentId).populate('userId', 'name');
+      if (!targetComment) return res.status(404).json({ message: "Bình luận không tồn tại" });
+
+      // Nếu target đã là 1 reply (đã có parentCommentId) -> gốc chính là parentCommentId của nó
+      // Nếu target là comment gốc -> gốc chính là nó
+      rootParentId = targetComment.parentCommentId || targetComment._id;
+
+      replyToUserId = targetComment.userId._id;
+      replyToUserName = targetComment.userId.name;
+      notifyTargetUserId = targetComment.userId._id;
+    }
+
+    const newComment = new Comment({
+      postId: post._id,
+      userId: senderId,
+      content,
+      parentCommentId: rootParentId,
+      replyToUserId,
+      replyToUserName
     });
     await newComment.save();
 
     post.commentsCount += 1;
     await post.save();
 
-    if (post.userId.toString() !== req.user.id.toString()) {
-      await Notification.create({ userId: post.userId, senderId: req.user.id, type: 'comment', postId: post._id, isRead: false });
+    // Gửi thông báo
+    if (notifyTargetUserId) {
+      if (notifyTargetUserId.toString() !== senderId.toString()) {
+        await Notification.create({
+          userId: notifyTargetUserId,
+          senderId,
+          type: 'reply_comment',
+          postId: post._id,
+          commentId: newComment._id,
+          isRead: false
+        });
+      }
+    } else if (post.userId.toString() !== senderId.toString()) {
+      await Notification.create({ userId: post.userId, senderId, type: 'comment', postId: post._id, isRead: false });
     }
 
-    const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar");
+    const populatedComment = await Comment.findById(newComment._id)
+      .populate("userId", "name avatar role isVerified");
 
     res.status(201).json({ success: true, comment: populatedComment });
   } catch (error) {
@@ -508,13 +542,30 @@ exports.getComments = async (req, res) => {
   try {
     const post = await Post.findById(req.params.postId);
     if (!post) return res.status(404).json({ message: "Bài viết không tồn tại" });
-    
     if (post.status !== 'approved') {
       return res.status(403).json({ message: "Bài viết hiện không khả dụng, không thể xem bình luận." });
     }
 
-    const comments = await Comment.find({ postId: req.params.postId }).populate("userId", "name avatar role").sort({ createdAt: -1 });
-    res.status(200).json({ success: true, comments });
+    const allComments = await Comment.find({ postId: req.params.postId })
+      .populate("userId", "name avatar role isVerified")
+      .sort({ createdAt: 1 });
+
+    const topLevel = allComments.filter(c => !c.parentCommentId);
+    const repliesMap = {};
+    allComments.filter(c => c.parentCommentId).forEach(r => {
+      const key = r.parentCommentId.toString();
+      if (!repliesMap[key]) repliesMap[key] = [];
+      repliesMap[key].push(r);
+    });
+
+    const result = topLevel
+      .map(c => ({
+        ...c.toObject(),
+        replies: (repliesMap[c._id.toString()] || []).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))
+      }))
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    res.status(200).json({ success: true, comments: result });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -843,6 +894,69 @@ exports.reportPost = async (req, res) => {
     await post.save();
     res.status(200).json({ success: true, message: "Cảm ơn bạn đã báo cáo. Chúng tôi sẽ xem xét nội dung này." });
 
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+// ==========================================
+// LIKE BÌNH LUẬN
+// ==========================================
+exports.toggleLikeComment = async (req, res) => {
+  try {
+    const userId = req.user.id || req.user._id;
+    const comment = await Comment.findById(req.params.commentId);
+    if (!comment) return res.status(404).json({ message: "Không tìm thấy bình luận" });
+
+    const isLiked = comment.likes.includes(userId);
+    if (isLiked) {
+      comment.likes.pull(userId);
+    } else {
+      comment.likes.push(userId);
+      if (comment.userId.toString() !== userId.toString()) {
+        await Notification.create({
+          userId: comment.userId,
+          senderId: userId,
+          type: 'like_comment',
+          postId: comment.postId,
+          commentId: comment._id,
+          isRead: false
+        });
+      }
+    }
+
+    await comment.save();
+    res.status(200).json({ success: true, isLiked: !isLiked, likeCount: comment.likes.length });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ==========================================
+// GỢI Ý FOLLOW NGƯỜI DÙNG
+// ==========================================
+exports.getSuggestedUsers = async (req, res) => {
+  try {
+    const currentUserId = req.user.id || req.user._id;
+    const currentUser = await User.findById(currentUserId);
+    if (!currentUser) return res.status(404).json({ success: false, message: "Không tìm thấy user" });
+
+    const excludeIds = [...(currentUser.following || []), currentUserId]
+      .map(id => new mongoose.Types.ObjectId(id));
+
+    // Ưu tiên Personal Trainer, sau đó xếp theo lượng người theo dõi
+    const suggestions = await User.aggregate([
+      { $match: { _id: { $nin: excludeIds } } },
+      { $addFields: {
+          followersCount: { $size: { $ifNull: ["$followers", []] } },
+          priority: { $cond: [{ $eq: ["$role", "trainer"] }, 1, 0] }
+        }
+      },
+      { $sort: { priority: -1, followersCount: -1 } },
+      { $limit: 10 },
+      { $project: { name: 1, avatar: 1, role: 1, isVerified: 1, followersCount: 1, bio: 1 } }
+    ]);
+
+    res.status(200).json({ success: true, users: suggestions });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
