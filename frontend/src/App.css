@@ -12,3 +12,20 @@ body {
   background-color: #030712; /* Khớp với bg-gray-950 */
   overflow-x: hidden;
 }
+
+/* ============================================================
+   ẨN THANH TRƯỢT (SCROLLBAR) TOÀN CỤC
+   Áp dụng cho mọi phần tử dùng class "custom-scrollbar" (Community.jsx,
+   FollowSuggestions.jsx, các modal mobile...) — vẫn cuộn được bình thường,
+   chỉ ẩn thanh trượt hiển thị trên mọi trình duyệt.
+   ============================================================ */
+.custom-scrollbar {
+  scrollbar-width: none;       /* Firefox */
+  -ms-overflow-style: none;    /* IE / Edge cũ */
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  display: none;               /* Chrome, Safari, Edge (Chromium) */
+  width: 0;
+  height: 0;
+}

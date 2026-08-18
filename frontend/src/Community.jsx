@@ -78,6 +78,7 @@ export default function Community() {
   // --- STATE CHO MOBILE MODALS ---
   const [showMobileFollowing, setShowMobileFollowing] = useState(false);
   const [showMobileNotifications, setShowMobileNotifications] = useState(false);
+  const [showMobileDiscover, setShowMobileDiscover] = useState(false); // 🌟 modal "Khám phá người dùng" trên mobile
 
   const imageInputRef = useRef(null);
   const videoInputRef = useRef(null);
@@ -496,7 +497,9 @@ export default function Community() {
       <div className="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8 w-full flex gap-4 sm:gap-6 lg:gap-8 justify-center items-start animate-in fade-in duration-500 relative">
 
         {/* ================= CỘT TRÁI: ĐANG THEO DÕI + GỢI Ý FOLLOW ================= */}
-        <div className="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-24 space-y-5 z-10">
+        {/* 🌟 max-h + overflow-y-auto custom-scrollbar: khi nội dung cao hơn viewport,
+            cột tự cuộn riêng (thanh trượt đã bị ẩn hoàn toàn qua CSS global .custom-scrollbar) */}
+        <div className="hidden lg:block w-72 xl:w-80 shrink-0 sticky top-24 max-h-[calc(100vh-6.5rem)] overflow-y-auto overflow-x-hidden custom-scrollbar pr-1 space-y-5 z-10">
           <button
             onClick={handleViewMyProfile}
             className="w-full bg-gradient-to-br from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-3xl p-4 shadow-lg shadow-emerald-900/30 flex items-center gap-3 transition-all hover:-translate-y-0.5 hover:shadow-emerald-900/50"
@@ -530,8 +533,8 @@ export default function Community() {
               </div>
             )}
 
-            {/* 🌟 Giới hạn chiều cao ~5 người, phần còn lại cuộn bằng thanh trượt */}
-            <div className="space-y-1 max-h-[320px] overflow-y-auto custom-scrollbar pr-1.5">
+            {/* 🌟 Giới hạn chiều cao ~5 người, phần còn lại cuộn bằng thanh trượt (đã ẩn) */}
+            <div className="space-y-1 max-h-[320px] overflow-y-auto overflow-x-hidden custom-scrollbar pr-1.5">
               {filteredFollowingList.length > 0 ? filteredFollowingList.map(user => (
                 <div
                   key={user._id}
@@ -577,18 +580,22 @@ export default function Community() {
               <div className={`bg-emerald-500/15 text-emerald-400 p-1.5 rounded-full ${avatarRingClass(currentUser)}`}>
                 <UserCircle className="w-5 h-5" />
               </div>
-              <span className="truncate max-w-[130px] text-[15px] flex items-center gap-1">
+              <span className="truncate max-w-[110px] text-[15px] flex items-center gap-1">
                 {currentUser?.name || "Tài khoản"}
                 <VerifiedBadge user={currentUser} className="w-3.5 h-3.5" />
               </span>
             </button>
 
             <div className="flex items-center gap-2">
-              <button onClick={() => setShowMobileFollowing(true)} className="relative p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors">
+              {/* 🌟 Nút mở "Khám phá người dùng" — cùng hàng với nút Đang theo dõi & Thông báo */}
+              <button onClick={() => setShowMobileDiscover(true)} className="relative p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors" title="Khám phá người dùng">
+                <Search className="w-5 h-5" />
+              </button>
+              <button onClick={() => setShowMobileFollowing(true)} className="relative p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors" title="Đang theo dõi">
                 <Users className="w-5 h-5" />
                 <span className="absolute -top-1.5 -right-1.5 bg-gray-700 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-gray-950">{followingList.length}</span>
               </button>
-              <button onClick={() => setShowMobileNotifications(true)} className="relative p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors xl:hidden">
+              <button onClick={() => setShowMobileNotifications(true)} className="relative p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-xl transition-colors xl:hidden" title="Thông báo">
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-gray-950">{unreadCount}</span>}
               </button>
@@ -810,7 +817,8 @@ export default function Community() {
         </div>
 
         {/* ================= CỘT PHẢI: THÔNG BÁO ================= */}
-        <div className="hidden xl:block w-80 shrink-0 sticky top-24 space-y-6 z-10">
+        {/* 🌟 max-h + overflow-y-auto custom-scrollbar: danh sách thông báo dài tự cuộn riêng trong cột */}
+        <div className="hidden xl:block w-80 shrink-0 sticky top-24 max-h-[calc(100vh-6.5rem)] overflow-y-auto overflow-x-hidden custom-scrollbar pr-1 space-y-6 z-10">
           <NotificationSidebar
             unreadCount={unreadCount}
             realNotifications={realNotifications}
@@ -989,7 +997,7 @@ export default function Community() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 space-y-2">
+              <div className="overflow-y-auto overflow-x-hidden custom-scrollbar flex-1 pr-2 space-y-2">
                 {realNotifications.length > 0 ? (
                   realNotifications.map(noti => {
                     let icon = <Bell className="w-4 h-4 text-gray-400" />;
@@ -1019,8 +1027,8 @@ export default function Community() {
                           }`}
                       >
                         <div className="mt-0.5 bg-black/30 p-2 rounded-full shrink-0">{icon}</div>
-                        <div className="flex-1 pr-4">
-                          <p className={`text-[14px] leading-snug ${!noti.isRead ? 'text-white' : 'text-gray-400'}`}>
+                        <div className="flex-1 min-w-0 pr-4">
+                          <p className={`text-[14px] leading-snug break-words ${!noti.isRead ? 'text-white' : 'text-gray-400'}`}>
                             <span className="font-bold text-emerald-400 inline-flex items-center gap-1">
                               {noti.senderId?.name || "Người dùng ẩn danh"}
                               <VerifiedBadge user={noti.senderId} className="w-3.5 h-3.5" />
@@ -1039,6 +1047,31 @@ export default function Community() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* 7. MODAL MOBILE: KHÁM PHÁ NGƯỜI DÙNG */}
+        {showMobileDiscover && (
+          <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-sm lg:hidden" onClick={() => setShowMobileDiscover(false)}>
+            <div
+              className="w-full sm:max-w-sm max-h-[85vh] overflow-y-auto overflow-x-hidden custom-scrollbar rounded-t-3xl sm:rounded-3xl relative animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95 duration-300"
+              onClick={e => e.stopPropagation()}
+            >
+              <button
+                onClick={() => setShowMobileDiscover(false)}
+                className="absolute top-4 right-4 z-10 text-gray-400 hover:text-white bg-black/40 hover:bg-black/60 p-1.5 rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <FollowSuggestions
+                token={token}
+                onFollow={handleToggleFollow}
+                onViewProfile={(userId, info) => {
+                  handleViewProfile(userId, info);
+                  setShowMobileDiscover(false);
+                }}
+              />
             </div>
           </div>
         )}
