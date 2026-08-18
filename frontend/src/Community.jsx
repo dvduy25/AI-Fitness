@@ -15,7 +15,7 @@ import MediaCarousel from './post/MediaCarousel';
 import PostDetailsModal from './post/PostDetailsModal';
 import PostItem from './post/PostItem';
 import NotificationSidebar from './post/NotificationSidebar';
-import FollowSuggestions from './post/Followsuggestions';
+import FollowSuggestions from './post/FollowSuggestions';
 
 // ================= HUY HIỆU XÁC THỰC =================
 // Hiện tích xanh nếu: đã verify (isVerified) HOẶC là Personal Trainer (role === 'trainer').
@@ -67,6 +67,7 @@ export default function Community() {
   const [loadingArchive, setLoadingArchive] = useState(false);
 
   const [followingList, setFollowingList] = useState([]);
+  const [followingSearch, setFollowingSearch] = useState(""); // 🌟 tìm kiếm trong danh sách "Đang theo dõi"
   const [realNotifications, setRealNotifications] = useState([]);
 
   const [showShareModal, setShowShareModal] = useState(false);
@@ -102,6 +103,11 @@ export default function Community() {
   const currentUserId = currentUser?.id;
 
   const unreadCount = realNotifications.filter(n => !n.isRead).length;
+
+  // 🌟 Danh sách "Đang theo dõi" đã lọc theo ô tìm kiếm (không phân biệt hoa/thường)
+  const filteredFollowingList = followingList.filter(u =>
+    (u.name || "").toLowerCase().includes(followingSearch.trim().toLowerCase())
+  );
 
   // ================= TẢI DỮ LIỆU BAN ĐẦU =================
   const fetchPosts = async (type = activeTab) => {
@@ -505,12 +511,28 @@ export default function Community() {
           </button>
 
           <div className="bg-gray-900/60 backdrop-blur-xl border border-white/5 rounded-3xl p-5 shadow-xl shadow-black/20">
-            <h3 className="text-white text-[15px] font-bold mb-4 flex items-center gap-2 border-b border-white/5 pb-3.5">
+            <h3 className="text-white text-[15px] font-bold mb-3.5 flex items-center gap-2 border-b border-white/5 pb-3.5">
               <Users className="w-4 h-4 text-emerald-400" /> Đang theo dõi
               <span className="bg-emerald-500/15 text-emerald-300 text-xs font-semibold px-2 py-0.5 rounded-full ml-auto">{followingList.length}</span>
             </h3>
-            <div className="space-y-1 max-h-[50vh] overflow-y-auto custom-scrollbar pr-1.5">
-              {followingList.length > 0 ? followingList.map(user => (
+
+            {/* 🌟 Ô tìm kiếm trong danh sách đang theo dõi — chỉ hiện khi có kha khá người */}
+            {followingList.length > 5 && (
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                <input
+                  type="text"
+                  value={followingSearch}
+                  onChange={(e) => setFollowingSearch(e.target.value)}
+                  placeholder="Tìm trong danh sách..."
+                  className="w-full bg-black/20 border border-white/5 rounded-xl pl-9 pr-3 py-2 text-[12.5px] text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                />
+              </div>
+            )}
+
+            {/* 🌟 Giới hạn chiều cao ~5 người, phần còn lại cuộn bằng thanh trượt */}
+            <div className="space-y-1 max-h-[320px] overflow-y-auto custom-scrollbar pr-1.5">
+              {filteredFollowingList.length > 0 ? filteredFollowingList.map(user => (
                 <div
                   key={user._id}
                   onClick={() => handleViewProfile(user._id, { name: user.name, isVerified: user.isVerified, avatar: user.avatar, role: user.role })}
@@ -525,7 +547,11 @@ export default function Community() {
                     {user.role === 'trainer' && <p className="text-[11px] text-sky-400/80 font-medium">Personal Trainer</p>}
                   </div>
                 </div>
-              )) : (
+              )) : followingList.length > 0 ? (
+                <div className="text-center py-6">
+                  <p className="text-sm text-gray-500">Không tìm thấy ai khớp.</p>
+                </div>
+              ) : (
                 <div className="text-center py-6">
                   <Info className="w-7 h-7 text-gray-700 mx-auto mb-2" />
                   <p className="text-sm text-gray-500">Bạn chưa theo dõi ai.</p>
@@ -534,7 +560,7 @@ export default function Community() {
             </div>
           </div>
 
-          {/* 🌟 GỢI Ý FOLLOW NGƯỜI DÙNG */}
+          {/* 🌟 GỢI Ý FOLLOW NGƯỜI DÙNG + TÌM KIẾM + THEO DÕI LẠI */}
           <FollowSuggestions
             token={token}
             onFollow={handleToggleFollow}
@@ -901,8 +927,23 @@ export default function Community() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
+
+              {/* 🌟 Tìm kiếm trong modal mobile */}
+              {followingList.length > 5 && (
+                <div className="relative mb-3">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-500" />
+                  <input
+                    type="text"
+                    value={followingSearch}
+                    onChange={(e) => setFollowingSearch(e.target.value)}
+                    placeholder="Tìm trong danh sách..."
+                    className="w-full bg-black/20 border border-white/5 rounded-xl pl-9 pr-3 py-2.5 text-[13px] text-gray-100 placeholder-gray-500 focus:outline-none focus:border-emerald-500/50 focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                  />
+                </div>
+              )}
+
               <div className="overflow-y-auto custom-scrollbar flex-1 pr-2 space-y-2">
-                {followingList.length > 0 ? followingList.map(user => (
+                {filteredFollowingList.length > 0 ? filteredFollowingList.map(user => (
                   <div
                     key={user._id}
                     onClick={() => {
@@ -920,7 +961,11 @@ export default function Community() {
                       {user.role === 'trainer' && <p className="text-[11px] text-sky-400/80 font-medium">Personal Trainer</p>}
                     </div>
                   </div>
-                )) : (
+                )) : followingList.length > 0 ? (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-gray-500">Không tìm thấy ai khớp.</p>
+                  </div>
+                ) : (
                   <div className="text-center py-6">
                     <Info className="w-7 h-7 text-gray-700 mx-auto mb-2" />
                     <p className="text-sm text-gray-500">Bạn chưa theo dõi ai.</p>

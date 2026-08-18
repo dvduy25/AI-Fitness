@@ -396,6 +396,95 @@ exports.getFollowers = async (req, res) => {
 };
 
 // ==========================================
+// 🌟 TÌM KIẾM USER THEO TÊN
+// ==========================================
+// Dùng cho ô tìm kiếm trong widget "Gợi ý theo dõi" ở Community — tìm mọi user
+// (trừ chính mình) theo tên, không phân biệt hoa/thường, kèm cờ isFollowing để
+// FE biết hiện nút "Theo dõi" hay "Đang theo dõi".
+exports.searchUsers = async (req, res) => {
+  try {
+    const { q } = req.query;
+    const currentUserId = req.user.id;
+
+    if (!q || !q.trim()) {
+      return res.status(200).json({ success: true, users: [] });
+    }
+
+    const currentUser = await User.findById(currentUserId).select("following");
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+    }
+
+    const followingSet = new Set((currentUser.following || []).map(id => id.toString()));
+
+    const users = await User.find({
+      _id: { $ne: currentUserId },
+      name: { $regex: q.trim(), $options: "i" }
+    })
+      .select("name avatar role isVerified followers bio")
+      .limit(20)
+      .lean();
+
+    const result = users.map(u => ({
+      _id: u._id,
+      name: u.name,
+      avatar: u.avatar,
+      role: u.role,
+      isVerified: u.isVerified,
+      bio: u.bio,
+      followersCount: u.followers?.length || 0,
+      isFollowing: followingSet.has(u._id.toString())
+    }));
+
+    res.status(200).json({ success: true, users: result });
+  } catch (error) {
+    console.error("Lỗi khi tìm kiếm user:", error);
+    res.status(500).json({ success: false, message: "Lỗi server khi tìm kiếm người dùng", error: error.message });
+  }
+};
+
+// ==========================================
+// 🌟 DANH SÁCH NGƯỜI ĐANG FOLLOW MÌNH MÀ MÌNH CHƯA FOLLOW LẠI
+// ==========================================
+// Lấy currentUser.followers, loại bỏ những ai đã có mặt trong currentUser.following
+// -> phần còn lại chính là danh sách "theo dõi lại" hiển thị trong FollowSuggestions.
+exports.getNotFollowingBack = async (req, res) => {
+  try {
+    const currentUserId = req.user.id;
+    const currentUser = await User.findById(currentUserId).select("following followers");
+
+    if (!currentUser) {
+      return res.status(404).json({ success: false, message: "Người dùng không tồn tại" });
+    }
+
+    const followingSet = new Set((currentUser.following || []).map(id => id.toString()));
+    const notFollowedBackIds = (currentUser.followers || [])
+      .filter(id => !followingSet.has(id.toString()));
+
+    const users = await User.find({ _id: { $in: notFollowedBackIds } })
+      .select("name avatar role isVerified followers bio")
+      .limit(50)
+      .lean();
+
+    const result = users.map(u => ({
+      _id: u._id,
+      name: u.name,
+      avatar: u.avatar,
+      role: u.role,
+      isVerified: u.isVerified,
+      bio: u.bio,
+      followersCount: u.followers?.length || 0,
+      isFollowing: false
+    }));
+
+    res.status(200).json({ success: true, users: result });
+  } catch (error) {
+    console.error("Lỗi khi lấy danh sách chưa theo dõi lại:", error);
+    res.status(500).json({ success: false, message: "Lỗi server", error: error.message });
+  }
+};
+
+// ==========================================
 // CHỨC NĂNG ĐỔI MẬT KHẨU
 // ==========================================
 exports.changePassword = async (req, res) => {
