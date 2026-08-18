@@ -66,33 +66,39 @@ const PostDetailsModal = ({ post, onClose, currentUserId, token, onToggleLike, h
   };
 
   // ================= TRẢ LỜI BÌNH LUẬN (REPLY) =================
-  const handlePostReply = async (e) => {
-    e.preventDefault();
-    if (!replyContent.trim() || !replyingTo) return;
-    try {
-      const response = await api.post(
-        `/posts/${post._id}/comments`,
-        { content: replyContent, parentCommentId: replyingTo.targetCommentId },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (response.data.success) {
-        setComments(prev => prev.map(c =>
-          c._id === replyingTo.rootCommentId
-            ? { ...c, replies: [...(c.replies || []), response.data.comment] }
-            : c
-        ));
-        
-        // Tự động mở rộng danh sách reply của bình luận gốc khi đăng thành công
-        setExpandedComments(prev => ({ ...prev, [replyingTo.rootCommentId]: true }));
-        
-        setReplyContent("");
-        setReplyingTo(null);
-      }
-    } catch (error) {
-      alert("Lỗi khi gửi trả lời!");
-      console.error(error);
+ // ================= TRẢ LỜI BÌNH LUẬN (REPLY) =================
+const handlePostReply = async (e) => {
+  e.preventDefault();
+  if (!replyContent.trim() || !replyingTo?.targetCommentId) return;
+
+  try {
+    const response = await api.post(
+      `/posts/${post._id}/comments`,
+      { 
+        content: replyContent.trim(), 
+        parentCommentId: replyingTo.targetCommentId 
+      },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+
+    if (response.data.success) {
+      setComments(prev => prev.map(c =>
+        c._id === replyingTo.rootCommentId
+          ? { ...c, replies: [...(c.replies || []), response.data.comment] }
+          : c
+      ));
+      
+      setExpandedComments(prev => ({ ...prev, [replyingTo.rootCommentId]: true }));
+      setReplyContent("");
+      setReplyingTo(null);
     }
-  };
+  } catch (error) {
+    // Hiển thị chính xác thông điệp lỗi từ Backend trả về
+    const serverMessage = error.response?.data?.message || "Lỗi khi gửi trả lời!";
+    alert(`Không thể gửi câu trả lời: ${serverMessage}`);
+    console.error("Lỗi reply chi tiết:", error.response?.data || error.message);
+  }
+};
 
   // ================= LIKE BÌNH LUẬN / REPLY =================
   const handleToggleCommentLike = async (commentId) => {

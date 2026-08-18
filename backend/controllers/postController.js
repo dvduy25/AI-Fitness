@@ -392,19 +392,19 @@ exports.toggleLike = async (req, res) => {
 exports.addComment = async (req, res) => {
   try {
     const { content, parentCommentId } = req.body;
-    // Bắt cả req.params.postId lẫn req.params.id để tránh lệch tham số router
+    // Bắt an toàn cả id lẫn postId từ router
     const postId = req.params.postId || req.params.id;
     const senderId = req.user?._id || req.user?.id;
 
     if (!senderId) {
-      return res.status(401).json({ success: false, message: "Người dùng chưa xác thực" });
+      return res.status(401).json({ success: false, message: "Chưa xác thực người dùng" });
     }
 
     const post = await Post.findById(postId);
-    if (!post) return res.status(404).json({ success: false, message: "Không thấy bài viết" });
+    if (!post) return res.status(404).json({ success: false, message: "Không tìm thấy bài viết" });
 
     if (post.status !== 'approved') {
-      return res.status(403).json({ success: false, message: "Không thể bình luận, bài viết hiện không khả dụng." });
+      return res.status(403).json({ success: false, message: "Bài viết chưa được duyệt hoặc không khả dụng" });
     }
 
     let rootParentId = null;
@@ -414,11 +414,13 @@ exports.addComment = async (req, res) => {
 
     if (parentCommentId) {
       const targetComment = await Comment.findById(parentCommentId).populate('userId', 'name');
-      if (!targetComment) return res.status(404).json({ success: false, message: "Bình luận không tồn tại" });
+      if (!targetComment) {
+        return res.status(404).json({ success: false, message: "Bình luận được trả lời không còn tồn tại" });
+      }
 
       rootParentId = targetComment.parentCommentId || targetComment._id;
 
-      // Dùng Optional Chaining (?.) đề phòng người dùng của comment này đã bị xóa
+      // Dùng Optional Chaining để phòng người dùng gốc đã bị xóa tài khoản
       if (targetComment.userId) {
         replyToUserId = targetComment.userId._id;
         replyToUserName = targetComment.userId.name;
@@ -436,13 +438,12 @@ exports.addComment = async (req, res) => {
     });
     await newComment.save();
 
-    // Chống lỗi NaN nếu field commentsCount chưa tồn tại
     post.commentsCount = (post.commentsCount || 0) + 1;
     await post.save();
 
-    // Gửi thông báo an toàn
-    if (notifyTargetUserId) {
-      if (notifyTargetUserId.toString() !== senderId.toString()) {
+    // Bọc Notification riêng: Nếu tạo thông báo lỗi cũng KHÔNG làm crash tính năng comment
+    try {
+      if (notifyTargetUserId && notifyTargetUserId.toString() !== senderId.toString()) {
         await Notification.create({
           userId: notifyTargetUserId,
           senderId,
@@ -451,22 +452,24 @@ exports.addComment = async (req, res) => {
           commentId: newComment._id,
           isRead: false
         });
+      } else if (post.userId && post.userId.toString() !== senderId.toString()) {
+        await Notification.create({ 
+          userId: post.userId, 
+          senderId, 
+          type: 'comment', 
+          postId: post._id, 
+          isRead: false 
+        });
       }
-    } else if (post.userId && post.userId.toString() !== senderId.toString()) {
-      await Notification.create({ 
-        userId: post.userId, 
-        senderId, 
-        type: 'comment', 
-        postId: post._id, 
-        isRead: false 
-      });
+    } catch (notifError) {
+      console.error("Lỗi tạo notification (bỏ qua):", notifError.message);
     }
 
     const populatedComment = await Comment.findById(newComment._id).populate("userId", "name avatar role isVerified");
 
     return res.status(201).json({ success: true, comment: populatedComment });
   } catch (error) {
-    console.error("Lỗi addComment:", error);
+    console.error("Lỗi Fatal addComment Backend:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 };
